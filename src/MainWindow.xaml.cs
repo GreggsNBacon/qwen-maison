@@ -45,9 +45,17 @@ public partial class MainWindow : FluentWindow, IShell
         FastModel.Text = _config.FastModel;
         Context.SelectedItem = Launcher.ContextSizes.ContainsKey(_config.Context) ? _config.Context : "64K";
         WorkDir.Text = Directory.Exists(_config.WorkDir) ? _config.WorkDir : Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        UseTerminal.IsChecked = _config.UseTerminal && SystemProbe.HasWindowsTerminal;
-        UseTerminal.IsEnabled = SystemProbe.HasWindowsTerminal;
+        foreach (var t in Launcher.Targets)
+            if (t != Launcher.TargetTerminal || SystemProbe.HasWindowsTerminal) OpenIn.Items.Add(t);
+        OpenIn.SelectedItem = OpenIn.Items.Contains(_config.OpenIn) ? _config.OpenIn : Launcher.TargetApp;
         SkipPerms.IsChecked = _config.SkipPermissions;
+        TerminalsPage.Shell = this;
+        TerminalsPage.WorkDirProvider = () => Directory.Exists(WorkDir.Text.Trim()) ? WorkDir.Text.Trim() : Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        TerminalsPage.SessionsChanged += () =>
+        {
+            var n = TerminalsPage.Count;
+            NavTerminals.Content = n > 0 ? $"Terminals ({n})" : "Terminals";
+        };
         _initializing = false;
         UpdateCommands();
         Navigate("dashboard");
@@ -68,8 +76,24 @@ public partial class MainWindow : FluentWindow, IShell
             }
             await RunSelfTestIfRequestedAsync();
         };
-        Closing += (_, _) => SaveConfig();
+        Closing += async (_, e) =>
+        {
+            SaveConfig();
+            if (TerminalsPage.RunningCount > 0 && !_confirmedClose && await SelfTestDir() is null)
+            {
+                e.Cancel = true;
+                if (await ConfirmAsync("Close the launcher?", $"{TerminalsPage.RunningCount} terminal session(s) are still running and will be ended.", "Close"))
+                {
+                    _confirmedClose = true;
+                    Close();
+                }
+                return;
+            }
+            TerminalsPage.CloseAll();
+        };
     }
+
+    private bool _confirmedClose;
 
     // ------------------------------------------------------------------ IShell
 
@@ -91,6 +115,9 @@ public partial class MainWindow : FluentWindow, IShell
         DashboardPage.Visibility = page == "dashboard" ? Visibility.Visible : Visibility.Collapsed;
         ModelsPage.Visibility = page == "models" ? Visibility.Visible : Visibility.Collapsed;
         SetupPage.Visibility = page == "setup" ? Visibility.Visible : Visibility.Collapsed;
+        TerminalsPage.Visibility = page == "terminals" ? Visibility.Visible : Visibility.Collapsed;
+        NavTerminals.Appearance = page == "terminals" ? ControlAppearance.Secondary : ControlAppearance.Transparent;
+        if (page == "terminals") Dispatcher.BeginInvoke(() => TerminalsPage.Current?.FocusTerminal(), DispatcherPriority.Input);
         NavDashboard.Appearance = page == "dashboard" ? ControlAppearance.Secondary : ControlAppearance.Transparent;
         NavModels.Appearance = page == "models" ? ControlAppearance.Secondary : ControlAppearance.Transparent;
         NavSetup.Appearance = page == "setup" ? ControlAppearance.Secondary : ControlAppearance.Transparent;
@@ -132,7 +159,7 @@ public partial class MainWindow : FluentWindow, IShell
         _config.FastModel = FastModel.Text.Trim();
         _config.Context = Context.SelectedItem as string ?? "64K";
         _config.WorkDir = WorkDir.Text.Trim();
-        _config.UseTerminal = UseTerminal.IsChecked == true;
+        _config.OpenIn = Target;
         _config.SkipPermissions = Skip;
         _config.Save();
     }
@@ -367,9 +394,8 @@ public partial class MainWindow : FluentWindow, IShell
         if (SystemProbe.FindOnPath("claude") is null) { Toast("Claude Code is not installed", "Install it from the Setup page.", ControlAppearance.Caution, SymbolRegular.Warning24); return; }
         var main = await ResolveAsync(BaseMain);
         var fast = BaseFast == BaseMain ? main : await ResolveAsync(BaseFast);
-        Launcher.Open($"Claude Code · {main} (local)", WorkDir.Text.Trim(), Launcher.ClaudeEnv(main, fast),
-            ["Remove-Item Env:ANTHROPIC_API_KEY -ErrorAction SilentlyContinue"], Launcher.ClaudeCommand(Skip), UseTerminal.IsChecked == true);
-        Launched("Claude Code", main);
+        await LaunchAsync(new Launcher.Session($"Claude Code · {main}", WorkDir.Text.Trim(), Launcher.ClaudeEnv(main, fast),
+            ["Remove-Item Env:ANTHROPIC_API_KEY -ErrorAction SilentlyContinue"], Launcher.ClaudeCommand(Skip)), SymbolRegular.Sparkle24, "Claude Code", main);
     });
 
     private async void Qwen_Click(object sender, RoutedEventArgs e) => await WithBusy(async () =>
@@ -377,23 +403,37 @@ public partial class MainWindow : FluentWindow, IShell
         if (!await EnsureReadyAsync()) return;
         if (SystemProbe.FindOnPath("qwen") is null) { Toast("Qwen Code is not installed", "Install it from the Setup page.", ControlAppearance.Caution, SymbolRegular.Warning24); return; }
         var main = await ResolveAsync(BaseMain);
-        Launcher.Open($"Qwen Code · {main} (local)", WorkDir.Text.Trim(), Launcher.QwenEnv(main), null, Launcher.QwenCommand(main, Skip), UseTerminal.IsChecked == true);
-        Launched("Qwen Code", main);
+        await LaunchAsync(new Launcher.Session($"Qwen Code · {main}", WorkDir.Text.Trim(), Launcher.QwenEnv(main), null, Launcher.QwenCommand(main, Skip)),
+            SymbolRegular.Code24, "Qwen Code", main);
     });
 
     private async void Chat_Click(object sender, RoutedEventArgs e) => await WithBusy(async () =>
     {
         if (!await EnsureReadyAsync()) return;
         var main = await ResolveAsync(BaseMain);
-        Launcher.Open($"Chat · {main}", WorkDir.Text.Trim(), null, null, Launcher.ChatCommand(main), UseTerminal.IsChecked == true);
-        Launched("Chat", main);
+        await LaunchAsync(new Launcher.Session($"Chat · {main}", WorkDir.Text.Trim(), null, null, Launcher.ChatCommand(main)), SymbolRegular.Chat24, "Chat", main);
     });
 
-    private void Launched(string what, string model)
+    private string Target => OpenIn.SelectedItem as string ?? Launcher.TargetApp;
+
+    /// <summary>Opens the session in an app tab, Windows Terminal or a PowerShell window, per "Open in".</summary>
+    private async Task<Controls.TerminalSession?> LaunchAsync(Launcher.Session session, SymbolRegular icon, string what, string model)
     {
+        if (!Directory.Exists(session.WorkDir)) throw new DirectoryNotFoundException($"Working folder not found: {session.WorkDir}");
         SaveConfig();
-        Log($"Launched {what} with {model} in {WorkDir.Text.Trim()}");
-        Toast($"{what} launched", $"{model} · {WorkDir.Text.Trim()}", ControlAppearance.Success, SymbolRegular.Rocket24);
+        Controls.TerminalSession? tab = null;
+        if (Target == Launcher.TargetApp)
+        {
+            Navigate("terminals");
+            tab = await TerminalsPage.OpenAsync(session, icon);
+        }
+        else
+        {
+            Launcher.OpenExternal(session, useWindowsTerminal: Target == Launcher.TargetTerminal);
+            Toast($"{what} launched", $"{model} · {session.WorkDir}", ControlAppearance.Success, SymbolRegular.Rocket24);
+        }
+        Log($"Launched {what} with {model} in {session.WorkDir} ({Target})");
+        return tab;
     }
 
     // ------------------------------------------------------------------ ollama buttons
@@ -557,7 +597,37 @@ public partial class MainWindow : FluentWindow, IShell
             Navigate("dashboard");
         }
 
-        var lines = new List<string> { "STATUS:", pullResult };
+        // Optional: --term <workdir> opens Claude Code and Qwen Code in app tabs and captures what they render.
+        var ti = Array.IndexOf(args, "--term");
+        var termResult = "";
+        if (ti >= 0 && ti + 1 < args.Length && BaseMain.Length > 0)
+        {
+            var main = await ResolveAsync(BaseMain);
+            OpenIn.SelectedItem = Launcher.TargetApp;
+            var claude = await LaunchAsync(new Launcher.Session($"Claude Code · {main}", args[ti + 1], Launcher.ClaudeEnv(main, main),
+                ["Remove-Item Env:ANTHROPIC_API_KEY -ErrorAction SilentlyContinue"], Launcher.ClaudeCommand(false)), SymbolRegular.Sparkle24, "Claude Code", main);
+            await Task.Delay(15000);
+            if (claude is not null) await claude.CaptureAsync(Path.Combine(dir, "term-claude.png"));
+            Snap(Path.Combine(dir, "terminals.png"));
+            var qwen = await LaunchAsync(new Launcher.Session($"Qwen Code · {main}", args[ti + 1], Launcher.QwenEnv(main), null, Launcher.QwenCommand(main, false)),
+                SymbolRegular.Code24, "Qwen Code", main);
+            await Task.Delay(15000);
+            if (qwen is not null) await qwen.CaptureAsync(Path.Combine(dir, "term-qwen.png"));
+            // Keyboard path: type into a plain PowerShell tab through xterm.js, then exit it.
+            var ps = await TerminalsPage.OpenAsync(new Launcher.Session("PowerShell", args[ti + 1], null, null, "Get-Location | Out-Null"), SymbolRegular.WindowConsole20);
+            await Task.Delay(4000);
+            await ps.TypeAsync("Write-Output ('typed-' + (6*7))\r");
+            await Task.Delay(2500);
+            var screen = await ps.ReadScreenAsync();
+            await ps.CaptureAsync(Path.Combine(dir, "term-ps.png"));
+            await ps.TypeAsync("exit\r");
+            await Task.Delay(2500);
+            termResult = $"TERM: typedOutputSeen={screen.Contains("typed-42")} psEndedAfterExit={!ps.IsRunning} tabs={TerminalsPage.Count} running={TerminalsPage.RunningCount}";
+            TerminalsPage.CloseAll();
+            termResult += $" afterClose={TerminalsPage.Count}";
+        }
+
+        var lines = new List<string> { "STATUS:", pullResult, termResult };
         lines.AddRange(_status.Select(s => $"[{s.Level}] {s.Title} | {s.Detail}"));
         lines.Add($"GAUGES: temp={GTemp.Display} load={GLoad.Display} power={GPower.Display} vram={GVram.Display} | {GpuTitle.Text} | {GpuExtra.Text}");
         lines.Add($"MAIN: {MainModel.Text} | ITEMS: " + string.Join(", ", MainModel.Items.Cast<object>()));

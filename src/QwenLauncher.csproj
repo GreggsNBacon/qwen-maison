@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
@@ -8,7 +8,7 @@
     <UseWPF>true</UseWPF>
     <AssemblyName>QwenLauncher</AssemblyName>
     <RootNamespace>QwenLauncher</RootNamespace>
-    <Version>1.1.0</Version>
+    <Version>1.2.0</Version>
     <Product>Qwen Local Launcher</Product>
     <ApplicationManifest>app.manifest</ApplicationManifest>
 
@@ -19,14 +19,18 @@
     <PublishSingleFile>true</PublishSingleFile>
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
     <DebugType>embedded</DebugType>
+    <PublishReferencesDocumentationFiles>false</PublishReferencesDocumentationFiles>
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4314.35" />
     <PackageReference Include="WPF-UI" Version="4.3.0" />
   </ItemGroup>
 
   <ItemGroup>
     <EmbeddedResource Include="Assets\Repair-Ollama.ps1" LogicalName="Repair-Ollama.ps1" />
+    <!-- xterm.js (MIT) for the in-app terminal; served offline from the exe -->
+    <EmbeddedResource Include="Assets\terminal\*.js;Assets\terminal\*.css" LogicalName="terminal/%(Filename)%(Extension)" />
   </ItemGroup>
 
 </Project>

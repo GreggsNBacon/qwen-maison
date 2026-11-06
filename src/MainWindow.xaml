@@ -36,6 +36,9 @@
           <ui:Button x:Name="NavDashboard" Content="Dashboard" Icon="{ui:SymbolIcon Home24}" Tag="dashboard" Click="Nav_Click"
                      HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Padding="12,9" Margin="0,0,0,4" BorderThickness="0"
                      ToolTip="Ollama health, GPU gauges and launch buttons" />
+          <ui:Button x:Name="NavTerminals" Content="Terminals" Icon="{ui:SymbolIcon WindowConsole20}" Tag="terminals" Click="Nav_Click"
+                     HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Padding="12,9" Margin="0,0,0,4" BorderThickness="0"
+                     ToolTip="Claude Code, Qwen Code and chat sessions running inside the app, in tabs" />
           <ui:Button x:Name="NavModels" Content="Models" Icon="{ui:SymbolIcon Cube24}" Tag="models" Click="Nav_Click"
                      HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Padding="12,9" Margin="0,0,0,4" BorderThickness="0"
                      ToolTip="Install, choose and uninstall AI models" />
@@ -47,6 +50,7 @@
 
       <!-- Pages -->
       <v:ModelsView x:Name="ModelsPage" Grid.Column="1" Visibility="Collapsed" />
+      <v:TerminalsView x:Name="TerminalsPage" Grid.Column="1" Visibility="Collapsed" />
       <v:SetupView x:Name="SetupPage" Grid.Column="1" Visibility="Collapsed" />
 
       <ScrollViewer x:Name="DashboardPage" Grid.Column="1" VerticalScrollBarVisibility="Auto">
@@ -225,12 +229,18 @@
                   <ui:Button Grid.Column="1" Content="Browse" Margin="8,0,0,0" Click="Browse_Click" ToolTip="Pick the project folder" />
                 </Grid>
 
-                <StackPanel Orientation="Horizontal" Margin="0,14,0,0">
-                  <ui:ToggleSwitch x:Name="UseTerminal" Content="Windows Terminal" Margin="0,0,24,0"
-                                   ToolTip="Open sessions in Windows Terminal (on) or a classic PowerShell window (off)" />
-                  <ui:ToggleSwitch x:Name="SkipPerms" Content="Skip permission prompts" Click="Skip_Click"
+                <Grid Margin="0,12,0,0">
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="200" />
+                    <ColumnDefinition Width="*" />
+                  </Grid.ColumnDefinitions>
+                  <TextBlock Text="Open in" VerticalAlignment="Center" Margin="0,0,10,0" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                  <ComboBox x:Name="OpenIn" Grid.Column="1"
+                            ToolTip="Where sessions open: a tab inside this app (Terminals page), a Windows Terminal window, or a classic PowerShell window" />
+                  <ui:ToggleSwitch x:Name="SkipPerms" Grid.Column="2" Content="Skip permission prompts" Click="Skip_Click" Margin="20,0,0,0"
                                    ToolTip="Let the agent edit files and run commands without asking (Claude: --dangerously-skip-permissions, Qwen: --yolo). Only use in folders you trust." />
-                </StackPanel>
+                </Grid>
 
                 <UniformGrid Columns="3" Margin="-4,18,-4,0">
                   <Button x:Name="BtnClaude" Margin="4" Height="64" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Click="Claude_Click" Cursor="Hand"

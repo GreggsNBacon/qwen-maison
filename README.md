@@ -16,13 +16,21 @@ A Windows 11 style desktop app (Mica, Fluent controls) that sets up and runs loc
 - Health list: install, `llama-server.exe` runtime (catches the broken auto-update), server, loaded models with
   CPU-spill warnings, installed models, `claude`/`qwen` CLIs. Refreshes every 10 s.
 - Actions: Start, Restart, Speed test, Unload, Repair Ollama (bundled script), Remove old aliases.
-- Launch in Windows Terminal or PowerShell, in a chosen folder:
+- Launch, in a chosen folder, with **Open in** set to: **This app** (a tab on the Terminals page), Windows Terminal, or a PowerShell window:
   - **Claude Code**: per-window `ANTHROPIC_BASE_URL=http://127.0.0.1:11434`, `ANTHROPIC_AUTH_TOKEN=ollama`,
     with every model slot mapped to the local model. Ollama serves the Anthropic Messages API natively. Your normal `claude` is untouched.
   - **Qwen Code**: `qwen --auth-type openai --openai-base-url http://127.0.0.1:11434/v1 ...`
   - **Chat**: `ollama run`
 - Context window picker. The default is 64K, set by creating a settings-only `<model>-ctx64k` variant.
 - Copyable start commands for the current selection.
+
+**Terminals**: Claude Code, Qwen Code, Chat and plain PowerShell sessions in tabs inside the app.
+- Each tab is a real Windows pseudo console (ConPTY) rendered by xterm.js in WebView2, so full-screen TUIs work as they do in
+  Windows Terminal: colours, Unicode, resizing, mouse and window titles.
+- To copy, select text and right-click (or press Ctrl+Shift+C). To paste, right-click with nothing selected (or press Ctrl+V).
+- **Pop out** reopens the current session in Windows Terminal. **Close tab** ends it. The sidebar shows the open-tab count,
+  and closing the app with sessions still running asks first.
+- Needs the Microsoft Edge WebView2 Runtime, which ships with Windows 11 and current Windows 10.
 
 **Models**
 - Install any Ollama model by name, with live progress (size, speed, time left) and Cancel. Partial downloads resume.
@@ -50,6 +58,10 @@ Every button and control has a tooltip.
 | `src/Services/ModelCatalog.cs` | Curated Qwen models, VRAM fit estimate, per-PC recommendation |
 | `src/Services/Launcher.cs` | Env and commands for each tool; opens the terminal (`-EncodedCommand`) |
 | `src/Controls/ArcGauge.cs` | Animated arc gauge |
+| `src/Services/PseudoConsole.cs` | ConPTY wrapper (CreatePseudoConsole + process + pipes) |
+| `src/Controls/TerminalSession.cs` | One terminal tab: WebView2 + xterm.js connected to ConPTY |
+| `src/Views/TerminalsView` | Terminals page (tabs) |
+| `src/Assets/terminal/` | xterm.js 6.0, addon-fit and addon-unicode11 (MIT), embedded in the exe |
 | `src/Views/ModelsView`, `src/Views/SetupView` | Models and Setup pages |
 | `src/MainWindow.xaml(.cs)` | Shell, sidebar and Dashboard (WPF-UI 4.3) |
 | `src/Assets/Repair-Ollama.ps1` | Embedded repair script |
@@ -57,6 +69,7 @@ Every button and control has a tooltip.
 ## Self-test
 `QwenLauncher.exe --selftest <dir> [--pull <model>]` screenshots every page, writes `selftest.txt` and exits.
 With `--pull`, it also installs the model through the Models page, screenshots the download, and then deletes the model.
+With `--term <folder>`, it opens Claude Code, Qwen Code and PowerShell tabs, captures them, types into PowerShell through xterm.js, and checks the output and the exit.
 
 ## Notes
 - The exe is unsigned, so on another PC Windows SmartScreen shows "Windows protected your PC". Click **More info**, then **Run anyway**.

@@ -111,7 +111,7 @@ public sealed class AppConfig
     public string FastModel { get; set; } = "";
     public string Context { get; set; } = "64K";
     public string WorkDir { get; set; } = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-    public bool UseTerminal { get; set; } = true;
+    public string OpenIn { get; set; } = "This app";
     public bool SkipPermissions { get; set; }
 
     private static readonly string Dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "QwenLauncher");

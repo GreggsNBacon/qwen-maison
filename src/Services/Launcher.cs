@@ -79,11 +79,42 @@ public static class Launcher
         return sb.ToString().TrimEnd();
     }
 
-    /// <summary>Opens a new terminal window in <paramref name="workDir"/> with the env set and runs <paramref name="command"/>.</summary>
-    public static void Open(string title, string workDir, IDictionary<string, string>? env, IEnumerable<string>? preamble, string command, bool useTerminal)
-    {
-        if (!Directory.Exists(workDir)) throw new DirectoryNotFoundException($"Working folder not found: {workDir}");
+    public const string TargetApp = "This app", TargetTerminal = "Windows Terminal", TargetPowerShell = "PowerShell window";
+    public static readonly string[] Targets = [TargetApp, TargetTerminal, TargetPowerShell];
 
+    /// <summary>A launch request: what to run, where, with which per-session environment.</summary>
+    public sealed record Session(string Title, string WorkDir, IDictionary<string, string>? Env, IEnumerable<string>? Preamble, string Command)
+    {
+        /// <summary>powershell.exe arguments that set everything up and run the command (keeps the shell open afterwards).</summary>
+        public string[] PowerShellArgs => ["-NoExit", "-NoLogo", "-ExecutionPolicy", "Bypass", "-EncodedCommand", Encoded(Script(this))];
+
+        /// <summary>Full command line for ConPTY.</summary>
+        public string CommandLine => "powershell.exe " + string.Join(' ', PowerShellArgs);
+    }
+
+    private static string Encoded(string script) => Convert.ToBase64String(Encoding.Unicode.GetBytes(script));
+
+    /// <summary>Opens a new external terminal window (Windows Terminal or classic PowerShell).</summary>
+    public static void OpenExternal(Session session, bool useWindowsTerminal)
+    {
+        if (!Directory.Exists(session.WorkDir)) throw new DirectoryNotFoundException($"Working folder not found: {session.WorkDir}");
+        ProcessStartInfo psi;
+        if (useWindowsTerminal && SystemProbe.HasWindowsTerminal)
+        {
+            psi = new ProcessStartInfo("wt.exe") { UseShellExecute = true };
+            foreach (var a in new[] { "-w", "new", "powershell.exe" }.Concat(session.PowerShellArgs)) psi.ArgumentList.Add(a);
+        }
+        else
+        {
+            psi = new ProcessStartInfo("powershell.exe") { UseShellExecute = true, WorkingDirectory = session.WorkDir };
+            foreach (var a in session.PowerShellArgs) psi.ArgumentList.Add(a);
+        }
+        Process.Start(psi);
+    }
+
+    private static string Script(Session x)
+    {
+        var (title, workDir, env, preamble, command) = (x.Title, x.WorkDir, x.Env, x.Preamble, x.Command);
         var s = new StringBuilder();
         s.AppendLine($"$host.UI.RawUI.WindowTitle = {Q(title)}");
         // Pick up tools installed since this app started (Setup page): the launcher's own PATH is stale.
@@ -93,21 +124,7 @@ public static class Launcher
         s.AppendLine($"Set-Location -LiteralPath {Q(workDir)}");
         s.AppendLine($"Write-Host {Q("== " + title + " ==")} -ForegroundColor Cyan");
         s.AppendLine(command);
-        // EncodedCommand avoids every quoting problem (wt treats ';' as a separator, paths with spaces, etc.)
-        var encoded = Convert.ToBase64String(Encoding.Unicode.GetBytes(s.ToString()));
-
-        string[] psArgs = ["-NoExit", "-NoLogo", "-ExecutionPolicy", "Bypass", "-EncodedCommand", encoded];
-        ProcessStartInfo psi;
-        if (useTerminal && SystemProbe.HasWindowsTerminal)
-        {
-            psi = new ProcessStartInfo("wt.exe") { UseShellExecute = true };
-            foreach (var a in new[] { "-w", "new", "powershell.exe" }.Concat(psArgs)) psi.ArgumentList.Add(a);
-        }
-        else
-        {
-            psi = new ProcessStartInfo("powershell.exe") { UseShellExecute = true, WorkingDirectory = workDir };
-            foreach (var a in psArgs) psi.ArgumentList.Add(a);
-        }
-        Process.Start(psi);
+        // Passed as -EncodedCommand: avoids every quoting problem (wt treats ';' as a separator, paths with spaces, etc.)
+        return s.ToString();
     }
 }
