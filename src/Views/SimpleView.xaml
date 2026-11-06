@@ -29,7 +29,7 @@
       <RowDefinition Height="*" />
     </Grid.RowDefinitions>
 
-    <!-- Header: brand + Advanced toggle -->
+    <!-- Header: brand (the Advanced switch is in the title bar) -->
     <Grid Margin="0,0,0,14">
       <Grid.ColumnDefinitions>
         <ColumnDefinition Width="*" />
@@ -46,8 +46,6 @@
           </TextBlock>
         </StackPanel>
       </StackPanel>
-      <ui:ToggleSwitch x:Name="AdvancedToggle" Grid.Column="1" Content="Advanced" VerticalAlignment="Center" Click="Advanced_Click"
-                       ToolTip="Show the full app: models, terminals in tabs, system details, extensions, settings and the phone portal. Nothing stops running when you switch." />
     </Grid>
 
     <!-- ================= Not ready: Start / progress ================= -->

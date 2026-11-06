@@ -56,7 +56,6 @@ public partial class SimpleView : UserControl
 
     public async Task ActivateAsync()
     {
-        AdvancedToggle.IsChecked = false;
         await CheckAsync();
     }
 
@@ -320,10 +319,6 @@ public partial class SimpleView : UserControl
         await AttachAsync(await Shell.StartSessionAsync("qwen"));
     }
 
-    private void Advanced_Click(object sender, RoutedEventArgs e)
-    {
-        if (AdvancedToggle.IsChecked == true) Shell.SetSimpleMode(false);
-    }
 
     public void ApplyTheme() => _viewer?.ApplyTheme();
 

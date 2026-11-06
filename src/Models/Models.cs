@@ -166,8 +166,8 @@ public sealed class AppConfig
 
     private static AppConfig Load()
     {
-        bool existed = File.Exists(FilePath) ||
-                       File.Exists(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "QwenLauncher", "config.json"));
+        // Only maison's own settings count: a fresh install (no maison config yet) starts in the simple view.
+        bool existed = File.Exists(FilePath);
         var c = LoadFile();
         if (c.Permissions.Length == 0) c.Permissions = c.SkipPermissions ? "skip" : "ask";
         // New users start in the simple view; people upgrading keep the full app they already know.

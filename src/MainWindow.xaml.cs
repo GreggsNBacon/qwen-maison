@@ -73,6 +73,10 @@ public partial class MainWindow : FluentWindow, IShell
         TerminalHub.Idle += s => Dispatcher.BeginInvoke(() => Notifier.Idle(this, s));
         StatsService.Updated += s => Dispatcher.BeginInvoke(() => ShowStats(s));
 
+        // The title bar is a drag area to Windows; make the Advanced switch in it clickable.
+        // Added after first render so this hook runs before the title bar's own one.
+        ContentRendered += (_, _) =>
+            (PresentationSource.FromVisual(this) as System.Windows.Interop.HwndSource)?.AddHook(TitleBarHitTest);
         Loaded += async (_, _) =>
         {
             StatsService.Start();
@@ -526,6 +530,7 @@ public partial class MainWindow : FluentWindow, IShell
     {
         _config.UiMode = simple ? "simple" : "advanced";
         _config.Save();
+        ModeToggle.IsChecked = !simple;
         SimplePage.Visibility = simple ? Visibility.Visible : Visibility.Collapsed;
         AdvancedRoot.Visibility = simple ? Visibility.Collapsed : Visibility.Visible;
         if (simple) _ = SimplePage.ActivateAsync();
@@ -649,7 +654,29 @@ public partial class MainWindow : FluentWindow, IShell
 
     public IReadOnlyDictionary<string, DateTime> ModelLastUsed => _config.ModelLastUsed;
 
-    private void SimpleMode_Click(object sender, RoutedEventArgs e) => SetSimpleMode(true);
+    private void ModeToggle_Click(object sender, RoutedEventArgs e) => SetSimpleMode(ModeToggle.IsChecked != true);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
+    [System.Runtime.InteropServices.DllImport("user32.dll")] private static extern IntPtr SendMessage(IntPtr h, int msg, IntPtr w, IntPtr l);
+
+    private IntPtr TitleBarHitTest(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
+    {
+        const int WM_NCHITTEST = 0x0084, HTCLIENT = 1;
+        if (msg != WM_NCHITTEST || !ModeToggle.IsVisible) return IntPtr.Zero;
+        long lp = lParam.ToInt64();
+        var screen = new Point((short)(lp & 0xFFFF), (short)((lp >> 16) & 0xFFFF));
+        try
+        {
+            var local = ModeToggle.PointFromScreen(screen);
+            if (local.X >= -4 && local.Y >= -4 && local.X <= ModeToggle.ActualWidth + 4 && local.Y <= ModeToggle.ActualHeight + 4)
+            {
+                handled = true;
+                return new IntPtr(HTCLIENT);
+            }
+        }
+        catch (InvalidOperationException) { /* not connected to a presentation source yet */ }
+        return IntPtr.Zero;
+    }
 
     public void ApplyTerminalTheme() { TerminalsPage.ApplyTheme(); SimplePage.ApplyTheme(); }
     public void SelectSession(TermSession s) => TerminalsPage.Select(s);
@@ -839,6 +866,31 @@ public partial class MainWindow : FluentWindow, IShell
             SimplePage.PreviewProgress(SetupPage.NodeStep, 0, "Working…", "Found Node.js LTS [OpenJS.NodeJS.LTS] Version 24.11.0");
             await Task.Delay(800);
             Snap(Path.Combine(dir, "simple-setup-node.png"));
+
+            // The Advanced switch lives in the title bar for both views. Ask the window what Windows would do with a click
+            // there (HTCLIENT = 1 means the switch gets it; HTCAPTION = 2 would mean "drag the window").
+            bool toggleOffInSimple = ModeToggle.IsChecked == false;
+            var hwnd = new System.Windows.Interop.WindowInteropHelper(this).Handle;
+            var tp = ModeToggle.PointToScreen(new Point(ModeToggle.ActualWidth / 2, ModeToggle.ActualHeight / 2));
+            var lp = new IntPtr(((int)tp.Y << 16) | ((int)tp.X & 0xFFFF));
+            long hit = SendMessage(hwnd, 0x0084, IntPtr.Zero, lp).ToInt64();
+            simpleResult += $" toggleOffInSimple={toggleOffInSimple} titleBarHitTest={(hit == 1 ? "clickable" : hit == 2 ? "DRAG-AREA" : hit.ToString())}";
+
+            // Switch both ways (a real mouse click only when maison is verifiably in front, so we never click other windows).
+            Activate();
+            await Task.Delay(400);
+            bool front = GetForegroundWindow() == hwnd;
+            if (front) await RealClickAsync(ModeToggle);
+            else { ModeToggle.IsChecked = true; ModeToggle.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent)); }
+            await Task.Delay(1200);
+            bool toAdvanced = AdvancedRoot.Visibility == Visibility.Visible && ModeToggle.IsChecked == true;
+            Snap(Path.Combine(dir, "mode-advanced.png"));
+            if (front && GetForegroundWindow() == hwnd) await RealClickAsync(ModeToggle);
+            else { ModeToggle.IsChecked = false; ModeToggle.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent)); }
+            await Task.Delay(1200);
+            bool toSimple = SimplePage.Visibility == Visibility.Visible && ModeToggle.IsChecked == false;
+            Snap(Path.Combine(dir, "mode-simple.png"));
+            simpleResult += $" switchToAdvanced={toAdvanced} switchToSimple={toSimple} via={(front ? "real-mouse" : "click-event (maison not in front)")}";
             foreach (var s in TerminalHub.Sessions) TerminalHub.Remove(s);
             SetSimpleMode(before == "simple");
             _config.UiMode = before;
@@ -860,7 +912,7 @@ public partial class MainWindow : FluentWindow, IShell
         lines.Add($"GAUGES: temp={GTemp.Display} load={GLoad.Display} power={GPower.Display} vram={GVram.Display} cpu={GCpu.Display} ram={GRam.Display} | {GpuTitle.Text} | {GpuExtra.Text}");
         if (_stats is { } st)
             lines.Add("VRAM USERS: " + string.Join(", ", st.VramUsers.Select(p => $"{p.Name} {p.VramGb:0.0}GB")) + $" | warning: {HealthAdvice.VramWarning(st) ?? "none"}");
-        lines.Add($"VERSION: {AppInfo.Version} | PERMS: {_config.Permissions} | ACCENT: {_config.Accent}");
+        lines.Add($"VERSION: {AppInfo.Version} | PERMS: {_config.Permissions} | ACCENT: {_config.Accent} | UIMODE: {_config.UiMode}");
         lines.Add($"MAIN: {MainModel.Text} | ITEMS: " + string.Join(", ", MainModel.Items.Cast<object>()));
         lines.Add("COMMANDS:\n" + Commands.Text);
         lines.Add("LOG:\n" + LogBox.Text);
@@ -889,6 +941,22 @@ public partial class MainWindow : FluentWindow, IShell
         }
         g.Flush();
         canvas.Save(file, System.Drawing.Imaging.ImageFormat.Png);
+    }
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")] private static extern bool SetCursorPos(int x, int y);
+    [System.Runtime.InteropServices.DllImport("user32.dll")] private static extern void mouse_event(uint flags, uint dx, uint dy, uint data, UIntPtr extra);
+
+    /// <summary>Self-test: a genuine left click in the middle of an element (not a synthetic Click event).</summary>
+    private async Task RealClickAsync(FrameworkElement el)
+    {
+        Activate();
+        await Task.Delay(300);
+        var p = el.PointToScreen(new Point(el.ActualWidth / 2, el.ActualHeight / 2));
+        SetCursorPos((int)p.X, (int)p.Y);
+        await Task.Delay(150);
+        mouse_event(0x0002, 0, 0, 0, UIntPtr.Zero);   // left down
+        await Task.Delay(60);
+        mouse_event(0x0004, 0, 0, 0, UIntPtr.Zero);   // left up
     }
 
     private static IEnumerable<Controls.TerminalViewer> FindViewers(DependencyObject root)
