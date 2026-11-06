@@ -1,9 +1,11 @@
-﻿<ui:FluentWindow x:Class="QwenLauncher.MainWindow"
+<ui:FluentWindow x:Class="QwenLauncher.MainWindow"
                  xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
                  xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+                 xmlns:c="clr-namespace:QwenLauncher.Controls"
+                 xmlns:v="clr-namespace:QwenLauncher.Views"
                  Title="Qwen Local Launcher"
-                 Width="1200" Height="860" MinWidth="1000" MinHeight="700"
+                 Width="1280" Height="900" MinWidth="1080" MinHeight="720"
                  WindowStartupLocation="CenterScreen"
                  ExtendsContentIntoTitleBar="True"
                  WindowBackdropType="Mica"
@@ -20,229 +22,297 @@
       </ui:TitleBar.Icon>
     </ui:TitleBar>
 
-    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
-      <StackPanel Margin="28,4,28,28">
+    <Grid Grid.Row="1">
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="200" />
+        <ColumnDefinition Width="*" />
+      </Grid.ColumnDefinitions>
 
-        <!-- Header -->
-        <Grid Margin="0,0,0,18">
-          <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="*" />
-            <ColumnDefinition Width="Auto" />
-          </Grid.ColumnDefinitions>
-          <StackPanel>
-            <TextBlock Text="Local Qwen" FontSize="28" FontWeight="SemiBold" Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
-            <TextBlock Text="Ollama health, and Claude Code / Qwen Code running on your own GPU"
-                       FontSize="14" Margin="0,2,0,0" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
-          </StackPanel>
-          <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-            <Border x:Name="ServerPill" CornerRadius="12" Padding="12,5" Margin="0,0,10,0" Background="#33E5534B">
-              <StackPanel Orientation="Horizontal">
-                <Ellipse x:Name="ServerDot" Width="8" Height="8" Fill="#E5534B" VerticalAlignment="Center" />
-                <TextBlock x:Name="ServerPillText" Text="Checking..." Margin="8,0,0,0" FontSize="13" Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+      <!-- Sidebar -->
+      <DockPanel Grid.Column="0" Margin="12,8,4,16">
+        <TextBlock DockPanel.Dock="Bottom" x:Name="VersionText" FontSize="11" Margin="12,0,0,0"
+                   Foreground="{DynamicResource TextFillColorTertiaryBrush}" />
+        <StackPanel>
+          <ui:Button x:Name="NavDashboard" Content="Dashboard" Icon="{ui:SymbolIcon Home24}" Tag="dashboard" Click="Nav_Click"
+                     HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Padding="12,9" Margin="0,0,0,4" BorderThickness="0"
+                     ToolTip="Ollama health, GPU gauges and launch buttons" />
+          <ui:Button x:Name="NavModels" Content="Models" Icon="{ui:SymbolIcon Cube24}" Tag="models" Click="Nav_Click"
+                     HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Padding="12,9" Margin="0,0,0,4" BorderThickness="0"
+                     ToolTip="Install, choose and uninstall AI models" />
+          <ui:Button x:Name="NavSetup" Content="Setup" Icon="{ui:SymbolIcon Wrench24}" Tag="setup" Click="Nav_Click"
+                     HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Padding="12,9" Margin="0,0,0,4" BorderThickness="0"
+                     ToolTip="Install everything needed on this PC: Ollama, a model, Claude Code, Node.js, Qwen Code" />
+        </StackPanel>
+      </DockPanel>
+
+      <!-- Pages -->
+      <v:ModelsView x:Name="ModelsPage" Grid.Column="1" Visibility="Collapsed" />
+      <v:SetupView x:Name="SetupPage" Grid.Column="1" Visibility="Collapsed" />
+
+      <ScrollViewer x:Name="DashboardPage" Grid.Column="1" VerticalScrollBarVisibility="Auto">
+        <StackPanel Margin="20,4,28,28">
+
+          <!-- Header -->
+          <Grid Margin="0,0,0,18">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="*" />
+              <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <StackPanel>
+              <TextBlock Text="Local Qwen" FontSize="28" FontWeight="SemiBold" Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+              <TextBlock Text="Ollama health, and Claude Code / Qwen Code running on your own GPU"
+                         FontSize="14" Margin="0,2,0,0" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+            </StackPanel>
+            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+              <Border x:Name="ServerPill" CornerRadius="12" Padding="12,5" Margin="0,0,10,0" Background="#33E5534B"
+                      ToolTip="Overall state: Ollama installed, its runtime files present and the server answering">
+                <StackPanel Orientation="Horizontal">
+                  <Ellipse x:Name="ServerDot" Width="8" Height="8" Fill="#E5534B" VerticalAlignment="Center" />
+                  <TextBlock x:Name="ServerPillText" Text="Checking..." Margin="8,0,0,0" FontSize="13" Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+                </StackPanel>
+              </Border>
+              <ui:Button x:Name="BtnRefresh" Content="Refresh" Icon="{ui:SymbolIcon ArrowClockwise24}" Click="Refresh_Click"
+                         ToolTip="Re-run all health checks now (they also refresh every 10 seconds)" />
+            </StackPanel>
+          </Grid>
+
+          <!-- Metric cards -->
+          <UniformGrid Columns="3" Margin="-6,0,-6,6">
+            <ui:Card Margin="6" VerticalAlignment="Stretch" ToolTip="Whether the Ollama server is answering on 127.0.0.1:11434">
+              <StackPanel>
+                <StackPanel Orientation="Horizontal"><ui:SymbolIcon Symbol="Server24" FontSize="14" Margin="0,0,6,0" /><TextBlock Text="Ollama server" Style="{StaticResource MetricLabel}" /></StackPanel>
+                <TextBlock x:Name="MServer" Text="—" Style="{StaticResource MetricValue}" />
+                <TextBlock x:Name="MServerSub" Text="127.0.0.1:11434" Style="{StaticResource MetricSub}" />
               </StackPanel>
-            </Border>
-            <ui:Button x:Name="BtnRefresh" Content="Refresh" Icon="{ui:SymbolIcon ArrowClockwise24}" Click="Refresh_Click" />
-          </StackPanel>
-        </Grid>
+            </ui:Card>
+            <ui:Card Margin="6" VerticalAlignment="Stretch" ToolTip="The model currently in GPU memory. Below 100% GPU means part of it runs on the CPU and is slow.">
+              <StackPanel>
+                <StackPanel Orientation="Horizontal"><ui:SymbolIcon Symbol="BrainCircuit24" FontSize="14" Margin="0,0,6,0" /><TextBlock Text="Loaded model" Style="{StaticResource MetricLabel}" /></StackPanel>
+                <TextBlock x:Name="MLoaded" Text="—" Style="{StaticResource MetricValue}" />
+                <TextBlock x:Name="MLoadedSub" Text="loads on first request" Style="{StaticResource MetricSub}" />
+              </StackPanel>
+            </ui:Card>
+            <ui:Card Margin="6" VerticalAlignment="Stretch" ToolTip="Result of the last Speed test (generation speed in tokens per second)">
+              <StackPanel>
+                <StackPanel Orientation="Horizontal"><ui:SymbolIcon Symbol="TopSpeed24" FontSize="14" Margin="0,0,6,0" /><TextBlock Text="Speed" Style="{StaticResource MetricLabel}" /></StackPanel>
+                <TextBlock x:Name="MSpeed" Text="—" Style="{StaticResource MetricValue}" />
+                <TextBlock x:Name="MSpeedSub" Text="run a speed test" Style="{StaticResource MetricSub}" />
+              </StackPanel>
+            </ui:Card>
+          </UniformGrid>
 
-        <!-- Metric cards -->
-        <UniformGrid Columns="4" Margin="-6,0,-6,12">
-          <ui:Card Margin="6" VerticalAlignment="Stretch">
+          <!-- GPU gauges -->
+          <ui:Card Margin="0,0,0,16">
             <StackPanel>
-              <StackPanel Orientation="Horizontal"><ui:SymbolIcon Symbol="Server24" FontSize="14" Margin="0,0,6,0" /><TextBlock Text="Ollama server" Style="{StaticResource MetricLabel}" /></StackPanel>
-              <TextBlock x:Name="MServer" Text="—" Style="{StaticResource MetricValue}" />
-              <TextBlock x:Name="MServerSub" Text="127.0.0.1:11434" Style="{StaticResource MetricSub}" />
-            </StackPanel>
-          </ui:Card>
-          <ui:Card Margin="6" VerticalAlignment="Stretch">
-            <StackPanel>
-              <StackPanel Orientation="Horizontal"><ui:SymbolIcon Symbol="DeveloperBoard24" FontSize="14" Margin="0,0,6,0" /><TextBlock Text="GPU memory" Style="{StaticResource MetricLabel}" /></StackPanel>
-              <TextBlock x:Name="MVram" Text="—" Style="{StaticResource MetricValue}" />
-              <ProgressBar x:Name="MVramBar" Height="4" Minimum="0" Maximum="100" Value="0" Margin="0,2,0,6" />
-              <TextBlock x:Name="MGpu" Text="—" Style="{StaticResource MetricSub}" />
-            </StackPanel>
-          </ui:Card>
-          <ui:Card Margin="6" VerticalAlignment="Stretch">
-            <StackPanel>
-              <StackPanel Orientation="Horizontal"><ui:SymbolIcon Symbol="BrainCircuit24" FontSize="14" Margin="0,0,6,0" /><TextBlock Text="Loaded model" Style="{StaticResource MetricLabel}" /></StackPanel>
-              <TextBlock x:Name="MLoaded" Text="—" Style="{StaticResource MetricValue}" />
-              <TextBlock x:Name="MLoadedSub" Text="loads on first request" Style="{StaticResource MetricSub}" />
-            </StackPanel>
-          </ui:Card>
-          <ui:Card Margin="6" VerticalAlignment="Stretch">
-            <StackPanel>
-              <StackPanel Orientation="Horizontal"><ui:SymbolIcon Symbol="TopSpeed24" FontSize="14" Margin="0,0,6,0" /><TextBlock Text="Speed" Style="{StaticResource MetricLabel}" /></StackPanel>
-              <TextBlock x:Name="MSpeed" Text="—" Style="{StaticResource MetricValue}" />
-              <TextBlock x:Name="MSpeedSub" Text="run a speed test" Style="{StaticResource MetricSub}" />
-            </StackPanel>
-          </ui:Card>
-        </UniformGrid>
-
-        <!-- Main two columns -->
-        <Grid>
-          <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="*" />
-            <ColumnDefinition Width="16" />
-            <ColumnDefinition Width="*" />
-          </Grid.ColumnDefinitions>
-
-          <!-- Health -->
-          <ui:Card Grid.Column="0" VerticalAlignment="Stretch" VerticalContentAlignment="Top">
-            <StackPanel>
-              <TextBlock Text="Health" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,10" Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
-              <ItemsControl x:Name="StatusList">
-                <ItemsControl.ItemTemplate>
-                  <DataTemplate>
-                    <Grid Margin="0,0,0,10">
-                      <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="30" />
-                        <ColumnDefinition Width="*" />
-                      </Grid.ColumnDefinitions>
-                      <ui:SymbolIcon Symbol="{Binding Symbol}" Foreground="{Binding Brush}" FontSize="18" VerticalAlignment="Top" Margin="0,1,0,0" />
-                      <StackPanel Grid.Column="1">
-                        <TextBlock Text="{Binding Title}" TextWrapping="Wrap" Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
-                        <TextBlock Text="{Binding Detail}" TextWrapping="Wrap" FontSize="12" Margin="0,2,0,0"
-                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}">
-                          <TextBlock.Style>
-                            <Style TargetType="TextBlock">
-                              <Style.Triggers>
-                                <DataTrigger Binding="{Binding HasDetail}" Value="False">
-                                  <Setter Property="Visibility" Value="Collapsed" />
-                                </DataTrigger>
-                              </Style.Triggers>
-                            </Style>
-                          </TextBlock.Style>
-                        </TextBlock>
-                      </StackPanel>
-                    </Grid>
-                  </DataTemplate>
-                </ItemsControl.ItemTemplate>
-              </ItemsControl>
-
-              <WrapPanel Margin="0,8,0,0">
-                <ui:Button x:Name="BtnStart" Content="Start" Icon="{ui:SymbolIcon Play24}" Margin="0,0,8,8" Click="Start_Click" />
-                <ui:Button x:Name="BtnRestart" Content="Restart" Icon="{ui:SymbolIcon ArrowSync24}" Margin="0,0,8,8" Click="Restart_Click" />
-                <ui:Button x:Name="BtnSpeed" Content="Speed test" Icon="{ui:SymbolIcon TopSpeed24}" Margin="0,0,8,8" Click="Speed_Click" />
-                <ui:Button x:Name="BtnUnload" Content="Unload" Icon="{ui:SymbolIcon ArrowEject20}" Margin="0,0,8,8" Click="Unload_Click" />
-                <ui:Button x:Name="BtnRepair" Content="Repair Ollama" Icon="{ui:SymbolIcon Wrench24}" Margin="0,0,8,8" Click="Repair_Click" />
-                <ui:Button x:Name="BtnAliases" Content="Remove old aliases" Icon="{ui:SymbolIcon Delete24}" Margin="0,0,8,8" Visibility="Collapsed" Click="Aliases_Click" />
-              </WrapPanel>
-            </StackPanel>
-          </ui:Card>
-
-          <!-- Launch -->
-          <ui:Card Grid.Column="2" VerticalAlignment="Stretch" VerticalContentAlignment="Top">
-            <StackPanel>
-              <TextBlock Text="Launch" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,10" Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
-
-              <Grid>
+              <Grid Margin="0,0,0,6">
                 <Grid.ColumnDefinitions>
                   <ColumnDefinition Width="*" />
-                  <ColumnDefinition Width="12" />
-                  <ColumnDefinition Width="*" />
+                  <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
-                <StackPanel Grid.Column="0">
-                  <TextBlock Text="Model" Style="{StaticResource SectionLabel}" />
-                  <ComboBox x:Name="MainModel" IsEditable="True" SelectionChanged="Selection_Changed" KeyUp="Selection_KeyUp" />
+                <StackPanel Orientation="Horizontal">
+                  <ui:SymbolIcon Symbol="DeveloperBoard24" FontSize="16" Margin="0,0,8,0" />
+                  <TextBlock x:Name="GpuTitle" Text="GPU" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
                 </StackPanel>
-                <StackPanel Grid.Column="2">
-                  <TextBlock Text="Context window" Style="{StaticResource SectionLabel}" />
-                  <ComboBox x:Name="Context" SelectionChanged="Selection_Changed"
-                            ToolTip="Above the default, a settings-only '-ctxNNk' variant is created in Ollama. Keep it 100% on GPU." />
-                </StackPanel>
+                <TextBlock x:Name="GpuExtra" Grid.Column="1" Text="" FontSize="12" VerticalAlignment="Center"
+                           Foreground="{DynamicResource TextFillColorSecondaryBrush}" ToolTip="Fan speed and current core clock, updated every 2 seconds" />
               </Grid>
+              <UniformGrid Columns="4" Height="165">
+                <c:ArcGauge x:Name="GTemp" Maximum="100" Warn="75" Danger="85" Caption="Temperature" Margin="10"
+                            ToolTip="GPU core temperature. Green under 75 °C, amber 75–85 °C, red above 85 °C." />
+                <c:ArcGauge x:Name="GLoad" Maximum="100" Caption="Load" Margin="10"
+                            ToolTip="How busy the GPU is. High while a model is generating, near zero when idle." />
+                <c:ArcGauge x:Name="GPower" Maximum="450" Caption="Power" Margin="10"
+                            ToolTip="Current power draw against the card's power limit" />
+                <c:ArcGauge x:Name="GVram" Maximum="24" Caption="VRAM" Margin="10"
+                            ToolTip="GPU memory in use. A loaded model must fit here to run at full speed." />
+              </UniformGrid>
+            </StackPanel>
+          </ui:Card>
 
-              <TextBlock Text="Fast model — Claude Code's haiku slot (blank = same as main, fastest on one GPU)" Style="{StaticResource SectionLabel}" Margin="0,12,0,4" />
-              <ComboBox x:Name="FastModel" IsEditable="True" SelectionChanged="Selection_Changed" KeyUp="Selection_KeyUp" />
+          <!-- Main two columns -->
+          <Grid>
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="*" />
+              <ColumnDefinition Width="16" />
+              <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
 
-              <TextBlock Text="Working folder" Style="{StaticResource SectionLabel}" Margin="0,12,0,4" />
+            <!-- Health -->
+            <ui:Card Grid.Column="0" VerticalAlignment="Stretch" VerticalContentAlignment="Top">
+              <StackPanel>
+                <TextBlock Text="Health" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,10" Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+                <ItemsControl x:Name="StatusList">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                      <Grid Margin="0,0,0,10">
+                        <Grid.ColumnDefinitions>
+                          <ColumnDefinition Width="30" />
+                          <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <ui:SymbolIcon Symbol="{Binding Symbol}" Foreground="{Binding Brush}" FontSize="18" VerticalAlignment="Top" Margin="0,1,0,0" />
+                        <StackPanel Grid.Column="1">
+                          <TextBlock Text="{Binding Title}" TextWrapping="Wrap" Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+                          <TextBlock Text="{Binding Detail}" TextWrapping="Wrap" FontSize="12" Margin="0,2,0,0"
+                                     Foreground="{DynamicResource TextFillColorSecondaryBrush}">
+                            <TextBlock.Style>
+                              <Style TargetType="TextBlock">
+                                <Style.Triggers>
+                                  <DataTrigger Binding="{Binding HasDetail}" Value="False">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                  </DataTrigger>
+                                </Style.Triggers>
+                              </Style>
+                            </TextBlock.Style>
+                          </TextBlock>
+                        </StackPanel>
+                      </Grid>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
+                <WrapPanel Margin="0,8,0,0">
+                  <ui:Button x:Name="BtnStart" Content="Start" Icon="{ui:SymbolIcon Play24}" Margin="0,0,8,8" Click="Start_Click"
+                             ToolTip="Start the Ollama server if it isn't running" />
+                  <ui:Button x:Name="BtnRestart" Content="Restart" Icon="{ui:SymbolIcon ArrowSync24}" Margin="0,0,8,8" Click="Restart_Click"
+                             ToolTip="Stop every Ollama process and start it again. Fixes most hangs; loaded models are unloaded." />
+                  <ui:Button x:Name="BtnSpeed" Content="Speed test" Icon="{ui:SymbolIcon TopSpeed24}" Margin="0,0,8,8" Click="Speed_Click"
+                             ToolTip="Generate a short answer with the selected model and measure tokens per second. The first run includes loading the model." />
+                  <ui:Button x:Name="BtnUnload" Content="Unload" Icon="{ui:SymbolIcon ArrowEject20}" Margin="0,0,8,8" Click="Unload_Click"
+                             ToolTip="Free GPU memory by unloading every model (e.g. before gaming). Models reload automatically when used." />
+                  <ui:Button x:Name="BtnRepair" Content="Repair Ollama" Icon="{ui:SymbolIcon Wrench24}" Margin="0,0,8,8" Click="Repair_Click"
+                             ToolTip="Reinstall Ollama and move aside locked files. Use this if you see 'llama-server binary not found'. Your models are kept." />
+                  <ui:Button x:Name="BtnAliases" Content="Remove old aliases" Icon="{ui:SymbolIcon Delete24}" Margin="0,0,8,8" Visibility="Collapsed" Click="Aliases_Click"
+                             ToolTip="Delete the claude-* model aliases from the earlier setup. They are only name copies; the real models stay." />
+                </WrapPanel>
+              </StackPanel>
+            </ui:Card>
+
+            <!-- Launch -->
+            <ui:Card Grid.Column="2" VerticalAlignment="Stretch" VerticalContentAlignment="Top">
+              <StackPanel>
+                <TextBlock Text="Launch" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,10" Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+
+                <Grid>
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="12" />
+                    <ColumnDefinition Width="*" />
+                  </Grid.ColumnDefinitions>
+                  <StackPanel Grid.Column="0">
+                    <TextBlock Text="Model" Style="{StaticResource SectionLabel}" />
+                    <ComboBox x:Name="MainModel" IsEditable="True" SelectionChanged="Selection_Changed" KeyUp="Selection_KeyUp"
+                              ToolTip="The model Claude Code, Qwen Code and Chat will use. Install more on the Models page." />
+                  </StackPanel>
+                  <StackPanel Grid.Column="2">
+                    <TextBlock Text="Context window" Style="{StaticResource SectionLabel}" />
+                    <ComboBox x:Name="Context" SelectionChanged="Selection_Changed"
+                              ToolTip="How much text the model can keep in mind. Claude Code needs ~15K just for its instructions; 64K is a good default. Too large and the model spills onto the CPU." />
+                  </StackPanel>
+                </Grid>
+
+                <TextBlock Text="Fast model — Claude Code's haiku slot (blank = same as main, fastest on one GPU)" Style="{StaticResource SectionLabel}" Margin="0,12,0,4" />
+                <ComboBox x:Name="FastModel" IsEditable="True" SelectionChanged="Selection_Changed" KeyUp="Selection_KeyUp"
+                          ToolTip="Claude Code uses a small model for quick side tasks. Leave blank to reuse the main model: switching models on one GPU is slower than reusing one." />
+
+                <TextBlock Text="Working folder" Style="{StaticResource SectionLabel}" Margin="0,12,0,4" />
+                <Grid>
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                  </Grid.ColumnDefinitions>
+                  <ui:TextBox x:Name="WorkDir" PlaceholderText="Folder to open the session in" Icon="{ui:SymbolIcon Folder24}"
+                              ToolTip="The project folder Claude Code / Qwen Code will work in" />
+                  <ui:Button Grid.Column="1" Content="Browse" Margin="8,0,0,0" Click="Browse_Click" ToolTip="Pick the project folder" />
+                </Grid>
+
+                <StackPanel Orientation="Horizontal" Margin="0,14,0,0">
+                  <ui:ToggleSwitch x:Name="UseTerminal" Content="Windows Terminal" Margin="0,0,24,0"
+                                   ToolTip="Open sessions in Windows Terminal (on) or a classic PowerShell window (off)" />
+                  <ui:ToggleSwitch x:Name="SkipPerms" Content="Skip permission prompts" Click="Skip_Click"
+                                   ToolTip="Let the agent edit files and run commands without asking (Claude: --dangerously-skip-permissions, Qwen: --yolo). Only use in folders you trust." />
+                </StackPanel>
+
+                <UniformGrid Columns="3" Margin="-4,18,-4,0">
+                  <Button x:Name="BtnClaude" Margin="4" Height="64" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Click="Claude_Click" Cursor="Hand"
+                          Background="{StaticResource ClaudeBrush}" Foreground="White" BorderThickness="0"
+                          ToolTip="Open Claude Code in the working folder, running on your local model through Ollama. Your normal Claude Code elsewhere is unaffected.">
+                    <StackPanel>
+                      <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                        <ui:SymbolIcon Symbol="Sparkle24" Foreground="White" Margin="0,0,6,0" />
+                        <TextBlock Text="Claude Code" FontWeight="SemiBold" FontSize="15" Foreground="White" />
+                      </StackPanel>
+                      <TextBlock Text="on local Qwen" FontSize="11" HorizontalAlignment="Center" Foreground="#E6FFFFFF" />
+                    </StackPanel>
+                  </Button>
+                  <Button x:Name="BtnQwen" Margin="4" Height="64" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Click="Qwen_Click" Cursor="Hand"
+                          Background="{StaticResource QwenBrush}" Foreground="White" BorderThickness="0"
+                          ToolTip="Open Qwen Code in the working folder, connected to Ollama's OpenAI-compatible endpoint">
+                    <StackPanel>
+                      <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                        <ui:SymbolIcon Symbol="Code24" Foreground="White" Margin="0,0,6,0" />
+                        <TextBlock Text="Qwen Code" FontWeight="SemiBold" FontSize="15" Foreground="White" />
+                      </StackPanel>
+                      <TextBlock Text="via Ollama" FontSize="11" HorizontalAlignment="Center" Foreground="#E6FFFFFF" />
+                    </StackPanel>
+                  </Button>
+                  <ui:Button x:Name="BtnChat" Margin="4" Height="64" HorizontalAlignment="Stretch" Click="Chat_Click"
+                             ToolTip="Open a plain chat with the model in a terminal (ollama run). Type /bye to exit.">
+                    <StackPanel>
+                      <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                        <ui:SymbolIcon Symbol="Chat24" Margin="0,0,6,0" />
+                        <TextBlock Text="Chat" FontWeight="SemiBold" FontSize="15" />
+                      </StackPanel>
+                      <TextBlock Text="ollama run" FontSize="11" HorizontalAlignment="Center" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                    </StackPanel>
+                  </ui:Button>
+                </UniformGrid>
+
+                <StackPanel Orientation="Horizontal" Margin="0,14,0,0">
+                  <ui:Button Content="Desktop shortcut" Icon="{ui:SymbolIcon Desktop24}" Appearance="Transparent" Click="Shortcut_Click"
+                             ToolTip="Put a 'Qwen Local Launcher' shortcut on the desktop pointing to this exe" />
+                  <ui:Button Content="Settings folder" Icon="{ui:SymbolIcon FolderOpen24}" Appearance="Transparent" Margin="8,0,0,0" Click="ConfigFolder_Click"
+                             ToolTip="Open the folder with this app's saved settings (config.json)" />
+                </StackPanel>
+              </StackPanel>
+            </ui:Card>
+          </Grid>
+
+          <!-- Commands -->
+          <ui:CardExpander Margin="0,16,0,0" Icon="{ui:SymbolIcon Code24}" IsExpanded="False"
+                           ToolTip="The exact PowerShell commands the launch buttons run, to use in your own terminal or scripts">
+            <ui:CardExpander.Header>
               <Grid>
                 <Grid.ColumnDefinitions>
                   <ColumnDefinition Width="*" />
                   <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
-                <ui:TextBox x:Name="WorkDir" PlaceholderText="Folder to open the session in" Icon="{ui:SymbolIcon Folder24}" />
-                <ui:Button Grid.Column="1" Content="Browse" Margin="8,0,0,0" Click="Browse_Click" />
+                <StackPanel>
+                  <TextBlock Text="Start commands" FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+                  <TextBlock Text="PowerShell, for the current selection" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                </StackPanel>
+                <ui:Button Grid.Column="1" Content="Copy" Icon="{ui:SymbolIcon Copy24}" Margin="0,0,12,0" Click="Copy_Click"
+                           ToolTip="Copy all the commands to the clipboard" />
               </Grid>
+            </ui:CardExpander.Header>
+            <TextBox x:Name="Commands" IsReadOnly="True" FontFamily="Cascadia Mono, Consolas" FontSize="12"
+                     TextWrapping="NoWrap" HorizontalScrollBarVisibility="Auto" MaxHeight="260" VerticalScrollBarVisibility="Auto" />
+          </ui:CardExpander>
 
-              <StackPanel Orientation="Horizontal" Margin="0,14,0,0">
-                <ui:ToggleSwitch x:Name="UseTerminal" Content="Windows Terminal" Margin="0,0,24,0" />
-                <ui:ToggleSwitch x:Name="SkipPerms" Content="Skip permission prompts" Click="Skip_Click"
-                                 ToolTip="Claude: --dangerously-skip-permissions · Qwen: --yolo. Only in folders you trust." />
-              </StackPanel>
-
-              <UniformGrid Columns="3" Margin="-4,18,-4,0">
-                <Button x:Name="BtnClaude" Margin="4" Height="64" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Click="Claude_Click" Cursor="Hand"
-                        Background="{StaticResource ClaudeBrush}" Foreground="White" BorderThickness="0">
-                  <StackPanel>
-                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-                      <ui:SymbolIcon Symbol="Sparkle24" Foreground="White" Margin="0,0,6,0" />
-                      <TextBlock Text="Claude Code" FontWeight="SemiBold" FontSize="15" Foreground="White" />
-                    </StackPanel>
-                    <TextBlock Text="on local Qwen" FontSize="11" HorizontalAlignment="Center" Foreground="#E6FFFFFF" />
-                  </StackPanel>
-                </Button>
-                <Button x:Name="BtnQwen" Margin="4" Height="64" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Click="Qwen_Click" Cursor="Hand"
-                        Background="{StaticResource QwenBrush}" Foreground="White" BorderThickness="0">
-                  <StackPanel>
-                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-                      <ui:SymbolIcon Symbol="Code24" Foreground="White" Margin="0,0,6,0" />
-                      <TextBlock Text="Qwen Code" FontWeight="SemiBold" FontSize="15" Foreground="White" />
-                    </StackPanel>
-                    <TextBlock Text="via Ollama" FontSize="11" HorizontalAlignment="Center" Foreground="#E6FFFFFF" />
-                  </StackPanel>
-                </Button>
-                <ui:Button x:Name="BtnChat" Margin="4" Height="64" HorizontalAlignment="Stretch" Click="Chat_Click">
-                  <StackPanel>
-                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-                      <ui:SymbolIcon Symbol="Chat24" Margin="0,0,6,0" />
-                      <TextBlock Text="Chat" FontWeight="SemiBold" FontSize="15" />
-                    </StackPanel>
-                    <TextBlock Text="ollama run" FontSize="11" HorizontalAlignment="Center" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
-                  </StackPanel>
-                </ui:Button>
-              </UniformGrid>
-
-              <StackPanel Orientation="Horizontal" Margin="0,14,0,0">
-                <ui:Button Content="Desktop shortcut" Icon="{ui:SymbolIcon Desktop24}" Appearance="Transparent" Click="Shortcut_Click" />
-                <ui:Button Content="Settings folder" Icon="{ui:SymbolIcon FolderOpen24}" Appearance="Transparent" Margin="8,0,0,0" Click="ConfigFolder_Click" />
-              </StackPanel>
-            </StackPanel>
-          </ui:Card>
-        </Grid>
-
-        <!-- Commands -->
-        <ui:CardExpander Margin="0,16,0,0" Icon="{ui:SymbolIcon Code24}" IsExpanded="True">
-          <ui:CardExpander.Header>
-            <Grid>
-              <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="Auto" />
-              </Grid.ColumnDefinitions>
+          <!-- Activity -->
+          <ui:CardExpander Margin="0,10,0,0" Icon="{ui:SymbolIcon History24}" IsExpanded="False"
+                           ToolTip="Everything the launcher has done this session">
+            <ui:CardExpander.Header>
               <StackPanel>
-                <TextBlock Text="Start commands" FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
-                <TextBlock Text="PowerShell, for the current selection" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                <TextBlock Text="Activity" FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+                <TextBlock x:Name="LastActivity" Text="Ready" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
               </StackPanel>
-              <ui:Button Grid.Column="1" Content="Copy" Icon="{ui:SymbolIcon Copy24}" Margin="0,0,12,0" Click="Copy_Click" />
-            </Grid>
-          </ui:CardExpander.Header>
-          <TextBox x:Name="Commands" IsReadOnly="True" FontFamily="Cascadia Mono, Consolas" FontSize="12"
-                   TextWrapping="NoWrap" HorizontalScrollBarVisibility="Auto" MaxHeight="260" VerticalScrollBarVisibility="Auto" />
-        </ui:CardExpander>
-
-        <!-- Activity -->
-        <ui:CardExpander Margin="0,10,0,0" Icon="{ui:SymbolIcon History24}" IsExpanded="False">
-          <ui:CardExpander.Header>
-            <StackPanel>
-              <TextBlock Text="Activity" FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
-              <TextBlock x:Name="LastActivity" Text="Ready" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
-            </StackPanel>
-          </ui:CardExpander.Header>
-          <TextBox x:Name="LogBox" IsReadOnly="True" FontFamily="Cascadia Mono, Consolas" FontSize="12" TextWrapping="Wrap"
-                   Height="160" VerticalScrollBarVisibility="Auto" />
-        </ui:CardExpander>
-      </StackPanel>
-    </ScrollViewer>
+            </ui:CardExpander.Header>
+            <TextBox x:Name="LogBox" IsReadOnly="True" FontFamily="Cascadia Mono, Consolas" FontSize="12" TextWrapping="Wrap"
+                     Height="160" VerticalScrollBarVisibility="Auto" />
+          </ui:CardExpander>
+        </StackPanel>
+      </ScrollViewer>
+    </Grid>
 
     <ui:SnackbarPresenter x:Name="Snackbar" Grid.Row="1" VerticalAlignment="Bottom" />
   </Grid>

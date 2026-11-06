@@ -1,6 +1,7 @@
 ﻿using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.IO;
+using System.Reflection;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -9,6 +10,7 @@ using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using QwenLauncher.Models;
 using QwenLauncher.Services;
+using QwenLauncher.Views;
 using Wpf.Ui;
 using Wpf.Ui.Controls;
 using MessageBox = Wpf.Ui.Controls.MessageBox;
@@ -16,47 +18,110 @@ using MessageBoxResult = Wpf.Ui.Controls.MessageBoxResult;
 
 namespace QwenLauncher;
 
-public partial class MainWindow : FluentWindow
+public partial class MainWindow : FluentWindow, IShell
 {
     private readonly ObservableCollection<StatusItem> _status = [];
     private readonly AppConfig _config = AppConfig.Load();
     private readonly SnackbarService _snackbar = new();
     private readonly DispatcherTimer _autoRefresh = new() { Interval = TimeSpan.FromSeconds(10) };
+    private readonly DispatcherTimer _gpuTimer = new() { Interval = TimeSpan.FromSeconds(2) };
     private List<ModelInfo> _models = [];
     private List<LoadedModel> _loaded = [];
-    private bool _refreshing;
+    private bool _refreshing, _gpuBusy;
     private bool _initializing = true;
+    private string _page = "dashboard";
 
     public MainWindow()
     {
         InitializeComponent();
         StatusList.ItemsSource = _status;
         _snackbar.SetSnackbarPresenter(Snackbar);
+        ModelsPage.Shell = this;
+        SetupPage.Shell = this;
+        VersionText.Text = "v" + (Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "1.0.0");
 
         foreach (var k in Launcher.ContextSizes.Keys) Context.Items.Add(k);
         MainModel.Text = _config.MainModel;
         FastModel.Text = _config.FastModel;
         Context.SelectedItem = Launcher.ContextSizes.ContainsKey(_config.Context) ? _config.Context : "64K";
-        WorkDir.Text = _config.WorkDir;
+        WorkDir.Text = Directory.Exists(_config.WorkDir) ? _config.WorkDir : Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         UseTerminal.IsChecked = _config.UseTerminal && SystemProbe.HasWindowsTerminal;
         UseTerminal.IsEnabled = SystemProbe.HasWindowsTerminal;
         SkipPerms.IsChecked = _config.SkipPermissions;
         _initializing = false;
-
         UpdateCommands();
+        Navigate("dashboard");
+
         Loaded += async (_, _) =>
         {
             await RefreshAsync();
+            await UpdateGpuAsync();
             _autoRefresh.Tick += async (_, _) => await RefreshAsync(quiet: true);
+            _gpuTimer.Tick += async (_, _) => await UpdateGpuAsync();
             _autoRefresh.Start();
+            _gpuTimer.Start();
+
+            if (await SelfTestDir() is null && await SetupView.NeedsSetupAsync())
+            {
+                Navigate("setup");
+                Toast("Welcome", "Let's get everything installed. Click 'Set up everything' to start.", ControlAppearance.Info, SymbolRegular.Rocket24);
+            }
             await RunSelfTestIfRequestedAsync();
         };
         Closing += (_, _) => SaveConfig();
     }
 
+    // ------------------------------------------------------------------ IShell
+
+    public string CurrentMainModel => MainModel.Text.Trim();
+
+    public void UseModel(string name)
+    {
+        MainModel.Text = name;
+        SaveConfig();
+        UpdateCommands();
+        _ = RefreshAsync(quiet: true);
+    }
+
+    public async Task OnModelsChangedAsync() => await RefreshAsync(quiet: true);
+
+    public void Navigate(string page)
+    {
+        _page = page;
+        DashboardPage.Visibility = page == "dashboard" ? Visibility.Visible : Visibility.Collapsed;
+        ModelsPage.Visibility = page == "models" ? Visibility.Visible : Visibility.Collapsed;
+        SetupPage.Visibility = page == "setup" ? Visibility.Visible : Visibility.Collapsed;
+        NavDashboard.Appearance = page == "dashboard" ? ControlAppearance.Secondary : ControlAppearance.Transparent;
+        NavModels.Appearance = page == "models" ? ControlAppearance.Secondary : ControlAppearance.Transparent;
+        NavSetup.Appearance = page == "setup" ? ControlAppearance.Secondary : ControlAppearance.Transparent;
+        if (page == "models") _ = ModelsPage.RefreshAsync();
+        if (page == "setup") _ = SetupPage.RefreshAsync();
+    }
+
+    public void Log(string message)
+    {
+        LogBox.AppendText($"[{DateTime.Now:HH:mm:ss}] {message}{Environment.NewLine}");
+        LogBox.ScrollToEnd();
+        LastActivity.Text = message;
+    }
+
+    public void Toast(string title, string message, ControlAppearance appearance = ControlAppearance.Secondary, SymbolRegular icon = SymbolRegular.Info24) =>
+        _snackbar.Show(title, message, appearance, new SymbolIcon(icon), TimeSpan.FromSeconds(4));
+
+    public async Task<bool> ConfirmAsync(string title, string text, string yes)
+    {
+        var box = new MessageBox { Title = title, Content = text, PrimaryButtonText = yes, CloseButtonText = "Cancel" };
+        return await box.ShowDialogAsync() == MessageBoxResult.Primary;
+    }
+
+    private void Nav_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { Tag: string page }) Navigate(page);
+    }
+
     // ------------------------------------------------------------------ selection helpers
 
-    private string BaseMain => string.IsNullOrWhiteSpace(MainModel.Text) ? "qwen3.8:27b" : MainModel.Text.Trim();
+    private string BaseMain => MainModel.Text.Trim();
     private string BaseFast => string.IsNullOrWhiteSpace(FastModel.Text) ? BaseMain : FastModel.Text.Trim();
     private int ContextSize => Context.SelectedItem is string s && Launcher.ContextSizes.TryGetValue(s, out var n) ? n : 0;
     private bool Skip => SkipPerms.IsChecked == true;
@@ -75,9 +140,10 @@ public partial class MainWindow : FluentWindow
     private void UpdateCommands()
     {
         if (_initializing) return;
-        var main = Launcher.EffectiveModel(BaseMain, ContextSize);
-        var fast = Launcher.EffectiveModel(BaseFast, ContextSize);
-        Commands.Text = Launcher.CommandsText(BaseMain, main, fast, ContextSize, Skip);
+        var baseMain = BaseMain.Length > 0 ? BaseMain : "<model>";
+        var main = Launcher.EffectiveModel(baseMain, ContextSize);
+        var fast = Launcher.EffectiveModel(BaseFast.Length > 0 ? BaseFast : baseMain, ContextSize);
+        Commands.Text = Launcher.CommandsText(baseMain, main, fast, ContextSize, Skip);
     }
 
     /// <summary>Returns the model to launch, creating the context variant when needed.</summary>
@@ -107,10 +173,7 @@ public partial class MainWindow : FluentWindow
         _refreshing = true;
         try
         {
-            var versionTask = OllamaClient.GetVersionAsync();
-            var gpuTask = SystemProbe.QueryGpuAsync();
-            var version = await versionTask;
-            var gpu = await gpuTask;
+            var version = await OllamaClient.GetVersionAsync();
             bool running = version is not null;
 
             if (running)
@@ -120,11 +183,20 @@ public partial class MainWindow : FluentWindow
             }
             else { _models = []; _loaded = []; }
 
+            var real = _models.Where(m => !m.Name.StartsWith("claude-") && !Launcher.IsVariant(m.Name)).ToList();
+            if (running && BaseMain.Length == 0 && real.Count > 0)
+            {
+                // First run / fresh config: pick the best installed model.
+                var pick = ModelCatalog.All.Select(c => c.Tag).FirstOrDefault(t => real.Any(m => m.Name == t)) ?? real[0].Name;
+                MainModel.Text = pick;
+                SaveConfig();
+            }
+
             var items = new List<StatusItem>();
             if (SystemProbe.OllamaInstalled)
                 items.Add(new() { Level = Health.Ok, Title = "Ollama installed", Detail = SystemProbe.OllamaDir });
             else
-                items.Add(new() { Level = Health.Bad, Title = "Ollama is not installed", Detail = "Use Repair Ollama to install it with winget." });
+                items.Add(new() { Level = Health.Bad, Title = "Ollama is not installed", Detail = "Open Setup to install it." });
 
             if (SystemProbe.OllamaInstalled)
             {
@@ -136,7 +208,7 @@ public partial class MainWindow : FluentWindow
 
             items.Add(running
                 ? new() { Level = Health.Ok, Title = $"Server responding · v{version}", Detail = OllamaClient.BaseUrl }
-                : new() { Level = Health.Bad, Title = "Server not responding", Detail = "Click Start." });
+                : new() { Level = Health.Bad, Title = "Server not responding", Detail = SystemProbe.OllamaInstalled ? "Click Start." : "Install Ollama from the Setup page." });
 
             foreach (var m in _loaded)
                 items.Add(new()
@@ -148,68 +220,106 @@ public partial class MainWindow : FluentWindow
 
             if (running)
             {
-                var real = _models.Where(m => !m.Name.StartsWith("claude-") && !Launcher.IsVariant(m.Name)).ToList();
-                var visible = real.Select(m => $"{m.Name} ({m.SizeGb} GB)");
-                items.Add(new() { Level = Health.Info, Title = $"{real.Count} models installed", Detail = string.Join(" · ", visible) });
+                items.Add(real.Count > 0
+                    ? new() { Level = Health.Info, Title = $"{real.Count} models installed", Detail = string.Join(" · ", real.Select(m => $"{m.Name} ({m.SizeGb} GB)")) }
+                    : new() { Level = Health.Warn, Title = "No models installed", Detail = "Install one on the Models page." });
 
                 var legacy = _models.Where(m => m.Name.StartsWith("claude-")).Select(m => m.Name).ToList();
                 if (legacy.Count > 0)
                     items.Add(new() { Level = Health.Warn, Title = "Old claude-* alias models found", Detail = string.Join(", ", legacy) + " — not needed by this launcher." });
                 BtnAliases.Visibility = legacy.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
 
-                if (!_models.Any(m => m.Name == BaseMain))
-                    items.Add(new() { Level = Health.Warn, Title = $"Model '{BaseMain}' is not installed", Detail = $"ollama pull {BaseMain}" });
+                if (BaseMain.Length > 0 && !_models.Any(m => m.Name == BaseMain))
+                    items.Add(new() { Level = Health.Warn, Title = $"Model '{BaseMain}' is not installed", Detail = "Install it on the Models page or pick another." });
 
-                UpdateModelLists();
+                UpdateModelLists(real.Select(m => m.Name).ToList());
             }
 
             var claude = SystemProbe.FindOnPath("claude");
             var qwen = SystemProbe.FindOnPath("qwen");
             items.Add(claude is not null
                 ? new() { Level = Health.Ok, Title = "Claude Code CLI found", Detail = claude }
-                : new() { Level = Health.Warn, Title = "Claude Code CLI not found", Detail = "irm https://claude.ai/install.ps1 | iex" });
+                : new() { Level = Health.Warn, Title = "Claude Code CLI not found", Detail = "Install it from the Setup page." });
             items.Add(qwen is not null
                 ? new() { Level = Health.Ok, Title = "Qwen Code CLI found", Detail = qwen }
-                : new() { Level = Health.Warn, Title = "Qwen Code CLI not found", Detail = "npm install -g @qwen-code/qwen-code" });
+                : new() { Level = Health.Warn, Title = "Qwen Code CLI not found", Detail = "Install it from the Setup page." });
 
             _status.Clear();
             foreach (var i in items) _status.Add(i);
 
-            UpdateMetrics(running, version, gpu);
+            UpdateMetrics(running, version);
+            UpdateCommands();
             if (!quiet) Log(running ? $"Health check OK · Ollama v{version}" : "Health check · Ollama server not responding");
         }
         catch (Exception ex) { Log("Health check failed: " + ex.Message); }
         finally { _refreshing = false; }
     }
 
-    private void UpdateMetrics(bool running, string? version, GpuInfo? gpu)
+    private void UpdateMetrics(bool running, string? version)
     {
         var red = (Color)ColorConverter.ConvertFromString("#E5534B");
         var green = (Color)ColorConverter.ConvertFromString("#4CC38A");
         var ok = running && SystemProbe.RuntimeOk;
-        ServerDot.Fill = new SolidColorBrush(ok ? green : red);
-        ServerPill.Background = new SolidColorBrush(Color.FromArgb(0x33, (ok ? green : red).R, (ok ? green : red).G, (ok ? green : red).B));
-        ServerPillText.Text = !running ? "Ollama offline" : SystemProbe.RuntimeOk ? "Ollama ready" : "Ollama broken";
+        var c = ok ? green : red;
+        ServerDot.Fill = new SolidColorBrush(c);
+        ServerPill.Background = new SolidColorBrush(Color.FromArgb(0x33, c.R, c.G, c.B));
+        ServerPillText.Text = !SystemProbe.OllamaInstalled ? "Ollama not installed" : !running ? "Ollama offline" : SystemProbe.RuntimeOk ? "Ollama ready" : "Ollama broken";
 
         MServer.Text = running ? "Running" : "Offline";
-        MServerSub.Text = running ? $"v{version} · 127.0.0.1:11434" : "click Start";
-
-        if (gpu is not null)
-        {
-            MVram.Text = $"{gpu.UsedGb:0.0} / {gpu.TotalGb:0} GB";
-            MVramBar.Value = gpu.TotalGb > 0 ? 100 * gpu.UsedGb / gpu.TotalGb : 0;
-            MGpu.Text = $"{gpu.Name.Replace("NVIDIA GeForce ", "")} · load {gpu.LoadPercent}%";
-        }
-        else { MVram.Text = "No NVIDIA GPU"; MGpu.Text = "nvidia-smi not available"; MVramBar.Value = 0; }
+        MServerSub.Text = running ? $"v{version} · 127.0.0.1:11434" : SystemProbe.OllamaInstalled ? "click Start" : "install from Setup";
 
         var top = _loaded.FirstOrDefault();
         MLoaded.Text = top?.Name ?? "None";
         MLoadedSub.Text = top is null ? "loads on first request" : $"{top.GpuPercent}% GPU · ctx {top.Context:N0}";
     }
 
-    private void UpdateModelLists()
+    private async Task UpdateGpuAsync()
     {
-        var names = _models.Select(m => m.Name).Where(n => !n.StartsWith("claude-") && !Launcher.IsVariant(n)).ToList();
+        if (_gpuBusy || WindowState == WindowState.Minimized || _page != "dashboard") return;
+        _gpuBusy = true;
+        try
+        {
+            var g = await SystemProbe.QueryGpuAsync();
+            if (g is null)
+            {
+                GpuTitle.Text = "GPU · no NVIDIA GPU detected (nvidia-smi unavailable)";
+                GpuExtra.Text = "";
+                foreach (var gauge in new[] { GTemp, GLoad, GPower, GVram }) { gauge.Value = 0; gauge.Display = "—"; }
+                return;
+            }
+            GpuTitle.Text = "GPU · " + g.Name.Replace("NVIDIA GeForce ", "").Replace("NVIDIA ", "");
+            GpuExtra.Text = string.Join("   ·   ", new[]
+            {
+                g.FanPercent is { } f ? $"Fan {f}%" : null,
+                g.ClockMhz is { } mhz ? $"Core {mhz:N0} MHz" : null,
+            }.Where(s => s is not null));
+
+            GTemp.Value = g.TempC ?? 0;
+            GTemp.Display = g.TempC is { } t ? $"{t:0}°C" : "—";
+
+            GLoad.Value = g.LoadPercent;
+            GLoad.Display = $"{g.LoadPercent}%";
+
+            var limit = g.PowerLimitW is > 0 ? g.PowerLimitW.Value : 450;
+            GPower.Maximum = limit;
+            GPower.Warn = limit * 0.8;
+            GPower.Danger = limit * 0.95;
+            GPower.Value = g.PowerW ?? 0;
+            GPower.Display = g.PowerW is { } p ? $"{p:0} W" : "—";
+            GPower.Caption = $"Power · {limit:0} W max";
+
+            GVram.Maximum = g.TotalGb > 0 ? g.TotalGb : 1;
+            GVram.Warn = GVram.Maximum * 0.9;
+            GVram.Danger = GVram.Maximum * 0.97;
+            GVram.Value = g.UsedGb;
+            GVram.Display = $"{g.UsedGb:0.0} GB";
+            GVram.Caption = $"VRAM of {g.TotalGb:0} GB";
+        }
+        finally { _gpuBusy = false; }
+    }
+
+    private void UpdateModelLists(List<string> names)
+    {
         _initializing = true;
         foreach (var (cb, allowBlank) in new[] { (MainModel, false), (FastModel, true) })
         {
@@ -226,34 +336,19 @@ public partial class MainWindow : FluentWindow
         _initializing = false;
     }
 
-    // ------------------------------------------------------------------ logging / feedback
-
-    private void Log(string message)
+    private async Task<bool> EnsureReadyAsync()
     {
-        Log_AppendLine($"[{DateTime.Now:HH:mm:ss}] {message}");
-        LastActivity.Text = message;
-    }
-
-    private void Log_AppendLine(string line)
-    {
-        LogBox.AppendText(line + Environment.NewLine);
-        LogBox.ScrollToEnd();
-    }
-
-    private void Toast(string title, string message, ControlAppearance appearance = ControlAppearance.Secondary, SymbolRegular icon = SymbolRegular.Info24) =>
-        _snackbar.Show(title, message, appearance, new SymbolIcon(icon), TimeSpan.FromSeconds(4));
-
-    private async Task<bool> ConfirmAsync(string title, string text, string yes)
-    {
-        var box = new MessageBox { Title = title, Content = text, PrimaryButtonText = yes, CloseButtonText = "Cancel" };
-        return await box.ShowDialogAsync() == MessageBoxResult.Primary;
-    }
-
-    private async Task<bool> EnsureServerAsync()
-    {
-        if (await OllamaClient.GetVersionAsync(2) is not null) return true;
-        Toast("Ollama is not running", "Click Start first.", ControlAppearance.Caution, SymbolRegular.Warning24);
-        return false;
+        if (await OllamaClient.GetVersionAsync(2) is null)
+        {
+            Toast("Ollama is not running", SystemProbe.OllamaInstalled ? "Click Start first." : "Install it from the Setup page.", ControlAppearance.Caution, SymbolRegular.Warning24);
+            return false;
+        }
+        if (BaseMain.Length == 0)
+        {
+            Toast("No model selected", "Install or pick a model first.", ControlAppearance.Caution, SymbolRegular.Warning24);
+            return false;
+        }
+        return true;
     }
 
     private async Task WithBusy(Func<Task> work)
@@ -268,7 +363,8 @@ public partial class MainWindow : FluentWindow
 
     private async void Claude_Click(object sender, RoutedEventArgs e) => await WithBusy(async () =>
     {
-        if (!await EnsureServerAsync()) return;
+        if (!await EnsureReadyAsync()) return;
+        if (SystemProbe.FindOnPath("claude") is null) { Toast("Claude Code is not installed", "Install it from the Setup page.", ControlAppearance.Caution, SymbolRegular.Warning24); return; }
         var main = await ResolveAsync(BaseMain);
         var fast = BaseFast == BaseMain ? main : await ResolveAsync(BaseFast);
         Launcher.Open($"Claude Code · {main} (local)", WorkDir.Text.Trim(), Launcher.ClaudeEnv(main, fast),
@@ -278,7 +374,8 @@ public partial class MainWindow : FluentWindow
 
     private async void Qwen_Click(object sender, RoutedEventArgs e) => await WithBusy(async () =>
     {
-        if (!await EnsureServerAsync()) return;
+        if (!await EnsureReadyAsync()) return;
+        if (SystemProbe.FindOnPath("qwen") is null) { Toast("Qwen Code is not installed", "Install it from the Setup page.", ControlAppearance.Caution, SymbolRegular.Warning24); return; }
         var main = await ResolveAsync(BaseMain);
         Launcher.Open($"Qwen Code · {main} (local)", WorkDir.Text.Trim(), Launcher.QwenEnv(main), null, Launcher.QwenCommand(main, Skip), UseTerminal.IsChecked == true);
         Launched("Qwen Code", main);
@@ -286,7 +383,7 @@ public partial class MainWindow : FluentWindow
 
     private async void Chat_Click(object sender, RoutedEventArgs e) => await WithBusy(async () =>
     {
-        if (!await EnsureServerAsync()) return;
+        if (!await EnsureReadyAsync()) return;
         var main = await ResolveAsync(BaseMain);
         Launcher.Open($"Chat · {main}", WorkDir.Text.Trim(), null, null, Launcher.ChatCommand(main), UseTerminal.IsChecked == true);
         Launched("Chat", main);
@@ -305,9 +402,10 @@ public partial class MainWindow : FluentWindow
 
     private async void Start_Click(object sender, RoutedEventArgs e) => await WithBusy(async () =>
     {
+        if (!SystemProbe.OllamaInstalled) { Navigate("setup"); return; }
         Log("Starting Ollama...");
         var ok = await SystemProbe.StartOllamaAsync();
-        Log(ok ? "Ollama is up" : "Ollama did not respond within 15s");
+        Log(ok ? "Ollama is up" : "Ollama did not respond within 20s");
         await RefreshAsync(quiet: true);
     });
 
@@ -316,13 +414,13 @@ public partial class MainWindow : FluentWindow
         Log("Restarting Ollama...");
         await SystemProbe.StopOllamaAsync();
         var ok = await SystemProbe.StartOllamaAsync();
-        Log(ok ? "Ollama restarted" : "Ollama did not come back within 15s");
+        Log(ok ? "Ollama restarted" : "Ollama did not come back within 20s");
         await RefreshAsync(quiet: true);
     });
 
     private async void Speed_Click(object sender, RoutedEventArgs e)
     {
-        if (!await EnsureServerAsync()) return;
+        if (!await EnsureReadyAsync()) return;
         BtnSpeed.IsEnabled = false;
         MSpeed.Text = "Testing…";
         MSpeedSub.Text = "first run includes load time";
@@ -340,7 +438,7 @@ public partial class MainWindow : FluentWindow
 
     private async void Unload_Click(object sender, RoutedEventArgs e) => await WithBusy(async () =>
     {
-        if (_loaded.Count == 0) { Log("Nothing loaded"); return; }
+        if (_loaded.Count == 0) { Log("Nothing loaded"); Toast("Nothing to unload", "No model is in GPU memory."); return; }
         foreach (var m in _loaded) { await OllamaClient.UnloadAsync(m.Name); Log($"Unloaded {m.Name}"); }
         await RefreshAsync(quiet: true);
     });
@@ -391,8 +489,7 @@ public partial class MainWindow : FluentWindow
     private void ConfigFolder_Click(object sender, RoutedEventArgs e)
     {
         SaveConfig();
-        var dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "QwenLauncher");
-        Process.Start(new ProcessStartInfo("explorer.exe", dir) { UseShellExecute = true });
+        Process.Start(new ProcessStartInfo("explorer.exe", AppConfig.Folder) { UseShellExecute = true });
     }
 
     private void Shortcut_Click(object sender, RoutedEventArgs e)
@@ -416,17 +513,63 @@ public partial class MainWindow : FluentWindow
 
     // ------------------------------------------------------------------ self-test
 
-    /// <summary>QwenLauncher.exe --selftest &lt;dir&gt; : renders a screenshot + status dump, then exits.</summary>
-    private async Task RunSelfTestIfRequestedAsync()
+    private static Task<string?> SelfTestDir()
     {
         var args = Environment.GetCommandLineArgs();
         var i = Array.IndexOf(args, "--selftest");
-        if (i < 0 || i + 1 >= args.Length) return;
-        var dir = args[i + 1];
-        Directory.CreateDirectory(dir);
-        await Task.Delay(1500);
-        UpdateLayout();
+        return Task.FromResult(i >= 0 && i + 1 < args.Length ? args[i + 1] : null);
+    }
 
+    /// <summary>QwenLauncher.exe --selftest &lt;dir&gt; : screenshots every page + dumps status, then exits.</summary>
+    private async Task RunSelfTestIfRequestedAsync()
+    {
+        var dir = await SelfTestDir();
+        if (dir is null) return;
+        Directory.CreateDirectory(dir);
+        await Task.Delay(2500);   // let gauges animate in
+        Snap(Path.Combine(dir, "dashboard.png"));
+        foreach (var page in new[] { "models", "setup" })
+        {
+            Navigate(page);
+            await Task.Delay(3000);
+            Snap(Path.Combine(dir, page + ".png"));
+        }
+        Navigate("dashboard");
+
+        // Optional: --pull <model> exercises the real Models-page install path, then removes the model.
+        var args = Environment.GetCommandLineArgs();
+        var pi = Array.IndexOf(args, "--pull");
+        var pullResult = "";
+        if (pi >= 0 && pi + 1 < args.Length)
+        {
+            var model = args[pi + 1];
+            Navigate("models");
+            var install = ModelsPage.InstallAsync(model);
+            await Task.Delay(4000);
+            Snap(Path.Combine(dir, "models-downloading.png"));
+            await install;
+            var installed = (await OllamaClient.GetModelsAsync()).Any(m => m.Name == model);
+            await Task.Delay(1000);
+            Snap(Path.Combine(dir, "models-installed.png"));
+            if (installed) await OllamaClient.DeleteAsync(model);
+            var gone = !(await OllamaClient.GetModelsAsync()).Any(m => m.Name == model);
+            pullResult = $"PULL {model}: installed={installed} deletedAfter={gone}";
+            Navigate("dashboard");
+        }
+
+        var lines = new List<string> { "STATUS:", pullResult };
+        lines.AddRange(_status.Select(s => $"[{s.Level}] {s.Title} | {s.Detail}"));
+        lines.Add($"GAUGES: temp={GTemp.Display} load={GLoad.Display} power={GPower.Display} vram={GVram.Display} | {GpuTitle.Text} | {GpuExtra.Text}");
+        lines.Add($"MAIN: {MainModel.Text} | ITEMS: " + string.Join(", ", MainModel.Items.Cast<object>()));
+        lines.Add("COMMANDS:\n" + Commands.Text);
+        lines.Add("LOG:\n" + LogBox.Text);
+        File.WriteAllLines(Path.Combine(dir, "selftest.txt"), lines);
+        Application.Current.Shutdown();
+    }
+
+    private void Snap(string file)
+    {
+        UpdateLayout();
         var dpi = VisualTreeHelper.GetDpi(this);
         var w = (int)(Root.ActualWidth * dpi.DpiScaleX);
         var h = (int)(Root.ActualHeight * dpi.DpiScaleY);
@@ -440,15 +583,7 @@ public partial class MainWindow : FluentWindow
         bmp.Render(visual);
         var enc = new PngBitmapEncoder();
         enc.Frames.Add(BitmapFrame.Create(bmp));
-        using (var f = File.Create(Path.Combine(dir, "screenshot.png"))) enc.Save(f);
-
-        var lines = new List<string> { "STATUS:" };
-        lines.AddRange(_status.Select(s => $"[{s.Level}] {s.Title} | {s.Detail}"));
-        lines.Add($"METRICS: {MServer.Text} | {MVram.Text} | {MLoaded.Text} | {MSpeed.Text}");
-        lines.Add("MAIN ITEMS: " + string.Join(", ", MainModel.Items.Cast<object>()));
-        lines.Add("COMMANDS:\n" + Commands.Text);
-        lines.Add("LOG:\n" + LogBox.Text);
-        File.WriteAllLines(Path.Combine(dir, "selftest.txt"), lines);
-        Application.Current.Shutdown();
+        using var f = File.Create(file);
+        enc.Save(f);
     }
 }

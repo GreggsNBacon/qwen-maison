@@ -8,13 +8,14 @@
     <UseWPF>true</UseWPF>
     <AssemblyName>QwenLauncher</AssemblyName>
     <RootNamespace>QwenLauncher</RootNamespace>
-    <Version>1.0.0</Version>
+    <Version>1.1.0</Version>
     <Product>Qwen Local Launcher</Product>
     <ApplicationManifest>app.manifest</ApplicationManifest>
 
-    <!-- dotnet publish -> one QwenLauncher.exe (needs the .NET 10 Desktop Runtime, already installed) -->
+    <!-- dotnet publish -> one self-contained QwenLauncher.exe: runs on any 64-bit Windows 10/11 PC, no .NET install needed -->
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
-    <SelfContained>false</SelfContained>
+    <SelfContained>true</SelfContained>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
     <PublishSingleFile>true</PublishSingleFile>
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
     <DebugType>embedded</DebugType>

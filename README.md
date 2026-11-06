@@ -1,35 +1,63 @@
 ﻿# Qwen Local Launcher (C# / WPF)
 
-A Windows 11 style desktop app (Mica, Fluent controls) that checks that Ollama is healthy and launches
-**Claude Code** or **Qwen Code** against a local Qwen model, with no API keys and no cloud calls.
+A Windows 11 style desktop app (Mica, Fluent controls) that sets up and runs local AI models with Ollama and launches
+**Claude Code** or **Qwen Code** against them, with no API keys and no cloud calls.
 
-- **Run:** `dist\QwenLauncher.exe`, or the "Qwen Local Launcher" desktop shortcut. Needs the .NET 10 Desktop Runtime.
+- **Run:** `dist\QwenLauncher.exe`. It is a single self-contained file, so you can copy it to any 64-bit Windows 10/11 PC
+  without installing .NET. On a fresh PC it opens on the **Setup** page.
 - **Build:** `cd src` then `dotnet publish -c Release -o ..\dist`
 - **Settings:** `%APPDATA%\QwenLauncher\config.json`
 
-## Features
-- Metric cards: server status, GPU VRAM, loaded model (% on GPU, context), last speed test.
-- Health list: install, `llama-server.exe` runtime (catches the broken auto-update), server, loaded models
-  with CPU-spill warnings, installed models, `claude`/`qwen` CLIs, leftover `claude-*` alias models.
-  Refreshes automatically every 10 s.
-- Actions: Start, Restart, Speed test, Unload, Repair Ollama (bundled script: stop, move locked files aside,
-  reinstall with winget, restart), Remove old aliases.
+## Pages
+**Dashboard**
+- Metric cards: Ollama server, loaded model (% on GPU, context), last speed test.
+- GPU gauges, refreshed every 2 s: temperature (green, then amber at 75 °C, then red at 85 °C), load, power against
+  the card's limit, and VRAM. Also fan speed and core clock (NVIDIA via `nvidia-smi`).
+- Health list: install, `llama-server.exe` runtime (catches the broken auto-update), server, loaded models with
+  CPU-spill warnings, installed models, `claude`/`qwen` CLIs. Refreshes every 10 s.
+- Actions: Start, Restart, Speed test, Unload, Repair Ollama (bundled script), Remove old aliases.
 - Launch in Windows Terminal or PowerShell, in a chosen folder:
   - **Claude Code**: per-window `ANTHROPIC_BASE_URL=http://127.0.0.1:11434`, `ANTHROPIC_AUTH_TOKEN=ollama`,
-    with every model slot mapped to Qwen. Ollama serves the Anthropic Messages API natively. Your normal `claude` is untouched.
+    with every model slot mapped to the local model. Ollama serves the Anthropic Messages API natively. Your normal `claude` is untouched.
   - **Qwen Code**: `qwen --auth-type openai --openai-base-url http://127.0.0.1:11434/v1 ...`
   - **Chat**: `ollama run`
 - Context window picker. The default is 64K, set by creating a settings-only `<model>-ctx64k` variant.
-  On an RTX 4090, qwen3.8:27b runs 100% on GPU at 64K but spills about 28% to CPU at 128K.
 - Copyable start commands for the current selection.
+
+**Models**
+- Install any Ollama model by name, with live progress (size, speed, time left) and Cancel. Partial downloads resume.
+- Installed list showing size, parameter count, quantization, capabilities and age, with **Use** (set as main) and
+  **Delete** buttons. Deleting a model also removes its context variants so the disk space is actually freed.
+- Curated Qwen catalog with a "fits your GPU" estimate and a ★ on the pick recommended for this PC. A low-disk warning appears before large downloads.
+
+**Setup**: one click (**Set up everything**) installs whatever is missing:
+1. Ollama: official `OllamaSetup.exe` (about 1.6 GB), silent and per-user, then the server is started.
+2. The recommended Qwen model for the GPU: 24 GB gets qwen3.8:27b, 10–16 GB gets qwen3.5:9b, 6–8 GB gets qwen3.5:4b, CPU-only gets 4b or 2b.
+3. Claude Code: `irm https://claude.ai/install.ps1 | iex`.
+4. Node.js LTS: winget, which asks for admin once.
+5. Qwen Code: `npm install -g @qwen-code/qwen-code`.
+
+Each step can also be run on its own, and installer output is shown live.
+
+Every button and control has a tooltip.
 
 ## Layout
 | Path | |
 |---|---|
-| `src/Services/OllamaClient.cs` | Ollama REST API (version, tags, ps, create, generate, delete) |
-| `src/Services/SystemProbe.cs` | Install/runtime checks, nvidia-smi, PATH lookup, start/stop/repair |
-| `src/Services/Launcher.cs` | Env + commands for each tool, opens the terminal (`-EncodedCommand`) |
-| `src/MainWindow.xaml(.cs)` | UI (WPF-UI 4.3) |
+| `src/Services/OllamaClient.cs` | Ollama REST API (version, tags, ps, create, pull with progress, generate, delete) |
+| `src/Services/SystemProbe.cs` | Install/runtime checks, nvidia-smi (temp, power, fan, clock), fresh PATH lookup, start/stop/repair |
+| `src/Services/Installer.cs` | Fresh-PC installers (Ollama, Claude Code, Node.js, Qwen Code) |
+| `src/Services/ModelCatalog.cs` | Curated Qwen models, VRAM fit estimate, per-PC recommendation |
+| `src/Services/Launcher.cs` | Env and commands for each tool; opens the terminal (`-EncodedCommand`) |
+| `src/Controls/ArcGauge.cs` | Animated arc gauge |
+| `src/Views/ModelsView`, `src/Views/SetupView` | Models and Setup pages |
+| `src/MainWindow.xaml(.cs)` | Shell, sidebar and Dashboard (WPF-UI 4.3) |
 | `src/Assets/Repair-Ollama.ps1` | Embedded repair script |
 
-`QwenLauncher.exe --selftest <dir>` writes `screenshot.png` and `selftest.txt` and then exits, for non-interactive checks.
+## Self-test
+`QwenLauncher.exe --selftest <dir> [--pull <model>]` screenshots every page, writes `selftest.txt` and exits.
+With `--pull`, it also installs the model through the Models page, screenshots the download, and then deletes the model.
+
+## Notes
+- The exe is unsigned, so on another PC Windows SmartScreen shows "Windows protected your PC". Click **More info**, then **Run anyway**.
+- GPU gauges need an NVIDIA card. Other GPUs still work with Ollama, but the gauges show "no NVIDIA GPU".

@@ -86,6 +86,8 @@ public static class Launcher
 
         var s = new StringBuilder();
         s.AppendLine($"$host.UI.RawUI.WindowTitle = {Q(title)}");
+        // Pick up tools installed since this app started (Setup page): the launcher's own PATH is stale.
+        s.AppendLine("$env:Path = [Environment]::GetEnvironmentVariable('Path','Machine') + ';' + [Environment]::GetEnvironmentVariable('Path','User')");
         if (env is not null) foreach (var (k, v) in env) s.AppendLine($"$env:{k} = {Q(v)}");
         if (preamble is not null) foreach (var line in preamble) s.AppendLine(line);
         s.AppendLine($"Set-Location -LiteralPath {Q(workDir)}");
