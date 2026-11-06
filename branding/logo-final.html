@@ -27,6 +27,8 @@
             -webkit-background-clip:text; background-clip:text; color:transparent; }
   .tag { font:400 15px "Segoe UI Variable Text","Segoe UI",sans-serif; color:var(--muted); margin-top:9px; }
   .light .tag { color:#6b6f78; }
+  .qg { font-weight:600; background:linear-gradient(100deg,var(--coral) 0%,#c76ad8 60%,var(--violet) 100%);
+        -webkit-background-clip:text; background-clip:text; color:transparent; }
   #check { font:13px "Cascadia Mono",Consolas,monospace; color:var(--muted); margin-top:10px; }
   .ok { color:#4cc38a; } .bad { color:#e5534b; }
 </style>
@@ -97,6 +99,23 @@
     <div class="card"><div class="stage"><div class="lockup" style="gap:10px"><svg width="28" height="28"><use href="#mark"/></svg>
       <div class="wm" style="font-size:17px">m<span class="ai">ai</span>son</div></div></div>
       <h3>Title-bar size</h3><p>How it would sit in the app's window title bar.</p></div>
+  </div>
+
+  <h2>Making “Qwen” obvious in the tagline</h2>
+  <p class="lead">Lower-case “qwentissential” can read as a typo of “quintessential”. Capitalising and separating <b>Qwen</b> makes the model reference land.</p>
+  <div class="row r2">
+    <div class="card"><div class="stage"><div class="lockup"><svg width="78" height="78"><use href="#mark"/></svg>
+      <div><div class="wm">m<span class="ai">ai</span>son</div><div class="tag">the Qwen-tissential AI home</div></div></div></div>
+      <h3>1 · Hyphen</h3><p>Your suggestion. Capital Q + hyphen makes “Qwen” a word of its own; works in plain text everywhere (README, store listing, alt text).</p></div>
+    <div class="card"><div class="stage"><div class="lockup"><svg width="78" height="78"><use href="#mark"/></svg>
+      <div><div class="wm">m<span class="ai">ai</span>son</div><div class="tag">the <b class="qg">Qwen</b>-tissential AI home</div></div></div></div>
+      <h3>2 · Hyphen + gradient Qwen</h3><p>Same, with “Qwen” in the logo gradient — echoes how “ai” is highlighted in the name above it.</p></div>
+    <div class="card"><div class="stage"><div class="lockup"><svg width="78" height="78"><use href="#mark"/></svg>
+      <div><div class="wm">m<span class="ai">ai</span>son</div><div class="tag">the <b class="qg">Qwen</b>tissential AI home</div></div></div></div>
+      <h3>3 · Gradient Qwen, no hyphen</h3><p>Reads as one word, the colour does the separating — the same trick as the wordmark. Falls back to “Qwentissential” in plain text.</p></div>
+    <div class="card"><div class="stage"><div class="lockup"><svg width="78" height="78"><use href="#mark"/></svg>
+      <div><div class="wm">m<span class="ai">ai</span>son</div><div class="tag">the <b style="color:#ecedf0;font-weight:600">Qwen</b>-tissential AI home</div></div></div></div>
+      <h3>4 · Hyphen + bold Qwen</h3><p>Weight instead of colour — works in single-colour print and on light/dark alike.</p></div>
   </div>
 </main>
 
