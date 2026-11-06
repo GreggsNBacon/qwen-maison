@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>mAIson — logo &amp; wordmark concepts</title>
+<style>
+  :root {
+    --bg: #16171b; --card: #202127; --line: #2c2e36; --text: #ecedf0; --muted: #9ba1ad;
+    --coral: #e8825f; --violet: #7c5cff; --mint: #4cc38a;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font-family: "Segoe UI Variable Text", "Segoe UI", sans-serif; }
+  main { max-width: 1320px; margin: 0 auto; padding: 48px 40px 64px; }
+  h1 { font: 600 34px "Segoe UI Variable Display", "Segoe UI", sans-serif; margin: 0 0 6px; }
+  h2 { font: 600 22px "Segoe UI Variable Display", "Segoe UI", sans-serif; margin: 48px 0 6px; }
+  p.lead { color: var(--muted); margin: 0 0 8px; font-size: 15px; max-width: 900px; line-height: 1.5; }
+  .grid { display: grid; gap: 18px; margin-top: 18px; }
+  .g3 { grid-template-columns: repeat(3, 1fr); }
+  .g2 { grid-template-columns: repeat(2, 1fr); }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 22px; }
+  .card h3 { margin: 14px 0 4px; font: 600 16px "Segoe UI Variable Display", "Segoe UI", sans-serif; }
+  .card p { margin: 0; color: var(--muted); font-size: 13.5px; line-height: 1.45; }
+  .tag { display: inline-block; font-size: 11px; letter-spacing: .04em; text-transform: uppercase; color: var(--muted);
+         border: 1px solid var(--line); border-radius: 99px; padding: 2px 8px; margin-right: 6px; }
+  .stage { display: flex; align-items: center; justify-content: center; gap: 28px; height: 190px; border-radius: 10px;
+           background: radial-gradient(120% 120% at 30% 20%, #262833 0%, #18191e 70%); }
+  .stage.light { background: #f4f2ee; }
+  .icons { display: flex; align-items: flex-end; gap: 14px; }
+  .lockup { display: flex; align-items: center; gap: 16px; }
+
+  /* ---------- wordmark treatments ---------- */
+  .wm { font-family: "Segoe UI Variable Display", "Segoe UI", sans-serif; font-size: 58px; line-height: 1; letter-spacing: -0.01em; color: var(--text); }
+  .light .wm { color: #1d1e22; }
+  .grad { background: linear-gradient(100deg, var(--coral) 0%, #c76ad8 50%, var(--violet) 100%);
+          -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .w-plain { font-weight: 600; }
+  .w-lower { font-weight: 600; }
+  .w-lower .ai { font-weight: 700; }
+  .w-mono { font-weight: 600; }
+  .w-mono .ai { font-family: "Cascadia Code", "Cascadia Mono", Consolas, monospace; font-weight: 700; font-size: .92em; letter-spacing: -0.04em; }
+  .w-caps { font-family: "Bahnschrift", "Segoe UI", sans-serif; font-weight: 300; font-size: 46px; letter-spacing: .32em; }
+  .w-caps .ai { font-weight: 600; }
+  .w-pill { font-weight: 600; display: flex; align-items: center; }
+  .w-pill .ai { font-size: .62em; font-weight: 700; color: #fff; padding: .14em .34em .18em; margin: 0 .06em; border-radius: .36em;
+                background: linear-gradient(100deg, var(--coral), var(--violet)); letter-spacing: .02em; transform: translateY(.02em); }
+  .w-serif { font-family: Georgia, "Sitka Heading", serif; font-weight: 400; letter-spacing: 0; }
+  .w-serif .ai { font-weight: 700; font-style: italic; }
+  .w-dot { font-weight: 600; }
+  .w-dot .i { position: relative; }
+  .sub { font-size: 13px; color: var(--muted); letter-spacing: .02em; margin-top: 10px; text-align: center; }
+  .light .sub { color: #6b6f78; }
+  .verdict { font-size: 12.5px; margin-top: 10px; }
+  .good { color: var(--mint); } .warn { color: #e5b454; }
+  footer { color: var(--muted); font-size: 13px; margin-top: 48px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>mAIson — logo &amp; wordmark concepts</h1>
+  <p class="lead">“Maison” is French for <em>house</em>: your AI, at home, on your own GPU. Below are five original logo marks and six ways to set the
+     name. Colours borrow the app's existing coral (Claude Code button) and violet (Qwen Code button), joined in one gradient.</p>
+
+  <!-- ======================================================= LOGO MARKS -->
+  <h2>Logo marks</h2>
+  <p class="lead">Each shown as a large app icon on dark, then at taskbar sizes (48 / 32 / 16 px) to check it still reads small.</p>
+
+  <svg width="0" height="0" style="position:absolute">
+    <defs>
+      <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0" stop-color="#e8825f"/><stop offset=".5" stop-color="#c76ad8"/><stop offset="1" stop-color="#7c5cff"/>
+      </linearGradient>
+      <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#2a2c36"/><stop offset="1" stop-color="#1b1c22"/>
+      </linearGradient>
+      <radialGradient id="glow" cx=".5" cy=".55" r=".5">
+        <stop offset="0" stop-color="#ffd9c7" stop-opacity=".95"/><stop offset=".45" stop-color="#e8825f" stop-opacity=".55"/><stop offset="1" stop-color="#7c5cff" stop-opacity="0"/>
+      </radialGradient>
+
+      <!-- 1. Roof-A: the roof is an A, the door is an I -->
+      <symbol id="m1" viewBox="0 0 100 100">
+        <rect x="2" y="2" width="96" height="96" rx="22" fill="url(#tile)"/>
+        <path d="M17 52 L50 19 L83 52" fill="none" stroke="url(#g)" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M37 44 H63" stroke="url(#g)" stroke-width="6" stroke-linecap="round"/>
+        <path d="M26 50 V80 H74 V50" fill="none" stroke="url(#g)" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+        <rect x="45" y="56" width="10" height="24" rx="2" fill="url(#g)"/>
+        <rect x="40" y="56" width="20" height="4.5" rx="2" fill="url(#g)"/>
+        <rect x="40" y="75.5" width="20" height="4.5" rx="2" fill="url(#g)"/>
+      </symbol>
+
+      <!-- 2. Lit doorway: an arched door with an AI spark inside -->
+      <symbol id="m2" viewBox="0 0 100 100">
+        <rect x="2" y="2" width="96" height="96" rx="22" fill="url(#tile)"/>
+        <path d="M30 84 V48 A20 20 0 0 1 70 48 V84 Z" fill="#14151a" stroke="url(#g)" stroke-width="6" stroke-linejoin="round"/>
+        <circle cx="50" cy="58" r="22" fill="url(#glow)"/>
+        <path d="M50 42 C51.5 53 53 55 62 58 C53 61 51.5 63 50 74 C48.5 63 47 61 38 58 C47 55 48.5 53 50 42 Z" fill="#fff"/>
+        <path d="M20 84 H80" stroke="url(#g)" stroke-width="6" stroke-linecap="round"/>
+      </symbol>
+
+      <!-- 3. Neural home: house outline whose windows are a tiny network -->
+      <symbol id="m3" viewBox="0 0 100 100">
+        <rect x="2" y="2" width="96" height="96" rx="22" fill="url(#tile)"/>
+        <path d="M18 50 L50 22 L82 50 V82 H18 Z" fill="none" stroke="url(#g)" stroke-width="6" stroke-linejoin="round"/>
+        <g stroke="#cfc6ff" stroke-width="2.6" opacity=".9">
+          <path d="M35 56 L50 46 L65 56 M35 56 L50 70 L65 56 M50 46 V70"/>
+        </g>
+        <g fill="#fff"><circle cx="50" cy="46" r="5"/><circle cx="35" cy="56" r="4.5"/><circle cx="65" cy="56" r="4.5"/><circle cx="50" cy="70" r="5"/></g>
+      </symbol>
+
+      <!-- 4. Keyhole: a house with a keyhole shaped like a lowercase i — private by design -->
+      <symbol id="m4" viewBox="0 0 100 100">
+        <rect x="2" y="2" width="96" height="96" rx="22" fill="url(#g)"/>
+        <path d="M16 50 L50 20 L84 50 V84 H16 Z" fill="#ffffff" fill-opacity=".97" stroke="#fff" stroke-width="4" stroke-linejoin="round"/>
+        <circle cx="50" cy="51" r="7.5" fill="#2a1f45"/>
+        <path d="M45.5 60 H54.5 L56.5 76 H43.5 Z" fill="#2a1f45"/>
+      </symbol>
+
+      <!-- 5. Home chip: a processor die with a roof — AI hardware at home -->
+      <symbol id="m5" viewBox="0 0 100 100">
+        <rect x="2" y="2" width="96" height="96" rx="22" fill="url(#tile)"/>
+        <g stroke="url(#g)" stroke-width="4" stroke-linecap="round">
+          <path d="M28 45 H20 M28 57 H20 M28 69 H20 M72 45 H80 M72 57 H80 M72 69 H80 M38 85 V91 M50 85 V91 M62 85 V91"/>
+        </g>
+        <rect x="28" y="40" width="44" height="45" rx="7" fill="#14151a" stroke="url(#g)" stroke-width="5"/>
+        <path d="M22 40 L50 15 L78 40" fill="none" stroke="url(#g)" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+        <text x="50" y="72" text-anchor="middle" font-family="Cascadia Code, Consolas, monospace" font-weight="700" font-size="21" fill="#fff">AI</text>
+      </symbol>
+    </defs>
+  </svg>
+
+  <div class="grid g3">
+    <div class="card">
+      <div class="stage"><svg width="130" height="130"><use href="#m1"/></svg>
+        <div class="icons"><svg width="48" height="48"><use href="#m1"/></svg><svg width="32" height="32"><use href="#m1"/></svg><svg width="16" height="16"><use href="#m1"/></svg></div></div>
+      <h3>1 · Roof-A</h3>
+      <p>The roof is a capital <b>A</b>, the door a serifed <b>I</b>: the house literally spells “AI”. Most on-the-nose pun; clean at small sizes.</p>
+    </div>
+    <div class="card">
+      <div class="stage"><svg width="130" height="130"><use href="#m2"/></svg>
+        <div class="icons"><svg width="48" height="48"><use href="#m2"/></svg><svg width="32" height="32"><use href="#m2"/></svg><svg width="16" height="16"><use href="#m2"/></svg></div></div>
+      <h3>2 · Lit doorway</h3>
+      <p>An arched front door with a warm AI spark glowing inside — “someone's home”. The friendliest and most premium-feeling option.</p>
+    </div>
+    <div class="card">
+      <div class="stage"><svg width="130" height="130"><use href="#m3"/></svg>
+        <div class="icons"><svg width="48" height="48"><use href="#m3"/></svg><svg width="32" height="32"><use href="#m3"/></svg><svg width="16" height="16"><use href="#m3"/></svg></div></div>
+      <h3>3 · Neural home</h3>
+      <p>A house outline with a four-node network for windows. Clearly “AI”, a bit more technical; the network gets busy below 32 px.</p>
+    </div>
+    <div class="card">
+      <div class="stage"><svg width="130" height="130"><use href="#m4"/></svg>
+        <div class="icons"><svg width="48" height="48"><use href="#m4"/></svg><svg width="32" height="32"><use href="#m4"/></svg><svg width="16" height="16"><use href="#m4"/></svg></div></div>
+      <h3>4 · Keyhole</h3>
+      <p>White house on the gradient, with a keyhole shaped like a lowercase <b>i</b>: private, nothing leaves the house. Boldest silhouette in a taskbar.</p>
+    </div>
+    <div class="card">
+      <div class="stage"><svg width="130" height="130"><use href="#m5"/></svg>
+        <div class="icons"><svg width="48" height="48"><use href="#m5"/></svg><svg width="32" height="32"><use href="#m5"/></svg><svg width="16" height="16"><use href="#m5"/></svg></div></div>
+      <h3>5 · Home chip</h3>
+      <p>A processor with a roof and “AI” on the die — your GPU as the home. Nods to the gauges/hardware side; text is unreadable at 16 px.</p>
+    </div>
+    <div class="card">
+      <div class="stage light"><svg width="96" height="96"><use href="#m1"/></svg><svg width="96" height="96"><use href="#m2"/></svg><svg width="96" height="96"><use href="#m4"/></svg></div>
+      <h3>On a light background</h3>
+      <p>Roof-A, Lit doorway and Keyhole on a light surface (e.g. a white desktop or README). All keep their dark/gradient tile, so they hold up.</p>
+    </div>
+  </div>
+
+  <!-- ======================================================= WORDMARKS -->
+  <h2>Wordmark formatting</h2>
+  <p class="lead">The catch with <b>mAIson</b>: in most sans-serif fonts (Segoe UI included) capital <b>I</b> and lowercase <b>l</b> are the same stroke,
+     so it can read “mAlson”. Options below either fix the I, or keep the word reading as <i>maison</i> and let colour reveal the AI.</p>
+
+  <div class="grid g3">
+    <div class="card">
+      <div class="stage"><div><div class="wm w-plain">m<span>AI</span>son</div><div class="sub">plain, as typed</div></div></div>
+      <h3>A · As typed</h3>
+      <p>The baseline. Readable once you know it, but the I/l ambiguity is real at a glance.</p>
+      <div class="verdict warn">▲ reads “mAlson” to some people</div>
+    </div>
+    <div class="card">
+      <div class="stage"><div><div class="wm w-plain">m<span class="grad">AI</span>son</div><div class="sub">gradient on AI</div></div></div>
+      <h3>B · Gradient AI</h3>
+      <p>Colour separates the pun, which helps a lot — but the I is still a bare stroke, so it relies on colour (fails in monochrome).</p>
+      <div class="verdict warn">▲ OK in colour only</div>
+    </div>
+    <div class="card">
+      <div class="stage"><div><div class="wm w-mono">m<span class="ai grad">AI</span>son</div><div class="sub">AI in Cascadia Code</div></div></div>
+      <h3>C · Code-font AI</h3>
+      <p>The AI is set in a coding font whose <b>I</b> has serifs — unmistakable, and a nice nod to Claude Code / Qwen Code living inside.</p>
+      <div class="verdict good">● fixes I/l · techy</div>
+    </div>
+    <div class="card">
+      <div class="stage"><div><div class="wm w-lower">m<span class="ai grad">ai</span>son</div><div class="sub">lowercase, colour reveals the pun</div></div></div>
+      <h3>D · Lowercase reveal</h3>
+      <p>Reads as the real French word first, then the gradient lets you discover “ai” inside it. Subtle and elegant; the pun is a wink, not a shout.</p>
+      <div class="verdict good">● reads perfectly · subtle pun</div>
+    </div>
+    <div class="card">
+      <div class="stage"><div><div class="wm w-pill">m<span class="ai">AI</span>son</div><div class="sub">AI as a badge</div></div></div>
+      <h3>E · Badge</h3>
+      <p>AI in a small gradient pill, like a chip sitting inside the word. Very legible at any size and works as a favicon-style mark on its own.</p>
+      <div class="verdict good">● fixes I/l · works small</div>
+    </div>
+    <div class="card">
+      <div class="stage"><div><div class="wm w-caps">M<span class="ai grad">AI</span>SON</div><div class="sub">boutique caps, Bahnschrift</div></div></div>
+      <h3>F · Maison caps</h3>
+      <p>Wide-spaced capitals like a French fashion house (“MAISON …”). In all caps there's no l to confuse, so AI just pops by weight and colour.</p>
+      <div class="verdict good">● fixes I/l · upscale</div>
+    </div>
+  </div>
+
+  <!-- ======================================================= LOCKUPS -->
+  <h2>Suggested lockups</h2>
+  <p class="lead">Mark + wordmark + tagline, the way they'd appear in the app header, README and installer.</p>
+  <div class="grid g2">
+    <div class="card">
+      <div class="stage"><div class="lockup"><svg width="78" height="78"><use href="#m2"/></svg>
+        <div><div class="wm w-lower" style="font-size:52px">m<span class="ai grad">ai</span>son</div><div class="sub" style="text-align:left">fait maison · your AI, at home</div></div></div></div>
+      <h3>Lit doorway + lowercase reveal</h3>
+      <p>Warm and understated — my pick if you want it to feel like a polished consumer app.</p>
+    </div>
+    <div class="card">
+      <div class="stage"><div class="lockup"><svg width="78" height="78"><use href="#m1"/></svg>
+        <div><div class="wm w-mono" style="font-size:52px">m<span class="ai grad">AI</span>son</div><div class="sub" style="text-align:left">your AI, at home</div></div></div></div>
+      <h3>Roof-A + code-font AI</h3>
+      <p>Pun everywhere: the house spells AI and the name does too. My pick if you want it to feel like a developer tool.</p>
+    </div>
+    <div class="card">
+      <div class="stage light"><div class="lockup"><svg width="78" height="78"><use href="#m4"/></svg>
+        <div><div class="wm w-caps" style="font-size:40px">M<span class="ai grad">AI</span>SON</div><div class="sub" style="text-align:left">PRIVATE AI · ON YOUR OWN GPU</div></div></div></div>
+      <h3>Keyhole + boutique caps (light)</h3>
+      <p>Leans into privacy; the most “brand-like” of the three.</p>
+    </div>
+    <div class="card">
+      <div class="stage"><div class="lockup"><svg width="78" height="78"><use href="#m4"/></svg>
+        <div><div class="wm w-pill" style="font-size:52px">m<span class="ai">AI</span>son</div><div class="sub" style="text-align:left">your AI, at home</div></div></div></div>
+      <h3>Keyhole + badge</h3>
+      <p>Most legible at tiny sizes (title bar, taskbar, small README badges).</p>
+    </div>
+  </div>
+
+  <footer>All marks are original vector drawings (SVG) — pick one and I'll turn it into the app icon (.ico, all sizes), title-bar logo and README header.</footer>
+</main>
+</body>
+</html>
