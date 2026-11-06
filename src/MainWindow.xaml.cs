@@ -43,6 +43,7 @@ public partial class MainWindow : FluentWindow, IShell
         ModelsPage.Shell = this;
         SetupPage.Shell = this;
         SystemPage.Shell = this;
+        SimplePage.Shell = this;
         ExtensionsPage.Shell = this;
         SettingsPage.Shell = this;
         VersionText.Text = "v" + AppInfo.Version;
@@ -84,7 +85,8 @@ public partial class MainWindow : FluentWindow, IShell
                 catch (Exception ex) { Log("Web portal could not start: " + ex.Message); }
             }
 
-            if (await SelfTestDir() is null && await SetupView.NeedsSetupAsync())
+            if (_config.UiMode == "simple" && await SelfTestDir() is null) SetSimpleMode(true);
+            else if (await SelfTestDir() is null && await SetupView.NeedsSetupAsync())
             {
                 Navigate("setup");
                 Toast("Welcome to maison", "Let's get everything installed. Click 'Set up everything' to start.", ControlAppearance.Info, SymbolRegular.Rocket24);
@@ -460,21 +462,62 @@ public partial class MainWindow : FluentWindow, IShell
             var v = await TerminalsPage.OpenAsync(new Launcher.Session("PowerShell", WorkingFolder, null, null, "Get-Location | Out-Null"), "shell");
             return v.Session;
         }
+        var spec = await BuildSpecAsync(kind);
+        if (spec is null) return null;
+        var what = kind switch { "claude" => "Claude Code", "qwen" => "Qwen Code", _ => "Chat" };
+        MarkUsed(BaseMain);
+        return (await LaunchAsync(spec, kind, what, Launcher.EffectiveModel(BaseMain, ContextSize), target))?.Session;
+    }
+
+    /// <summary>The session spec for Claude Code / Qwen Code / Chat with the current selection (null if something is missing).</summary>
+    public async Task<Launcher.Session?> BuildSpecAsync(string kind)
+    {
         if (!await EnsureReadyAsync()) return null;
         if (kind == "claude" && SystemProbe.FindOnPath("claude") is null) { Toast("Claude Code is not installed", "Install it from the Setup page.", ControlAppearance.Caution, SymbolRegular.Warning24); return null; }
         if (kind == "qwen" && SystemProbe.FindOnPath("qwen") is null) { Toast("Qwen Code is not installed", "Install it from the Setup page.", ControlAppearance.Caution, SymbolRegular.Warning24); return null; }
         var main = await ResolveAsync(BaseMain);
-        Launcher.Session spec = kind switch
+        var folder = WorkingFolder;
+        return kind switch
         {
-            "claude" => new($"Claude Code · {main}", WorkDir.Text.Trim(),
+            "claude" => new($"Claude Code · {main}", folder,
                 Launcher.ClaudeEnv(main, BaseFast == BaseMain ? main : await ResolveAsync(BaseFast)),
                 ["Remove-Item Env:ANTHROPIC_API_KEY -ErrorAction SilentlyContinue"], Launcher.ClaudeCommand(PermMode)),
-            "qwen" => new($"Qwen Code · {main}", WorkDir.Text.Trim(), Launcher.QwenEnv(main), null, Launcher.QwenCommand(main, PermMode)),
-            _ => new($"Chat · {main}", WorkDir.Text.Trim(), null, null, Launcher.ChatCommand(main)),
+            "qwen" => new($"Qwen Code · {main}", folder, Launcher.QwenEnv(main), null, Launcher.QwenCommand(main, PermMode)),
+            _ => new($"Chat · {main}", folder, null, null, Launcher.ChatCommand(main)),
         };
-        var what = kind switch { "claude" => "Claude Code", "qwen" => "Qwen Code", _ => "Chat" };
+    }
+
+    /// <summary>Starts a session in the hub without opening a tab here (the simple view shows it; Terminals adds a tab too).</summary>
+    public async Task<TermSession?> StartSessionAsync(string kind)
+    {
+        var spec = await BuildSpecAsync(kind);
+        if (spec is null) return null;
+        SaveConfig();
         MarkUsed(BaseMain);
-        return (await LaunchAsync(spec, kind, what, main, target))?.Session;
+        Log($"Started {spec.Title} in {spec.WorkDir}");
+        return TerminalHub.Create(spec, kind);
+    }
+
+    public void SetWorkingFolder(string folder)
+    {
+        WorkDir.Text = folder;
+        SaveConfig();
+        UpdateCommands();
+    }
+
+    public string MainModelName => BaseMain;
+    public SetupView Setup => SetupPage;
+    public async Task RefreshHealthAsync() => await RefreshAsync(quiet: true);
+
+    /// <summary>Simple view ↔ full app.</summary>
+    public void SetSimpleMode(bool simple)
+    {
+        _config.UiMode = simple ? "simple" : "advanced";
+        _config.Save();
+        SimplePage.Visibility = simple ? Visibility.Visible : Visibility.Collapsed;
+        AdvancedRoot.Visibility = simple ? Visibility.Collapsed : Visibility.Visible;
+        if (simple) _ = SimplePage.ActivateAsync();
+        else Navigate(_page);
     }
 
     private string Target => OpenIn.SelectedItem as string ?? Launcher.TargetApp;
@@ -594,7 +637,9 @@ public partial class MainWindow : FluentWindow, IShell
 
     public IReadOnlyDictionary<string, DateTime> ModelLastUsed => _config.ModelLastUsed;
 
-    public void ApplyTerminalTheme() => TerminalsPage.ApplyTheme();
+    private void SimpleMode_Click(object sender, RoutedEventArgs e) => SetSimpleMode(true);
+
+    public void ApplyTerminalTheme() { TerminalsPage.ApplyTheme(); SimplePage.ApplyTheme(); }
     public void SelectSession(TermSession s) => TerminalsPage.Select(s);
 
     public string CurrentStatusSummary => ServerPillText.Text;
@@ -744,6 +789,32 @@ public partial class MainWindow : FluentWindow, IShell
             termResult += $" afterClose={TerminalsPage.Count} hubSessions={TerminalHub.Sessions.Count}";
         }
 
+        // Optional: --simple exercises the simple view: ready tick + live Qwen terminal, and previews of the progress screen.
+        var simpleResult = "";
+        if (args.Contains("--simple"))
+        {
+            var before = _config.UiMode;
+            SetSimpleMode(true);
+            Activate();
+            for (int i = 0; i < 40 && TerminalHub.Sessions.All(s => !s.IsRunning); i++) await Task.Delay(500);
+            await Task.Delay(12000);   // Qwen Code's UI comes up
+            await SnapWithTerminalsAsync(Path.Combine(dir, "simple-ready.png"));
+            var qs = TerminalHub.Sessions.FirstOrDefault(s => s.Kind == "qwen");
+            simpleResult = $"SIMPLE: readyShown={SimplePage.FindName("ReadyPanel") is FrameworkElement { Visibility: Visibility.Visible }} " +
+                           $"qwenSessionRunning={qs?.IsRunning == true} qwenOutput={qs?.History.Length ?? 0}chars tabMirrored={TerminalsPage.Count > 0}";
+            SimplePage.PreviewProgress(SetupPage.ModelStep, 37, "6.1 of 16.5 GB", "pulling 3f1a8c2e9b47… 37% (98 MB/s)");
+            await Task.Delay(800);
+            Snap(Path.Combine(dir, "simple-setup-model.png"));
+            SimplePage.PreviewProgress(SetupPage.NodeStep, 0, "Working…", "Found Node.js LTS [OpenJS.NodeJS.LTS] Version 24.11.0");
+            await Task.Delay(800);
+            Snap(Path.Combine(dir, "simple-setup-node.png"));
+            foreach (var s in TerminalHub.Sessions) TerminalHub.Remove(s);
+            SetSimpleMode(before == "simple");
+            _config.UiMode = before;
+            _config.Save();
+            await SetupPage.RefreshAsync();
+        }
+
         // Optional: --portal <password> starts the web portal and exercises it over real HTTPS (use with MAISON_CONFIG_DIR).
         var po = Array.IndexOf(args, "--portal");
         var portalResult = "";
@@ -753,7 +824,7 @@ public partial class MainWindow : FluentWindow, IShell
             catch (Exception ex) { portalResult = "PORTAL: exception " + ex; }
         }
 
-        var lines = new List<string> { "STATUS:", pullResult, termResult, portalResult };
+        var lines = new List<string> { "STATUS:", pullResult, termResult, simpleResult, portalResult };
         lines.AddRange(_status.Select(s => $"[{s.Level}] {s.Title} | {s.Detail}"));
         lines.Add($"GAUGES: temp={GTemp.Display} load={GLoad.Display} power={GPower.Display} vram={GVram.Display} cpu={GCpu.Display} ram={GRam.Display} | {GpuTitle.Text} | {GpuExtra.Text}");
         if (_stats is { } st)
@@ -764,6 +835,39 @@ public partial class MainWindow : FluentWindow, IShell
         lines.Add("LOG:\n" + LogBox.Text);
         File.WriteAllLines(Path.Combine(dir, "selftest.txt"), lines);
         Application.Current.Shutdown();
+    }
+
+    /// <summary>
+    /// Screenshot of the app with any visible terminals composited in (WebView2 isn't captured by RenderTargetBitmap,
+    /// and copying the screen would pick up other windows on top).
+    /// </summary>
+    private async Task SnapWithTerminalsAsync(string file)
+    {
+        var basePng = file + ".base.png";
+        Snap(basePng);
+        var dpi = VisualTreeHelper.GetDpi(this);
+        using var canvas = new System.Drawing.Bitmap(basePng);
+        using var g = System.Drawing.Graphics.FromImage(canvas);
+        foreach (var v in FindViewers(Root).Where(v => v.IsVisible && v.ActualWidth > 0))
+        {
+            var tmp = file + ".term.png";
+            await v.CaptureAsync(tmp);
+            var p = v.TransformToAncestor(Root).Transform(new Point(0, 0));
+            using var img = System.Drawing.Image.FromFile(tmp);
+            g.DrawImage(img, (float)(p.X * dpi.DpiScaleX), (float)(p.Y * dpi.DpiScaleY), (float)(v.ActualWidth * dpi.DpiScaleX), (float)(v.ActualHeight * dpi.DpiScaleY));
+        }
+        g.Flush();
+        canvas.Save(file, System.Drawing.Imaging.ImageFormat.Png);
+    }
+
+    private static IEnumerable<Controls.TerminalViewer> FindViewers(DependencyObject root)
+    {
+        for (int i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
+        {
+            var c = VisualTreeHelper.GetChild(root, i);
+            if (c is Controls.TerminalViewer v) yield return v;
+            else foreach (var x in FindViewers(c)) yield return x;
+        }
     }
 
     private void Snap(string file)

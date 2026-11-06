@@ -1,0 +1,166 @@
+<UserControl x:Class="Maison.Views.SimpleView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml">
+  <UserControl.Resources>
+    <Style x:Key="Tile" TargetType="Border">
+      <Setter Property="Background" Value="{DynamicResource CardBackgroundFillColorDefaultBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource CardStrokeColorDefaultBrush}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="10" />
+      <Setter Property="Padding" Value="14,10" />
+      <Setter Property="Margin" Value="0,0,10,0" />
+    </Style>
+    <Style x:Key="TileLabel" TargetType="TextBlock">
+      <Setter Property="FontSize" Value="12" />
+      <Setter Property="Foreground" Value="{DynamicResource TextFillColorTertiaryBrush}" />
+    </Style>
+    <Style x:Key="TileValue" TargetType="TextBlock">
+      <Setter Property="FontSize" Value="20" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="Margin" Value="0,2,0,0" />
+      <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
+    </Style>
+  </UserControl.Resources>
+
+  <Grid Margin="28,4,28,20">
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto" />
+      <RowDefinition Height="*" />
+    </Grid.RowDefinitions>
+
+    <!-- Header: brand + Advanced toggle -->
+    <Grid Margin="0,0,0,14">
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="*" />
+        <ColumnDefinition Width="Auto" />
+      </Grid.ColumnDefinitions>
+      <StackPanel Orientation="Horizontal">
+        <Image Source="pack://application:,,,/Assets/brand/maison-256.png" Width="40" Height="40" RenderOptions.BitmapScalingMode="HighQuality" />
+        <StackPanel Margin="12,0,0,0" VerticalAlignment="Center">
+          <TextBlock FontFamily="Segoe UI Variable Display, Segoe UI" FontSize="26" FontWeight="SemiBold" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Margin="0,-3,0,0">
+            <Run Text="m" /><Run Text="ai" FontWeight="Bold" Foreground="{StaticResource BrandGradient}" /><Run Text="son" />
+          </TextBlock>
+          <TextBlock FontSize="11.5" Foreground="{DynamicResource TextFillColorSecondaryBrush}">
+            <Run Text="the " /><Run Text="Qwen" FontWeight="SemiBold" Foreground="{StaticResource BrandGradient}" /><Run Text="-tissential AI home" />
+          </TextBlock>
+        </StackPanel>
+      </StackPanel>
+      <ui:ToggleSwitch x:Name="AdvancedToggle" Grid.Column="1" Content="Advanced" VerticalAlignment="Center" Click="Advanced_Click"
+                       ToolTip="Show the full app: models, terminals in tabs, system details, extensions, settings and the phone portal. Nothing stops running when you switch." />
+    </Grid>
+
+    <!-- ================= Not ready: Start / progress ================= -->
+    <Grid x:Name="SetupPanel" Grid.Row="1" Visibility="Collapsed">
+      <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" MaxWidth="640">
+        <Grid Width="96" Height="96" HorizontalAlignment="Center" Margin="0,0,0,22">
+          <ui:ProgressRing x:Name="Ring" Width="96" Height="96" IsIndeterminate="True" Visibility="Collapsed" />
+          <Image x:Name="Logo" Source="pack://application:,,,/Assets/brand/maison-256.png" Width="72" Height="72" RenderOptions.BitmapScalingMode="HighQuality" />
+        </Grid>
+
+        <TextBlock x:Name="Headline" Text="Let's set up your AI at home" FontSize="30" FontWeight="SemiBold" TextAlignment="Center" TextWrapping="Wrap"
+                   FontFamily="Segoe UI Variable Display, Segoe UI" Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+        <TextBlock x:Name="Subline" FontSize="15" TextAlignment="Center" TextWrapping="Wrap" Margin="0,10,0,0"
+                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                   Text="One click installs everything Qwen needs to run privately on this PC. No account, no subscription. Grab a coffee — the first setup downloads a lot." />
+
+        <ui:Button x:Name="StartButton" Content="Start" Appearance="Primary" HorizontalAlignment="Center" Margin="0,28,0,0"
+                   FontSize="20" Padding="56,14" Click="Start_Click" Icon="{ui:SymbolIcon Play24}"
+                   ToolTip="Install and start everything: the Ollama engine, a Qwen model sized for this PC, Qwen Code (and Claude Code)" />
+
+        <StackPanel x:Name="ProgressPanel" Visibility="Collapsed" Margin="0,26,0,0" Width="520">
+          <ProgressBar x:Name="Overall" Height="8" Maximum="100" />
+          <TextBlock x:Name="Detail" FontSize="13" TextAlignment="Center" TextWrapping="Wrap" Margin="0,12,0,0"
+                     Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+          <TextBlock x:Name="Hint" FontSize="12.5" TextAlignment="Center" TextWrapping="Wrap" Margin="0,8,0,0" Visibility="Collapsed"
+                     Foreground="#E5B454" />
+          <ItemsControl x:Name="Pips" HorizontalAlignment="Center" Margin="0,18,0,0">
+            <ItemsControl.ItemsPanel>
+              <ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+              <DataTemplate>
+                <StackPanel Margin="9,0" ToolTip="{Binding Tip}">
+                  <Ellipse Width="10" Height="10" Fill="{Binding Fill}" HorizontalAlignment="Center" />
+                  <TextBlock Text="{Binding Label}" FontSize="11" Margin="0,5,0,0" HorizontalAlignment="Center" Foreground="{Binding TextBrush}" />
+                </StackPanel>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </StackPanel>
+
+        <StackPanel x:Name="ErrorPanel" Visibility="Collapsed" Margin="0,24,0,0" HorizontalAlignment="Center">
+          <TextBlock x:Name="ErrorText" FontSize="13.5" TextAlignment="Center" TextWrapping="Wrap" MaxWidth="560" Foreground="#FF8A8A" />
+          <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,14,0,0">
+            <ui:Button Content="Try again" Appearance="Primary" Click="Start_Click" Margin="0,0,8,0" ToolTip="Run the setup again; finished steps are skipped" />
+            <ui:Button Content="Show details" Click="Details_Click" ToolTip="Open the advanced Setup page with the full installer output" />
+          </StackPanel>
+        </StackPanel>
+      </StackPanel>
+    </Grid>
+
+    <!-- ================= Ready: tick + stats + terminal ================= -->
+    <Grid x:Name="ReadyPanel" Grid.Row="1" Visibility="Collapsed">
+      <Grid.RowDefinitions>
+        <RowDefinition Height="Auto" />
+        <RowDefinition Height="Auto" />
+        <RowDefinition Height="Auto" />
+        <RowDefinition Height="*" />
+      </Grid.RowDefinitions>
+
+      <Grid Margin="0,0,0,12">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="Auto" />
+          <ColumnDefinition Width="*" />
+          <ColumnDefinition Width="Auto" />
+        </Grid.ColumnDefinitions>
+        <Border Width="44" Height="44" CornerRadius="22" Background="#2A4CC38A" VerticalAlignment="Center">
+          <ui:SymbolIcon Symbol="Checkmark24" FontSize="26" Foreground="#4CC38A" Filled="True" />
+        </Border>
+        <StackPanel Grid.Column="1" Margin="14,0,0,0" VerticalAlignment="Center">
+          <TextBlock x:Name="ReadyTitle" Text="Qwen is ready" FontSize="22" FontWeight="SemiBold" Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+          <TextBlock x:Name="ReadySub" FontSize="13" TextTrimming="CharacterEllipsis" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+        </StackPanel>
+        <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+          <ui:Button Content="Change folder" Icon="{ui:SymbolIcon Folder24}" Click="Folder_Click" Margin="0,0,8,0"
+                     ToolTip="Pick the folder Qwen works in (your project). Starts a fresh Qwen session there." />
+          <ui:Button Content="New session" Icon="{ui:SymbolIcon Add24}" Click="NewSession_Click"
+                     ToolTip="End this Qwen session and start a fresh one" />
+        </StackPanel>
+      </Grid>
+
+      <!-- Simplified stats -->
+      <UniformGrid Grid.Row="1" Columns="4" Margin="0,0,-10,10">
+        <Border Style="{StaticResource Tile}" ToolTip="How hard the graphics card is working, and how hot it is">
+          <StackPanel><TextBlock Text="Graphics card" Style="{StaticResource TileLabel}" /><TextBlock x:Name="TGpu" Text="—" Style="{StaticResource TileValue}" /></StackPanel>
+        </Border>
+        <Border Style="{StaticResource Tile}" ToolTip="Graphics memory in use. Qwen runs fast while it fits here.">
+          <StackPanel><TextBlock Text="AI memory" Style="{StaticResource TileLabel}" /><TextBlock x:Name="TVram" Text="—" Style="{StaticResource TileValue}" /></StackPanel>
+        </Border>
+        <Border Style="{StaticResource Tile}" ToolTip="Processor usage">
+          <StackPanel><TextBlock Text="Processor" Style="{StaticResource TileLabel}" /><TextBlock x:Name="TCpu" Text="—" Style="{StaticResource TileValue}" /></StackPanel>
+        </Border>
+        <Border Style="{StaticResource Tile}" ToolTip="System memory in use">
+          <StackPanel><TextBlock Text="Memory" Style="{StaticResource TileLabel}" /><TextBlock x:Name="TRam" Text="—" Style="{StaticResource TileValue}" /></StackPanel>
+        </Border>
+      </UniformGrid>
+
+      <Border x:Name="WarnBox" Grid.Row="2" Visibility="Collapsed" Margin="0,0,0,10" Padding="12,8" CornerRadius="8" Background="#22E5B454" BorderBrush="#66E5B454" BorderThickness="1">
+        <StackPanel Orientation="Horizontal">
+          <ui:SymbolIcon Symbol="Warning20" Foreground="#E5B454" Margin="0,0,8,0" />
+          <TextBlock x:Name="WarnText" TextWrapping="Wrap" Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+        </StackPanel>
+      </Border>
+
+      <Border Grid.Row="3" CornerRadius="10" BorderThickness="1" BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}" ClipToBounds="True">
+        <Grid>
+          <Grid x:Name="TerminalHost" />
+          <StackPanel x:Name="TerminalStarting" VerticalAlignment="Center" HorizontalAlignment="Center">
+            <ui:ProgressRing IsIndeterminate="True" Width="34" Height="34" />
+            <TextBlock x:Name="TerminalStartingText" Text="Starting Qwen…" Margin="0,10,0,0" HorizontalAlignment="Center" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+          </StackPanel>
+        </Grid>
+      </Border>
+    </Grid>
+  </Grid>
+</UserControl>

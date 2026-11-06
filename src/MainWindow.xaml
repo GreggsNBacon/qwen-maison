@@ -23,7 +23,10 @@
       </ui:TitleBar.Icon>
     </ui:TitleBar>
 
-    <Grid Grid.Row="1">
+    <!-- Simple view: Start button → one tick + a terminal -->
+    <v:SimpleView x:Name="SimplePage" Grid.Row="1" Visibility="Collapsed" />
+
+    <Grid x:Name="AdvancedRoot" Grid.Row="1">
       <Grid.ColumnDefinitions>
         <ColumnDefinition Width="200" />
         <ColumnDefinition Width="*" />
@@ -33,6 +36,10 @@
       <DockPanel Grid.Column="0" Margin="12,8,4,16">
         <TextBlock DockPanel.Dock="Bottom" x:Name="VersionText" FontSize="11" Margin="12,0,0,0"
                    Foreground="{DynamicResource TextFillColorTertiaryBrush}" />
+        <ui:Button DockPanel.Dock="Bottom" Content="Simple view" Icon="{ui:SymbolIcon LeafOne24}" Click="SimpleMode_Click"
+                   HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Padding="12,9" Margin="0,0,0,10" BorderThickness="0"
+                   Appearance="Transparent"
+                   ToolTip="Switch to the simple view: one Start button, a ready tick, a few stats and a Qwen Code terminal. Everything keeps running." />
         <!-- Brand: icon + "m(ai)son" + "the (Qwen)-tissential AI home" -->
         <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="10,2,0,22"
                     ToolTip="maison — the Qwen-tissential AI home. Local AI on your own GPU.">

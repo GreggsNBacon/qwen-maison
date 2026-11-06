@@ -88,6 +88,14 @@ automatically), Gemini CLI extensions, npm packages and git repos.
   keeps all models in one folder, so the location is per PC, not per model.
 - **Web portal**, below.
 
+**Simple view**: for people who don't want the technical side. New installs start here, and the **Advanced** toggle
+(top right) or **Simple view** in the sidebar switches between the two. Sessions keep running when you switch.
+- Before setup it shows one **Start** button. Setup runs the same real steps as the Setup page. Each step gets a friendly
+  headline ("Moving Qwen in — this is the big download…") with the actual action, progress and latest installer output under it.
+  If a step fails, you get **Try again** or **Show details**.
+- Once ready it shows one ✓ "Qwen is ready", four plain stats (graphics card, AI memory, processor, memory), a warning if
+  another app is slowing Qwen down, and a Qwen Code terminal. That terminal is the same session as the one in Terminals.
+
 | System | Settings | Phone portal |
 |---|---|---|
 | ![System](docs/screenshot-system.png) | ![Settings](docs/screenshot-settings.png) | ![Portal](docs/screenshot-portal.png) |

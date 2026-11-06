@@ -117,6 +117,7 @@ public partial class SetupView : UserControl
 
     private void Out(string line)
     {
+        LastOutput = line;
         Dispatcher.Invoke(() =>
         {
             Output.AppendText($"[{DateTime.Now:HH:mm:ss}] {line}{Environment.NewLine}");
@@ -270,6 +271,33 @@ public partial class SetupView : UserControl
 
     private async void All_Click(object sender, RoutedEventArgs e)
     {
+        var (ok, failed, _) = await SetupEverythingAsync();
+        if (ok) Shell.Toast("All set", "Ollama, your Qwen model, Claude Code and Qwen Code are ready", ControlAppearance.Success, SymbolRegular.CheckmarkCircle24);
+        else Shell.Toast("Setup stopped", $"{failed} did not finish — see Installer output", ControlAppearance.Danger, SymbolRegular.ErrorCircle24);
+    }
+
+    // ------------------------------------------------------------------ for the simple view
+
+    public IReadOnlyList<SetupStep> Steps => _steps;
+    public SetupStep OllamaStep => _ollama;
+    public SetupStep ServerStep => _server;
+    public SetupStep ModelStep => _model;
+    public SetupStep ClaudeStep => _claude;
+    public SetupStep NodeStep => _node;
+    public SetupStep QwenStep => _qwen;
+    public string RecommendedModel => _recommended.Tag;
+    public double RecommendedSizeGb => _recommended.SizeGb;
+
+    /// <summary>The step running right now (null between steps).</summary>
+    public SetupStep? CurrentStep { get; private set; }
+    /// <summary>The latest real line of installer output.</summary>
+    public string LastOutput { get; private set; } = "";
+    public bool IsRunningAll => _runningAll;
+
+    /// <summary>Runs every unfinished step in order. Returns which step failed, if any.</summary>
+    public async Task<(bool Ok, string? FailedStep, string? Error)> SetupEverythingAsync()
+    {
+        if (_runningAll) return (false, null, "Setup is already running.");
         _runningAll = true;
         BtnAll.IsEnabled = false;
         Out("=== Setting up everything ===");
@@ -280,17 +308,16 @@ public partial class SetupView : UserControl
                 await RefreshAsync();
                 if (s.State == StepState.Done) continue;
                 if (!s.CanRun) { Out($"Skipping {s.Title}: {s.StatusText}"); continue; }
+                CurrentStep = s;
                 if (!await RunStepAsync(s))
-                {
-                    Shell.Toast("Setup stopped", $"{s.Title} did not finish — see Installer output", ControlAppearance.Danger, SymbolRegular.ErrorCircle24);
-                    return;
-                }
+                    return (false, s.Title, s.StatusText.StartsWith("Failed: ") ? s.StatusText[8..] : s.StatusText);
             }
             Out("=== All done ===");
-            Shell.Toast("All set", "Ollama, your Qwen model, Claude Code and Qwen Code are ready", ControlAppearance.Success, SymbolRegular.CheckmarkCircle24);
+            return (true, null, null);
         }
         finally
         {
+            CurrentStep = null;
             _runningAll = false;
             await RefreshAsync();
         }

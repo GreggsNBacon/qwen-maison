@@ -161,10 +161,17 @@ public sealed class AppConfig
     /// <summary>The one shared config instance (the web portal and the UI both use it).</summary>
     public static AppConfig Current { get; } = Load();
 
+    /// <summary>"simple" (one Start button, a tick and a terminal) or "advanced" (the full app).</summary>
+    public string UiMode { get; set; } = "";
+
     private static AppConfig Load()
     {
+        bool existed = File.Exists(FilePath) ||
+                       File.Exists(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "QwenLauncher", "config.json"));
         var c = LoadFile();
         if (c.Permissions.Length == 0) c.Permissions = c.SkipPermissions ? "skip" : "ask";
+        // New users start in the simple view; people upgrading keep the full app they already know.
+        if (c.UiMode is not ("simple" or "advanced")) c.UiMode = existed ? "advanced" : "simple";
         return c;
     }
 
