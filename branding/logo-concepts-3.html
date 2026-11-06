@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>maison — fonts &amp; qwentissential taglines</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@600;700&family=Nunito:wght@700;800&family=Outfit:wght@500;600&family=Josefin+Sans:wght@500;600&family=Poppins:wght@500;600&family=Fraunces:opsz,wght@72,500;72,600&family=Playfair+Display:wght@500;600&family=Comfortaa:wght@600;700&display=block" rel="stylesheet">
+<style>
+  :root { --bg:#16171b; --card:#202127; --line:#2c2e36; --text:#ecedf0; --muted:#9ba1ad; --coral:#e8825f; --violet:#7c5cff; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font-family:"Segoe UI Variable Text","Segoe UI",sans-serif; }
+  main { max-width:1320px; margin:0 auto; padding:48px 40px 64px; }
+  h1 { font:600 34px "Segoe UI Variable Display","Segoe UI",sans-serif; margin:0 0 6px; }
+  h2 { font:600 22px "Segoe UI Variable Display","Segoe UI",sans-serif; margin:44px 0 6px; }
+  p.lead { color:var(--muted); margin:0; font-size:15px; max-width:920px; line-height:1.5; }
+  .grid { display:grid; gap:18px; margin-top:18px; grid-template-columns:repeat(2,1fr); }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:22px; }
+  .card h3 { margin:14px 0 4px; font:600 16px "Segoe UI Variable Display","Segoe UI",sans-serif; }
+  .card p { margin:0; color:var(--muted); font-size:13.5px; line-height:1.45; }
+  .stage { display:flex; align-items:center; justify-content:center; gap:24px; height:200px; border-radius:10px;
+           background:radial-gradient(120% 120% at 30% 20%,#262833 0%,#18191e 70%); }
+  .lockup { display:flex; align-items:center; gap:18px; }
+  .small { display:flex; align-items:flex-end; gap:12px; margin-left:18px; }
+  .wm { font-size:58px; line-height:1; letter-spacing:-0.005em; color:var(--text); white-space:nowrap; }
+  .wm .ai { background:linear-gradient(100deg,var(--coral) 0%,#c76ad8 50%,var(--violet) 100%);
+            -webkit-background-clip:text; background-clip:text; color:transparent; }
+  .tag { font-size:14px; color:var(--muted); margin-top:9px; letter-spacing:.01em; }
+  .tags { display:grid; grid-template-columns:repeat(2,1fr); gap:12px; margin-top:18px; }
+  .t { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px 18px; }
+  .t b { display:block; font:600 20px "Outfit",sans-serif; margin-bottom:4px; }
+  .t > span { color:var(--muted); font-size:13.5px; }
+  .q { background:linear-gradient(100deg,var(--coral),#c76ad8 60%,var(--violet)); -webkit-background-clip:text; background-clip:text; color:transparent; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Logo 4 + wordmark D, in different fonts</h1>
+  <p class="lead">Same idea everywhere — roof over a lowercase <i>ai</i> with a coral lit-window dot, and <i>maison</i> with the <i>ai</i> in the gradient —
+     but the icon's letters now come from the same font as the name, so they always match. All fonts are free (SIL Open Font License),
+     so the chosen one can be bundled into the app.</p>
+
+  <svg width="0" height="0" style="position:absolute">
+    <defs>
+      <linearGradient id="g" gradientUnits="userSpaceOnUse" x1="10" y1="10" x2="90" y2="90">
+        <stop offset="0" stop-color="#e8825f"/><stop offset=".5" stop-color="#c76ad8"/><stop offset="1" stop-color="#7c5cff"/>
+      </linearGradient>
+      <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#2a2c36"/><stop offset="1" stop-color="#1b1c22"/>
+      </linearGradient>
+    </defs>
+  </svg>
+
+  <div class="grid" id="fonts"></div>
+
+  <h2>“Qwentissential” taglines</h2>
+  <p class="lead">Swaps for “your AI, at home”. My favourites are first.</p>
+  <div class="tags">
+    <div class="t"><b><span class="q">qwentissentially</span> yours</b><span>Short, warm, and keeps the “it's your machine” idea. Works under any lockup.</span></div>
+    <div class="t"><b>the <span class="q">qwentissential</span> AI home</b><span>Says what it is — the place your AI lives — and lands the pun on “home”.</span></div>
+    <div class="t"><b><span class="q">qwentissentially</span> local</b><span>Leans on the privacy angle: nothing leaves your PC.</span></div>
+    <div class="t"><b><span class="q">qwentissential</span> AI · fait maison</b><span>Two puns in one: “fait maison” is French for homemade.</span></div>
+    <div class="t"><b>AI, made <span class="q">qwentissentially</span> at home</b><span>Longer; good for a README subtitle or installer screen.</span></div>
+    <div class="t"><b>the <span class="q">qwentissence</span> of local AI</b><span>Noun form of the pun — punchy as a headline.</span></div>
+  </div>
+</main>
+
+<script>
+  // name, CSS family, weight for the wordmark, weight for the icon letters, note, tagline shown
+  const fonts = [
+    ["Quicksand",        "'Quicksand'",        700, 700, "Rounded geometric, closest to the current icon. Soft and friendly.", "qwentissentially yours"],
+    ["Outfit",           "'Outfit'",           600, 600, "Clean modern geometric; crisp and app-like without being cold.", "the qwentissential AI home"],
+    ["Josefin Sans",     "'Josefin Sans'",     600, 600, "Art-deco, 1920s Paris feel — very “maison”. Low x-height, elegant.", "qwentissentially local"],
+    ["Fraunces",         "'Fraunces'",         600, 600, "Soft, characterful serif. Warm and premium, like a boutique label.", "qwentissential AI · fait maison"],
+    ["Playfair Display", "'Playfair Display'", 600, 600, "High-contrast French-fashion serif. The most “maison de couture”.", "qwentissentially yours"],
+    ["Nunito",           "'Nunito'",           800, 800, "Rounded humanist; playful and very readable at small sizes.", "the qwentissential AI home"],
+    ["Poppins",          "'Poppins'",          600, 600, "Popular geometric; perfect circles, very legible.", "qwentissentially local"],
+    ["Comfortaa",        "'Comfortaa'",        700, 700, "Very round and airy; the cutest of the set.", "qwentissentially yours"],
+  ];
+
+  const NS = "http://www.w3.org/2000/svg";
+
+  // Icon: tile + gradient roof + "a" and dotless "ı" in the font, with a coral dot placed over the ı.
+  function icon(size, family, weight) {
+    const svg = document.createElementNS(NS, "svg");
+    const f = family.replace(/'/g, "");
+    svg.setAttribute("viewBox", "0 0 100 100"); svg.setAttribute("width", size); svg.setAttribute("height", size);
+    svg.innerHTML = `
+      <rect x="2" y="2" width="96" height="96" rx="22" fill="url(#tile)"/>
+      <path d="M18 44 L50 17 L82 44" fill="none" stroke="url(#g)" stroke-width="7.5" stroke-linecap="round" stroke-linejoin="round"/>
+      <text x="50" y="${BASE}" text-anchor="middle" fill="#fff" font-family="${f}" font-weight="${weight}" font-size="${SIZE}">a<tspan fill="#e8825f">i</tspan></text>
+      <text x="50" y="${BASE}" text-anchor="middle" fill="#fff" font-family="${f}" font-weight="${weight}" font-size="${SIZE}">a&#x131;</text>`;
+    return svg;
+  }
+
+  // The coral "i" underneath supplies the font's own dot; the white dotless "ı" on top covers its stem.
+  const SIZE = 62, BASE = 84;
+  function placeDots() {}
+  const host = document.getElementById("fonts");
+  for (const [name, family, wWeight, iWeight, note, tagline] of fonts) {
+    const card = document.createElement("div"); card.className = "card";
+    const stage = document.createElement("div"); stage.className = "stage";
+    const lock = document.createElement("div"); lock.className = "lockup";
+    lock.appendChild(icon(84, family, iWeight));
+    const text = document.createElement("div");
+    text.innerHTML = `<div class="wm" style="font-family:${family};font-weight:${wWeight}">m<span class="ai">ai</span>son</div>
+                      <div class="tag" style="font-family:${family}">${tagline}</div>`;
+    lock.appendChild(text);
+    stage.appendChild(lock);
+    const small = document.createElement("div"); small.className = "small";
+    [40, 28, 16].forEach(s => small.appendChild(icon(s, family, iWeight)));
+    stage.appendChild(small);
+    card.appendChild(stage);
+    card.insertAdjacentHTML("beforeend", `<h3>${name}</h3><p>${note}</p>`);
+    host.appendChild(card);
+  }
+  document.fonts.ready.then(() => requestAnimationFrame(placeDots));
+</script>
+</body>
+</html>
