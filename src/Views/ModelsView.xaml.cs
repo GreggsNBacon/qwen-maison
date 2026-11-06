@@ -55,9 +55,10 @@ public partial class ModelsView : UserControl
 
         // Installed
         var main = Shell.CurrentMainModel;
-        var rows = _models.Select(m => InstalledRow.From(m, main)).ToList();
+        var rows = _models.Select(m => InstalledRow.From(m, main, Shell.ModelLastUsed)).ToList();
         InstalledList.ItemsSource = rows;
-        InstalledHeader.Text = $"Installed ({rows.Count(r => !r.IsHelper)})";
+        var stale = rows.Count(r => r.IsStale);
+        InstalledHeader.Text = $"Installed ({rows.Count(r => !r.IsHelper)})" + (stale > 0 ? $"  ·  {stale} stale — unused for {AppConfig.Current.StaleDays}+ days, safe to uninstall if you don't need them" : "");
         InstalledEmpty.Visibility = rows.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
 
         // Catalog
@@ -201,8 +202,10 @@ public partial class ModelsView : UserControl
         public bool HasBadge => Badge.Length > 0;
         public bool CanUse { get; init; }
         public bool IsHelper { get; init; }
+        public bool IsStale { get; init; }
+        public string? BadgeTip { get; init; }
 
-        public static InstalledRow From(ModelInfo m, string main)
+        public static InstalledRow From(ModelInfo m, string main, IReadOnlyDictionary<string, DateTime> lastUsed)
         {
             bool alias = m.Name.StartsWith("claude-");
             bool variant = Launcher.IsVariant(m.Name);
@@ -215,16 +218,39 @@ public partial class ModelsView : UserControl
             if (variant && m.ParentModel.Length > 0) bits.Add("context variant of " + m.ParentModel + " (no extra disk)");
             else if (alias) bits.Add("alias from the old setup (no extra disk)");
 
+            // Usage: launched from maison or seen loaded in Ollama. Before tracking began, count from when it started.
+            var cfg = AppConfig.Current;
+            bool stale = false;
+            string usage = "";
+            if (!variant && !alias)
+            {
+                if (lastUsed.TryGetValue(m.Name, out var last))
+                {
+                    usage = "last used " + Ago(last.ToUniversalTime());
+                    stale = (DateTime.Now - last).TotalDays > cfg.StaleDays;
+                }
+                else
+                {
+                    var since = new[] { m.Modified == default ? DateTime.MinValue : m.Modified.ToLocalTime(), cfg.UsageTrackingSince }.Max();
+                    usage = "not used yet";
+                    stale = (DateTime.Now - since).TotalDays > cfg.StaleDays;
+                }
+                bits.Insert(0, usage);
+            }
+
             bool inUse = !variant && !alias && m.Name.Equals(main, StringComparison.OrdinalIgnoreCase);
+            if (inUse) stale = false;
             return new InstalledRow
             {
                 Name = m.Name,
                 Detail = string.Join("  ·  ", bits),
-                Badge = inUse ? "In use" : variant ? "Variant" : alias ? "Old alias" : "",
-                BadgeBrush = inUse ? Palette.Green : Palette.Grey,
-                IconBrush = variant || alias ? Palette.Grey : inUse ? Palette.Green : Palette.Blue,
+                Badge = inUse ? "In use" : stale ? "Stale" : variant ? "Variant" : alias ? "Old alias" : "",
+                BadgeBrush = inUse ? Palette.Green : stale ? Palette.Amber : Palette.Grey,
+                BadgeTip = stale ? $"Not used for over {cfg.StaleDays} days ({usage}). Uninstall it to free {m.SizeGb} GB if you don't need it. Change the threshold in Settings." : null,
+                IconBrush = variant || alias ? Palette.Grey : inUse ? Palette.Green : stale ? Palette.Amber : Palette.Blue,
                 CanUse = !variant && !alias && !inUse,
                 IsHelper = variant || alias,
+                IsStale = stale,
             };
         }
 

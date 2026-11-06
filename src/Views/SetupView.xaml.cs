@@ -100,6 +100,15 @@ public partial class SetupView : UserControl
             else _qwen.SetMissing(Installer.NpmPath is null ? "Needs Node.js" : "Not installed", "Install", "npm install -g @qwen-code/qwen-code", enabled: Installer.NpmPath is not null);
         }
 
+        // Uninstall buttons, so any part can be removed and set up again.
+        if (installed) _ollama.OfferUninstall("Uninstall", "Remove Ollama (silent). Downloaded models are kept in " + OllamaClient.ModelsDir); else _ollama.NoUninstall();
+        if (running) _server.OfferUninstall("Stop", "Stop the Ollama server (unloads models)"); else _server.NoUninstall();
+        if (Installer.ClaudePath is not null) _claude.OfferUninstall("Uninstall", "Remove Claude Code's program files. Your ~/.claude settings and history are kept."); else _claude.NoUninstall();
+        if (Installer.NpmPath is not null) _node.OfferUninstall("Uninstall", "Remove Node.js with winget (asks for admin). Qwen Code needs it."); else _node.NoUninstall();
+        if (Installer.QwenPath is not null) _qwen.OfferUninstall("Uninstall", "Remove Qwen Code (npm). Your ~/.qwen settings are kept."); else _qwen.NoUninstall();
+        _model.NoUninstall();
+
+        BtnReinstall.IsEnabled = !_runningAll;
         BtnAll.IsEnabled = !_runningAll && _steps.Any(s => s.State == StepState.Missing);
         BtnAll.Content = _steps.All(s => s.State == StepState.Done) ? "All set" : "Set up everything";
     }
@@ -184,6 +193,81 @@ public partial class SetupView : UserControl
         if (sender is FrameworkElement { Tag: SetupStep s }) await RunStepAsync(s);
     }
 
+    private async void Uninstall_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { Tag: SetupStep s } || s.Busy) return;
+        if (s == _server)
+        {
+            await SystemProbe.StopOllamaAsync();
+            Out("Ollama server stopped.");
+            await RefreshAsync();
+            await Shell.OnModelsChangedAsync();
+            return;
+        }
+        if (!await Shell.ConfirmAsync($"Uninstall {s.Title}?", s.UninstallTip + "\n\nYou can install it again from this page.", "Uninstall")) return;
+        if ((s == _qwen || s == _claude) && TerminalHub.Sessions.Any(x => x.IsRunning && x.Kind == (s == _qwen ? "qwen" : "claude")) &&
+            !await Shell.ConfirmAsync("Sessions are running", $"Close the running {s.Title} tabs first, or the uninstall may fail.", "Try anyway"))
+            return;
+        s.Begin();
+        try
+        {
+            if (s == _ollama) await Installer.UninstallOllamaAsync(Out, CancellationToken.None);
+            else if (s == _claude) await Installer.UninstallClaudeAsync(Out, CancellationToken.None);
+            else if (s == _node) await Installer.UninstallNodeAsync(Out, CancellationToken.None);
+            else if (s == _qwen) await Installer.UninstallQwenAsync(Out, CancellationToken.None);
+            Shell.Log($"Setup: {s.Title} uninstalled");
+        }
+        catch (Exception ex)
+        {
+            Out($"FAILED: {ex.Message}");
+            Shell.Toast($"{s.Title} wasn't removed", ex.Message, ControlAppearance.Danger, SymbolRegular.ErrorCircle24);
+        }
+        finally
+        {
+            s.End();
+            await RefreshAsync();
+            await Shell.OnModelsChangedAsync();
+        }
+    }
+
+    private async void ReinstallAll_Click(object sender, RoutedEventArgs e)
+    {
+        if (!await Shell.ConfirmAsync("Reinstall everything?",
+                "This downloads and reinstalls the latest Ollama, Claude Code, Node.js and Qwen Code over the current installs.\n\n" +
+                "Your models, settings and history are kept. Running terminal sessions will be ended. Node.js may ask for admin once.",
+                "Reinstall")) return;
+        if (TerminalHub.Sessions.Any(x => x.IsRunning))
+            foreach (var x in TerminalHub.Sessions) TerminalHub.Remove(x);
+
+        _runningAll = true;
+        BtnAll.IsEnabled = BtnReinstall.IsEnabled = false;
+        Out("=== Reinstalling everything ===");
+        var failed = new List<string>();
+        async Task Do(SetupStep step, Func<Task> work)
+        {
+            step.Begin();
+            try { await work(); Out($"{step.Title}: done"); }
+            catch (Exception ex) { Out($"{step.Title} FAILED: {ex.Message}"); step.SetFailed(ex.Message); failed.Add(step.Title); }
+            finally { step.End(); }
+        }
+        try
+        {
+            await Do(_ollama, () => Installer.InstallOllamaAsync(Out, new Progress<double>(p => _ollama.Progress = p), CancellationToken.None));
+            await Do(_claude, () => Installer.InstallClaudeAsync(Out, CancellationToken.None));
+            await Do(_node, () => Installer.ReinstallNodeAsync(Out, CancellationToken.None));
+            await Do(_qwen, () => Installer.InstallQwenAsync(Out, CancellationToken.None));
+            Out(failed.Count == 0 ? "=== Reinstall finished ===" : "=== Reinstall finished with problems: " + string.Join(", ", failed) + " ===");
+            if (failed.Count == 0) Shell.Toast("Reinstalled", "Ollama, Claude Code, Node.js and Qwen Code are fresh", ControlAppearance.Success, SymbolRegular.CheckmarkCircle24);
+            else Shell.Toast("Some parts failed", string.Join(", ", failed) + " — see Installer output", ControlAppearance.Danger, SymbolRegular.ErrorCircle24);
+        }
+        finally
+        {
+            _runningAll = false;
+            await RefreshAsync();
+            await Shell.OnModelsChangedAsync();
+        }
+    }
+
     private async void All_Click(object sender, RoutedEventArgs e)
     {
         _runningAll = true;
@@ -218,8 +302,16 @@ public enum StepState { Missing, Done, Failed }
 public sealed class SetupStep(string title, string description, string buttonText) : Observable
 {
     private string _title = title, _description = description, _status = "", _buttonText = buttonText, _buttonTip = "";
+    private string _uninstallText = "Uninstall", _uninstallTip = "";
     private StepState _state = StepState.Missing;
-    private bool _busy, _canRun = true, _showButton = true;
+    private bool _busy, _canRun = true, _showButton = true, _showUninstall;
+
+    public string UninstallText { get => _uninstallText; set => Set(ref _uninstallText, value); }
+    public string UninstallTip { get => _uninstallTip; set => Set(ref _uninstallTip, value); }
+    public bool ShowUninstall { get => _showUninstall; set => Set(ref _showUninstall, value); }
+
+    public void OfferUninstall(string text, string tip) { UninstallText = text; UninstallTip = tip; ShowUninstall = true; }
+    public void NoUninstall() => ShowUninstall = false;
     private double _progress;
     private bool _showProgress;
 

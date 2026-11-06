@@ -60,7 +60,16 @@
                      ToolTip="Install, choose and uninstall AI models" />
           <ui:Button x:Name="NavSetup" Content="Setup" Icon="{ui:SymbolIcon Wrench24}" Tag="setup" Click="Nav_Click"
                      HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Padding="12,9" Margin="0,0,0,4" BorderThickness="0"
-                     ToolTip="Install everything needed on this PC: Ollama, a model, Claude Code, Node.js, Qwen Code" />
+                     ToolTip="Install, uninstall or reinstall everything needed on this PC: Ollama, a model, Claude Code, Node.js, Qwen Code" />
+          <ui:Button x:Name="NavSystem" Content="System" Icon="{ui:SymbolIcon Board24}" Tag="system" Click="Nav_Click"
+                     HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Padding="12,9" Margin="0,0,0,4" BorderThickness="0"
+                     ToolTip="What this PC is and what it's doing: CPU, memory, GPU, which apps use GPU memory, busiest processes" />
+          <ui:Button x:Name="NavExtensions" Content="Extensions" Icon="{ui:SymbolIcon PuzzlePiece24}" Tag="extensions" Click="Nav_Click"
+                     HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Padding="12,9" Margin="0,0,0,4" BorderThickness="0"
+                     ToolTip="Qwen Code extensions, skills and plugins from marketplaces" />
+          <ui:Button x:Name="NavSettings" Content="Settings" Icon="{ui:SymbolIcon Settings24}" Tag="settings" Click="Nav_Click"
+                     HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Padding="12,9" Margin="0,0,0,4" BorderThickness="0"
+                     ToolTip="Colours, terminal theme, idle notifications, model storage folder, the phone web portal" />
         </StackPanel>
       </DockPanel>
 
@@ -68,6 +77,9 @@
       <v:ModelsView x:Name="ModelsPage" Grid.Column="1" Visibility="Collapsed" />
       <v:TerminalsView x:Name="TerminalsPage" Grid.Column="1" Visibility="Collapsed" />
       <v:SetupView x:Name="SetupPage" Grid.Column="1" Visibility="Collapsed" />
+      <v:SystemView x:Name="SystemPage" Grid.Column="1" Visibility="Collapsed" />
+      <v:ExtensionsView x:Name="ExtensionsPage" Grid.Column="1" Visibility="Collapsed" />
+      <v:SettingsView x:Name="SettingsPage" Grid.Column="1" Visibility="Collapsed" />
 
       <ScrollViewer x:Name="DashboardPage" Grid.Column="1" VerticalScrollBarVisibility="Auto">
         <StackPanel Margin="20,4,28,28">
@@ -136,16 +148,26 @@
                 <TextBlock x:Name="GpuExtra" Grid.Column="1" Text="" FontSize="12" VerticalAlignment="Center"
                            Foreground="{DynamicResource TextFillColorSecondaryBrush}" ToolTip="Fan speed and current core clock, updated every 2 seconds" />
               </Grid>
-              <UniformGrid Columns="4" Height="165">
-                <c:ArcGauge x:Name="GTemp" Maximum="100" Warn="75" Danger="85" Caption="Temperature" Margin="10"
+              <UniformGrid Columns="6" Height="150">
+                <c:ArcGauge x:Name="GTemp" Maximum="100" Warn="75" Danger="85" Caption="GPU temp" Margin="6"
                             ToolTip="GPU core temperature. Green under 75 °C, amber 75–85 °C, red above 85 °C." />
-                <c:ArcGauge x:Name="GLoad" Maximum="100" Caption="Load" Margin="10"
+                <c:ArcGauge x:Name="GLoad" Maximum="100" Caption="GPU load" Margin="6"
                             ToolTip="How busy the GPU is. High while a model is generating, near zero when idle." />
-                <c:ArcGauge x:Name="GPower" Maximum="450" Caption="Power" Margin="10"
+                <c:ArcGauge x:Name="GPower" Maximum="450" Caption="Power" Margin="6"
                             ToolTip="Current power draw against the card's power limit" />
-                <c:ArcGauge x:Name="GVram" Maximum="24" Caption="VRAM" Margin="10"
+                <c:ArcGauge x:Name="GVram" Maximum="24" Caption="VRAM" Margin="6"
                             ToolTip="GPU memory in use. A loaded model must fit here to run at full speed." />
+                <c:ArcGauge x:Name="GCpu" Maximum="100" Warn="80" Danger="95" Caption="CPU" Margin="6"
+                            ToolTip="Total CPU usage. If this is high while a model runs, part of the model is on the CPU (slow)." />
+                <c:ArcGauge x:Name="GRam" Maximum="32" Caption="RAM" Margin="6"
+                            ToolTip="System memory in use. Models that don't fit in VRAM spill into RAM." />
               </UniformGrid>
+              <Border x:Name="VramWarnBox" Visibility="Collapsed" Margin="0,8,0,0" Padding="12,8" CornerRadius="6" Background="#22E5B454" BorderBrush="#66E5B454" BorderThickness="1">
+                <StackPanel Orientation="Horizontal">
+                  <ui:SymbolIcon Symbol="Warning20" Foreground="#E5B454" Margin="0,0,8,0" VerticalAlignment="Top" />
+                  <TextBlock x:Name="VramWarnText" TextWrapping="Wrap" Foreground="{DynamicResource TextFillColorPrimaryBrush}" MaxWidth="1000" />
+                </StackPanel>
+              </Border>
             </StackPanel>
           </ui:Card>
 
@@ -247,15 +269,20 @@
 
                 <Grid Margin="0,12,0,0">
                   <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="200" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="12" />
                     <ColumnDefinition Width="*" />
                   </Grid.ColumnDefinitions>
-                  <TextBlock Text="Open in" VerticalAlignment="Center" Margin="0,0,10,0" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
-                  <ComboBox x:Name="OpenIn" Grid.Column="1"
-                            ToolTip="Where sessions open: a tab inside this app (Terminals page), a Windows Terminal window, or a classic PowerShell window" />
-                  <ui:ToggleSwitch x:Name="SkipPerms" Grid.Column="2" Content="Skip permission prompts" Click="Skip_Click" Margin="20,0,0,0"
-                                   ToolTip="Let the agent edit files and run commands without asking (Claude: --dangerously-skip-permissions, Qwen: --yolo). Only use in folders you trust." />
+                  <StackPanel>
+                    <TextBlock Text="Open in" Style="{StaticResource SectionLabel}" />
+                    <ComboBox x:Name="OpenIn"
+                              ToolTip="Where sessions open: a tab inside this app (Terminals page), a Windows Terminal window, or a classic PowerShell window" />
+                  </StackPanel>
+                  <StackPanel Grid.Column="2">
+                    <TextBlock Text="Permissions" Style="{StaticResource SectionLabel}" />
+                    <ComboBox x:Name="Perms" SelectionChanged="Perms_Changed" DisplayMemberPath="Label"
+                              ToolTip="What the agent may do without asking. Claude Code's 'auto' mode isn't offered: its safety check runs on Anthropic's servers and can't work with a local model." />
+                  </StackPanel>
                 </Grid>
 
                 <UniformGrid Columns="3" Margin="-4,18,-4,0">

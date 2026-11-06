@@ -105,6 +105,15 @@ public sealed class DownloadItem : Observable
     public bool Indeterminate { get => _indeterminate; set => Set(ref _indeterminate, value); }
 }
 
+public sealed class PortalDevice
+{
+    public string TokenHash { get; set; } = "";
+    public string Name { get; set; } = "";
+    public string Address { get; set; } = "";
+    public DateTime Created { get; set; }
+    public DateTime LastSeen { get; set; }
+}
+
 public sealed class AppConfig
 {
     public string MainModel { get; set; } = "";
@@ -112,15 +121,54 @@ public sealed class AppConfig
     public string Context { get; set; } = "64K";
     public string WorkDir { get; set; } = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
     public string OpenIn { get; set; } = "This app";
+    /// <summary>Legacy (≤1.3): replaced by <see cref="Permissions"/>.</summary>
     public bool SkipPermissions { get; set; }
+    /// <summary>Permission mode for launched agents: ask | edits | plan | skip. Never Claude Code's "auto" (its safety check needs Anthropic's servers).</summary>
+    public string Permissions { get; set; } = "";
 
-    private static readonly string Dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Maison");
+    // Appearance
+    public string Accent { get; set; } = "Purple";
+    public string TerminalTheme { get; set; } = "maison";
+    public int TerminalFontSize { get; set; } = 14;
+
+    // Idle notifications
+    public bool IdleNotify { get; set; } = true;
+    public int IdleSeconds { get; set; } = 8;
+    public bool IdleSound { get; set; } = true;
+
+    // Model usage
+    public int StaleDays { get; set; } = 14;
+    public Dictionary<string, DateTime> ModelLastUsed { get; set; } = [];
+    public DateTime UsageTrackingSince { get; set; } = DateTime.Now;
+
+    // Web portal
+    public bool PortalEnabled { get; set; }
+    public int PortalPort { get; set; } = Random.Shared.Next(20000, 60000);
+    public bool PortalAllowInternet { get; set; }
+    public string PortalPasswordHash { get; set; } = "";
+    public string PortalCertThumbprint { get; set; } = "";
+    public List<PortalDevice> PortalDevices { get; set; } = [];
+
+    // MAISON_CONFIG_DIR lets the self-test use a throwaway config instead of the user's.
+    private static readonly string Dir = Environment.GetEnvironmentVariable("MAISON_CONFIG_DIR") is { Length: > 0 } d
+        ? d : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Maison");
     private static readonly string FilePath = Path.Combine(Dir, "config.json");
     private static readonly JsonSerializerOptions Json = new() { WriteIndented = true };
+    private static readonly object SaveLock = new();
 
     public static string Folder => Dir;
 
-    public static AppConfig Load()
+    /// <summary>The one shared config instance (the web portal and the UI both use it).</summary>
+    public static AppConfig Current { get; } = Load();
+
+    private static AppConfig Load()
+    {
+        var c = LoadFile();
+        if (c.Permissions.Length == 0) c.Permissions = c.SkipPermissions ? "skip" : "ask";
+        return c;
+    }
+
+    private static AppConfig LoadFile()
     {
         try
         {
@@ -140,11 +188,16 @@ public sealed class AppConfig
 
     public void Save()
     {
-        try
+        lock (SaveLock)
         {
-            Directory.CreateDirectory(Dir);
-            File.WriteAllText(FilePath, JsonSerializer.Serialize(this, Json));
+            try
+            {
+                Directory.CreateDirectory(Dir);
+                var tmp = FilePath + ".tmp";
+                File.WriteAllText(tmp, JsonSerializer.Serialize(this, Json));
+                File.Move(tmp, FilePath, overwrite: true);
+            }
+            catch { /* non-fatal */ }
         }
-        catch { /* non-fatal */ }
     }
 }

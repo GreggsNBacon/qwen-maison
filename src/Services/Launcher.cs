@@ -39,7 +39,23 @@ public static class Launcher
         ["DISABLE_PROMPT_CACHING"] = "1",
     };
 
-    public static string ClaudeCommand(bool skipPermissions) => skipPermissions ? "claude --dangerously-skip-permissions" : "claude";
+    /// <summary>maison permission choices → (label, Claude Code --permission-mode, Qwen Code --approval-mode, tooltip).</summary>
+    public static readonly (string Key, string Label, string Claude, string Qwen, string Tip)[] PermissionModes =
+    [
+        ("ask", "Ask each time", "manual", "default", "The agent asks before editing files or running commands."),
+        ("edits", "Accept edits", "acceptEdits", "auto-edit", "File edits are applied without asking; commands still ask."),
+        ("plan", "Plan only", "plan", "plan", "Read and plan only: no edits, no commands."),
+        ("skip", "Skip all prompts", "bypassPermissions", "yolo", "Everything runs without asking. Only use in a folder you don't mind changing."),
+    ];
+
+    public static (string Key, string Label, string Claude, string Qwen, string Tip) Mode(string key) =>
+        PermissionModes.FirstOrDefault(m => m.Key == key) is { Key: not null } m ? m : PermissionModes[0];
+
+    /// <summary>
+    /// Always passes an explicit mode: Claude Code's "auto" mode relies on a safety classifier on Anthropic's servers,
+    /// which can't be reached when requests go to Ollama ("Auto mode can't check actions in this session").
+    /// </summary>
+    public static string ClaudeCommand(string mode) => $"claude --permission-mode {Mode(mode).Claude}";
 
     public static Dictionary<string, string> QwenEnv(string model) => new()
     {
@@ -48,8 +64,8 @@ public static class Launcher
         ["OPENAI_MODEL"] = model,
     };
 
-    public static string QwenCommand(string model, bool yolo) =>
-        $"qwen --auth-type openai --openai-base-url {Q(OllamaClient.BaseUrl + "/v1")} --openai-api-key ollama -m {Q(model)}" + (yolo ? " --yolo" : "");
+    public static string QwenCommand(string model, string mode) =>
+        $"qwen --auth-type openai --openai-base-url {Q(OllamaClient.BaseUrl + "/v1")} --openai-api-key ollama -m {Q(model)} --approval-mode {Mode(mode).Qwen}";
 
     public static string ChatCommand(string model) => $"& {Q(SystemProbe.OllamaExe)} run {Q(model)}";
 
@@ -57,7 +73,7 @@ public static class Launcher
     public static string Q(string s) => "'" + s.Replace("'", "''") + "'";
 
     /// <summary>The copy-pasteable commands panel.</summary>
-    public static string CommandsText(string baseMain, string main, string fast, int ctx, bool skip)
+    public static string CommandsText(string baseMain, string main, string fast, int ctx, string skip)
     {
         var sb = new StringBuilder();
         sb.AppendLine("# Claude Code -> local Qwen via Ollama (only affects this PowerShell window)");

@@ -6,9 +6,11 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
+    <!-- WinForms only for the tray notification icon; its namespace is not imported globally (see below). -->
+    <UseWindowsForms>true</UseWindowsForms>
     <AssemblyName>maison</AssemblyName>
     <RootNamespace>Maison</RootNamespace>
-    <Version>1.3.0</Version>
+    <Version>0.0.1</Version>
     <Product>maison</Product>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>Assets\brand\maison.ico</ApplicationIcon>
@@ -24,6 +26,13 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Using Remove="System.Windows.Forms" />
+    <Using Remove="System.Drawing" />
+    <!-- Kestrel for the phone web portal (HTTPS + WebSockets) -->
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4314.35" />
     <PackageReference Include="WPF-UI" Version="4.3.0" />
   </ItemGroup>
@@ -34,6 +43,8 @@
     <EmbeddedResource Include="Assets\Repair-Ollama.ps1" LogicalName="Repair-Ollama.ps1" />
     <!-- xterm.js (MIT) for the in-app terminal; served offline from the exe -->
     <EmbeddedResource Include="Assets\terminal\*.js;Assets\terminal\*.css" LogicalName="terminal/%(Filename)%(Extension)" />
+    <!-- phone web portal pages -->
+    <EmbeddedResource Include="Assets\portal\*.html" LogicalName="portal/%(Filename)%(Extension)" />
   </ItemGroup>
 
 </Project>

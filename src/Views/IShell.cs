@@ -12,4 +12,8 @@ public interface IShell
     void UseModel(string name);
     Task OnModelsChangedAsync();
     void Navigate(string page);
+    /// <summary>Runs a PowerShell command in a new in-app terminal tab (PATH refreshed) and shows it.</summary>
+    Task RunInTerminalAsync(string title, string command);
+    /// <summary>Model name → when it was last used (launched or loaded).</summary>
+    IReadOnlyDictionary<string, DateTime> ModelLastUsed { get; }
 }

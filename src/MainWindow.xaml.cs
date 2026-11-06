@@ -21,24 +21,32 @@ namespace Maison;
 public partial class MainWindow : FluentWindow, IShell
 {
     private readonly ObservableCollection<StatusItem> _status = [];
-    private readonly AppConfig _config = AppConfig.Load();
+    private readonly AppConfig _config = AppConfig.Current;
     private readonly SnackbarService _snackbar = new();
     private readonly DispatcherTimer _autoRefresh = new() { Interval = TimeSpan.FromSeconds(10) };
-    private readonly DispatcherTimer _gpuTimer = new() { Interval = TimeSpan.FromSeconds(2) };
     private List<ModelInfo> _models = [];
     private List<LoadedModel> _loaded = [];
-    private bool _refreshing, _gpuBusy;
+    private bool _refreshing;
+    private StatsSnapshot? _stats;
+
+    /// <summary>The main window, for the web portal.</summary>
+    public static MainWindow? Instance { get; private set; }
     private bool _initializing = true;
     private string _page = "dashboard";
 
     public MainWindow()
     {
+        Instance = this;
         InitializeComponent();
         StatusList.ItemsSource = _status;
         _snackbar.SetSnackbarPresenter(Snackbar);
         ModelsPage.Shell = this;
         SetupPage.Shell = this;
-        VersionText.Text = "v" + (Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "1.0.0");
+        SystemPage.Shell = this;
+        ExtensionsPage.Shell = this;
+        SettingsPage.Shell = this;
+        VersionText.Text = "v" + AppInfo.Version;
+        Theming.ApplyAccent(_config.Accent);
 
         foreach (var k in Launcher.ContextSizes.Keys) Context.Items.Add(k);
         MainModel.Text = _config.MainModel;
@@ -48,7 +56,8 @@ public partial class MainWindow : FluentWindow, IShell
         foreach (var t in Launcher.Targets)
             if (t != Launcher.TargetTerminal || SystemProbe.HasWindowsTerminal) OpenIn.Items.Add(t);
         OpenIn.SelectedItem = OpenIn.Items.Contains(_config.OpenIn) ? _config.OpenIn : Launcher.TargetApp;
-        SkipPerms.IsChecked = _config.SkipPermissions;
+        Perms.ItemsSource = Launcher.PermissionModes.Select(m => new PermChoice(m.Key, m.Label, m.Tip)).ToList();
+        Perms.SelectedItem = ((List<PermChoice>)Perms.ItemsSource).FirstOrDefault(p => p.Key == _config.Permissions) ?? ((List<PermChoice>)Perms.ItemsSource)[0];
         TerminalsPage.Shell = this;
         TerminalsPage.WorkDirProvider = () => Directory.Exists(WorkDir.Text.Trim()) ? WorkDir.Text.Trim() : Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         TerminalsPage.SessionsChanged += () =>
@@ -60,14 +69,20 @@ public partial class MainWindow : FluentWindow, IShell
         UpdateCommands();
         Navigate("dashboard");
 
+        TerminalHub.Idle += s => Dispatcher.BeginInvoke(() => Notifier.Idle(this, s));
+        StatsService.Updated += s => Dispatcher.BeginInvoke(() => ShowStats(s));
+
         Loaded += async (_, _) =>
         {
+            StatsService.Start();
             await RefreshAsync();
-            await UpdateGpuAsync();
             _autoRefresh.Tick += async (_, _) => await RefreshAsync(quiet: true);
-            _gpuTimer.Tick += async (_, _) => await UpdateGpuAsync();
             _autoRefresh.Start();
-            _gpuTimer.Start();
+            if (_config.PortalEnabled && await SelfTestDir() is null)
+            {
+                try { await WebPortal.StartAsync(); Log($"Web portal on {string.Join(", ", WebPortal.Urls)}"); }
+                catch (Exception ex) { Log("Web portal could not start: " + ex.Message); }
+            }
 
             if (await SelfTestDir() is null && await SetupView.NeedsSetupAsync())
             {
@@ -90,8 +105,12 @@ public partial class MainWindow : FluentWindow, IShell
                 return;
             }
             TerminalsPage.CloseAll();
+            Notifier.Dispose();
+            await WebPortal.StopAsync();
         };
     }
+
+    private sealed record PermChoice(string Key, string Label, string Tip);
 
     private bool _confirmedClose;
 
@@ -112,17 +131,24 @@ public partial class MainWindow : FluentWindow, IShell
     public void Navigate(string page)
     {
         _page = page;
-        DashboardPage.Visibility = page == "dashboard" ? Visibility.Visible : Visibility.Collapsed;
-        ModelsPage.Visibility = page == "models" ? Visibility.Visible : Visibility.Collapsed;
-        SetupPage.Visibility = page == "setup" ? Visibility.Visible : Visibility.Collapsed;
-        TerminalsPage.Visibility = page == "terminals" ? Visibility.Visible : Visibility.Collapsed;
-        NavTerminals.Appearance = page == "terminals" ? ControlAppearance.Secondary : ControlAppearance.Transparent;
+        var pages = new (string Key, FrameworkElement View, Wpf.Ui.Controls.Button Nav)[]
+        {
+            ("dashboard", DashboardPage, NavDashboard), ("terminals", TerminalsPage, NavTerminals), ("models", ModelsPage, NavModels),
+            ("setup", SetupPage, NavSetup), ("system", SystemPage, NavSystem), ("extensions", ExtensionsPage, NavExtensions),
+            ("settings", SettingsPage, NavSettings),
+        };
+        foreach (var (key, view, nav) in pages)
+        {
+            view.Visibility = key == page ? Visibility.Visible : Visibility.Collapsed;
+            nav.Appearance = key == page ? ControlAppearance.Secondary : ControlAppearance.Transparent;
+        }
+        StatsService.Detailed = page == "system";
         if (page == "terminals") Dispatcher.BeginInvoke(() => TerminalsPage.Current?.FocusTerminal(), DispatcherPriority.Input);
-        NavDashboard.Appearance = page == "dashboard" ? ControlAppearance.Secondary : ControlAppearance.Transparent;
-        NavModels.Appearance = page == "models" ? ControlAppearance.Secondary : ControlAppearance.Transparent;
-        NavSetup.Appearance = page == "setup" ? ControlAppearance.Secondary : ControlAppearance.Transparent;
         if (page == "models") _ = ModelsPage.RefreshAsync();
         if (page == "setup") _ = SetupPage.RefreshAsync();
+        if (page == "system") SystemPage.Refresh();
+        if (page == "extensions") _ = ExtensionsPage.RefreshAsync();
+        if (page == "settings") SettingsPage.Refresh();
     }
 
     public void Log(string message)
@@ -151,7 +177,7 @@ public partial class MainWindow : FluentWindow, IShell
     private string BaseMain => MainModel.Text.Trim();
     private string BaseFast => string.IsNullOrWhiteSpace(FastModel.Text) ? BaseMain : FastModel.Text.Trim();
     private int ContextSize => Context.SelectedItem is string s && Launcher.ContextSizes.TryGetValue(s, out var n) ? n : 0;
-    private bool Skip => SkipPerms.IsChecked == true;
+    private string PermMode => (Perms.SelectedItem as PermChoice)?.Key ?? "ask";
 
     private void SaveConfig()
     {
@@ -160,7 +186,18 @@ public partial class MainWindow : FluentWindow, IShell
         _config.Context = Context.SelectedItem as string ?? "64K";
         _config.WorkDir = WorkDir.Text.Trim();
         _config.OpenIn = Target;
-        _config.SkipPermissions = Skip;
+        _config.Permissions = PermMode;
+        _config.SkipPermissions = PermMode == "skip";
+        _config.Save();
+    }
+
+    public string WorkingFolder => Directory.Exists(WorkDir.Text.Trim()) ? WorkDir.Text.Trim() : Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+
+    /// <summary>Records that a model was used now (drives the "stale" badge on the Models page).</summary>
+    public void MarkUsed(string model)
+    {
+        var baseName = System.Text.RegularExpressions.Regex.Replace(model, @"-ctx\d+k$", "");
+        _config.ModelLastUsed[baseName] = DateTime.Now;
         _config.Save();
     }
 
@@ -170,7 +207,7 @@ public partial class MainWindow : FluentWindow, IShell
         var baseMain = BaseMain.Length > 0 ? BaseMain : "<model>";
         var main = Launcher.EffectiveModel(baseMain, ContextSize);
         var fast = Launcher.EffectiveModel(BaseFast.Length > 0 ? BaseFast : baseMain, ContextSize);
-        Commands.Text = Launcher.CommandsText(baseMain, main, fast, ContextSize, Skip);
+        Commands.Text = Launcher.CommandsText(baseMain, main, fast, ContextSize, PermMode);
     }
 
     /// <summary>Returns the model to launch, creating the context variant when needed.</summary>
@@ -238,12 +275,17 @@ public partial class MainWindow : FluentWindow, IShell
                 : new() { Level = Health.Bad, Title = "Server not responding", Detail = SystemProbe.OllamaInstalled ? "Click Start." : "Install Ollama from the Setup page." });
 
             foreach (var m in _loaded)
+            {
+                MarkUsed(m.Name);   // a model sitting in memory is in use
                 items.Add(new()
                 {
                     Level = m.GpuPercent >= 100 ? Health.Ok : Health.Warn,
                     Title = $"Loaded: {m.Name}",
                     Detail = $"{m.SizeGb} GB · {m.GpuPercent}% GPU · context {m.Context:N0}" + (m.GpuPercent < 100 ? " — partly on CPU, will be slow; pick a smaller context" : ""),
                 });
+            }
+            if (_stats is not null && HealthAdvice.VramWarning(_stats) is { } vw)
+                items.Add(new() { Level = Health.Warn, Title = "Another app is crowding the GPU", Detail = vw });
 
             if (running)
             {
@@ -300,26 +342,41 @@ public partial class MainWindow : FluentWindow, IShell
         MLoadedSub.Text = top is null ? "loads on first request" : $"{top.GpuPercent}% GPU · ctx {top.Context:N0}";
     }
 
-    private async Task UpdateGpuAsync()
+    private void ShowStats(StatsSnapshot s)
     {
-        if (_gpuBusy || WindowState == WindowState.Minimized || _page != "dashboard") return;
-        _gpuBusy = true;
-        try
+        _stats = s;
+        if (WindowState == WindowState.Minimized || _page != "dashboard") return;
+
+        GCpu.Value = s.CpuPercent;
+        GCpu.Display = $"{s.CpuPercent:0}%";
+        GCpu.Caption = $"CPU · {s.Cores}C/{s.Threads}T";
+        GRam.Maximum = s.RamTotalGb > 0 ? s.RamTotalGb : 1;
+        GRam.Warn = GRam.Maximum * 0.85;
+        GRam.Danger = GRam.Maximum * 0.95;
+        GRam.Value = s.RamUsedGb;
+        GRam.Display = $"{s.RamUsedGb:0.0} GB";
+        GRam.Caption = $"RAM of {s.RamTotalGb:0} GB";
+
+        var warn = HealthAdvice.VramWarning(s);
+        VramWarnBox.Visibility = warn is null ? Visibility.Collapsed : Visibility.Visible;
+        VramWarnText.Text = warn ?? "";
+
+        var g = s.Gpu;
         {
-            var g = await SystemProbe.QueryGpuAsync();
             if (g is null)
             {
-                GpuTitle.Text = "GPU · no NVIDIA GPU detected (nvidia-smi unavailable)";
-                GpuExtra.Text = "";
+                GpuTitle.Text = "Machine · no NVIDIA GPU detected (nvidia-smi unavailable)";
+                GpuExtra.Text = s.CpuName;
                 foreach (var gauge in new[] { GTemp, GLoad, GPower, GVram }) { gauge.Value = 0; gauge.Display = "—"; }
                 return;
             }
-            GpuTitle.Text = "GPU · " + g.Name.Replace("NVIDIA GeForce ", "").Replace("NVIDIA ", "");
+            GpuTitle.Text = "Machine · " + g.Name.Replace("NVIDIA GeForce ", "").Replace("NVIDIA ", "") + " · " + ShortCpu(s.CpuName);
             GpuExtra.Text = string.Join("   ·   ", new[]
             {
                 g.FanPercent is { } f ? $"Fan {f}%" : null,
                 g.ClockMhz is { } mhz ? $"Core {mhz:N0} MHz" : null,
-            }.Where(s => s is not null));
+                s.OllamaCpuPercent >= 1 ? $"Ollama CPU {s.OllamaCpuPercent:0}%" : null,
+            }.Where(x => x is not null));
 
             GTemp.Value = g.TempC ?? 0;
             GTemp.Display = g.TempC is { } t ? $"{t:0}°C" : "—";
@@ -342,8 +399,11 @@ public partial class MainWindow : FluentWindow, IShell
             GVram.Display = $"{g.UsedGb:0.0} GB";
             GVram.Caption = $"VRAM of {g.TotalGb:0} GB";
         }
-        finally { _gpuBusy = false; }
     }
+
+    private static string ShortCpu(string name) =>
+        System.Text.RegularExpressions.Regex.Replace(name, @"\(R\)|\(TM\)|CPU|Processor|\d+-Core|@.*$", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase)
+            .Replace("  ", " ").Trim();
 
     private void UpdateModelLists(List<string> names)
     {
@@ -388,51 +448,55 @@ public partial class MainWindow : FluentWindow, IShell
 
     // ------------------------------------------------------------------ launch buttons
 
-    private async void Claude_Click(object sender, RoutedEventArgs e) => await WithBusy(async () =>
-    {
-        if (!await EnsureReadyAsync()) return;
-        if (SystemProbe.FindOnPath("claude") is null) { Toast("Claude Code is not installed", "Install it from the Setup page.", ControlAppearance.Caution, SymbolRegular.Warning24); return; }
-        var main = await ResolveAsync(BaseMain);
-        var fast = BaseFast == BaseMain ? main : await ResolveAsync(BaseFast);
-        await LaunchAsync(new Launcher.Session($"Claude Code · {main}", WorkDir.Text.Trim(), Launcher.ClaudeEnv(main, fast),
-            ["Remove-Item Env:ANTHROPIC_API_KEY -ErrorAction SilentlyContinue"], Launcher.ClaudeCommand(Skip)), SymbolRegular.Sparkle24, "Claude Code", main);
-    });
+    private async void Claude_Click(object sender, RoutedEventArgs e) => await WithBusy(() => LaunchKindAsync("claude", Target));
+    private async void Qwen_Click(object sender, RoutedEventArgs e) => await WithBusy(() => LaunchKindAsync("qwen", Target));
+    private async void Chat_Click(object sender, RoutedEventArgs e) => await WithBusy(() => LaunchKindAsync("chat", Target));
 
-    private async void Qwen_Click(object sender, RoutedEventArgs e) => await WithBusy(async () =>
+    /// <summary>Builds and launches a Claude Code / Qwen Code / Chat session with the current Dashboard selection.</summary>
+    public async Task<TermSession?> LaunchKindAsync(string kind, string target)
     {
-        if (!await EnsureReadyAsync()) return;
-        if (SystemProbe.FindOnPath("qwen") is null) { Toast("Qwen Code is not installed", "Install it from the Setup page.", ControlAppearance.Caution, SymbolRegular.Warning24); return; }
+        if (kind == "shell")
+        {
+            var v = await TerminalsPage.OpenAsync(new Launcher.Session("PowerShell", WorkingFolder, null, null, "Get-Location | Out-Null"), "shell");
+            return v.Session;
+        }
+        if (!await EnsureReadyAsync()) return null;
+        if (kind == "claude" && SystemProbe.FindOnPath("claude") is null) { Toast("Claude Code is not installed", "Install it from the Setup page.", ControlAppearance.Caution, SymbolRegular.Warning24); return null; }
+        if (kind == "qwen" && SystemProbe.FindOnPath("qwen") is null) { Toast("Qwen Code is not installed", "Install it from the Setup page.", ControlAppearance.Caution, SymbolRegular.Warning24); return null; }
         var main = await ResolveAsync(BaseMain);
-        await LaunchAsync(new Launcher.Session($"Qwen Code · {main}", WorkDir.Text.Trim(), Launcher.QwenEnv(main), null, Launcher.QwenCommand(main, Skip)),
-            SymbolRegular.Code24, "Qwen Code", main);
-    });
-
-    private async void Chat_Click(object sender, RoutedEventArgs e) => await WithBusy(async () =>
-    {
-        if (!await EnsureReadyAsync()) return;
-        var main = await ResolveAsync(BaseMain);
-        await LaunchAsync(new Launcher.Session($"Chat · {main}", WorkDir.Text.Trim(), null, null, Launcher.ChatCommand(main)), SymbolRegular.Chat24, "Chat", main);
-    });
+        Launcher.Session spec = kind switch
+        {
+            "claude" => new($"Claude Code · {main}", WorkDir.Text.Trim(),
+                Launcher.ClaudeEnv(main, BaseFast == BaseMain ? main : await ResolveAsync(BaseFast)),
+                ["Remove-Item Env:ANTHROPIC_API_KEY -ErrorAction SilentlyContinue"], Launcher.ClaudeCommand(PermMode)),
+            "qwen" => new($"Qwen Code · {main}", WorkDir.Text.Trim(), Launcher.QwenEnv(main), null, Launcher.QwenCommand(main, PermMode)),
+            _ => new($"Chat · {main}", WorkDir.Text.Trim(), null, null, Launcher.ChatCommand(main)),
+        };
+        var what = kind switch { "claude" => "Claude Code", "qwen" => "Qwen Code", _ => "Chat" };
+        MarkUsed(BaseMain);
+        return (await LaunchAsync(spec, kind, what, main, target))?.Session;
+    }
 
     private string Target => OpenIn.SelectedItem as string ?? Launcher.TargetApp;
 
     /// <summary>Opens the session in an app tab, Windows Terminal or a PowerShell window, per "Open in".</summary>
-    private async Task<Controls.TerminalSession?> LaunchAsync(Launcher.Session session, SymbolRegular icon, string what, string model)
+    private async Task<Controls.TerminalViewer?> LaunchAsync(Launcher.Session session, string kind, string what, string model, string? target = null)
     {
+        target ??= Target;
         if (!Directory.Exists(session.WorkDir)) throw new DirectoryNotFoundException($"Working folder not found: {session.WorkDir}");
         SaveConfig();
-        Controls.TerminalSession? tab = null;
-        if (Target == Launcher.TargetApp)
+        Controls.TerminalViewer? tab = null;
+        if (target == Launcher.TargetApp)
         {
             Navigate("terminals");
-            tab = await TerminalsPage.OpenAsync(session, icon);
+            tab = await TerminalsPage.OpenAsync(session, kind);
         }
         else
         {
-            Launcher.OpenExternal(session, useWindowsTerminal: Target == Launcher.TargetTerminal);
+            Launcher.OpenExternal(session, useWindowsTerminal: target == Launcher.TargetTerminal);
             Toast($"{what} launched", $"{model} · {session.WorkDir}", ControlAppearance.Success, SymbolRegular.Rocket24);
         }
-        Log($"Launched {what} with {model} in {session.WorkDir} ({Target})");
+        Log($"Launched {what} with {model} in {session.WorkDir} ({target}, permissions: {Launcher.Mode(PermMode).Label})");
         return tab;
     }
 
@@ -512,7 +576,33 @@ public partial class MainWindow : FluentWindow, IShell
         Dispatcher.BeginInvoke(UpdateCommands, DispatcherPriority.Background);
 
     private void Selection_KeyUp(object sender, KeyEventArgs e) => UpdateCommands();
-    private void Skip_Click(object sender, RoutedEventArgs e) => UpdateCommands();
+
+    private void Perms_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        if (Perms.SelectedItem is PermChoice p) Perms.ToolTip = p.Tip + "\n\nClaude Code's 'auto' mode isn't offered: its safety check runs on Anthropic's servers and can't work with a local model.";
+        if (_initializing) return;
+        SaveConfig();
+        UpdateCommands();
+    }
+
+    public async Task RunInTerminalAsync(string title, string command)
+    {
+        Navigate("terminals");
+        await TerminalsPage.OpenAsync(new Launcher.Session(title, WorkingFolder, null, null, command), "shell");
+        Log($"{title}: {command}");
+    }
+
+    public IReadOnlyDictionary<string, DateTime> ModelLastUsed => _config.ModelLastUsed;
+
+    public void ApplyTerminalTheme() => TerminalsPage.ApplyTheme();
+    public void SelectSession(TermSession s) => TerminalsPage.Select(s);
+
+    public string CurrentStatusSummary => ServerPillText.Text;
+    public IReadOnlyList<StatusItem> StatusItems => _status.ToList();
+    public IReadOnlyList<LoadedModel> LoadedModels => _loaded;
+    public IReadOnlyList<ModelInfo> InstalledModels => _models;
+    public string SelectedContext => Context.SelectedItem as string ?? "";
+    public string SelectedPermissions => Launcher.Mode(PermMode).Label;
 
     private void Browse_Click(object sender, RoutedEventArgs e)
     {
@@ -566,9 +656,9 @@ public partial class MainWindow : FluentWindow, IShell
         var dir = await SelfTestDir();
         if (dir is null) return;
         Directory.CreateDirectory(dir);
-        await Task.Delay(2500);   // let gauges animate in
+        await Task.Delay(7000);   // first stats sample + gauge animation
         Snap(Path.Combine(dir, "dashboard.png"));
-        foreach (var page in new[] { "models", "setup" })
+        foreach (var page in new[] { "models", "setup", "system", "extensions", "settings", "terminals" })
         {
             Navigate(page);
             await Task.Delay(3000);
@@ -603,33 +693,72 @@ public partial class MainWindow : FluentWindow, IShell
         if (ti >= 0 && ti + 1 < args.Length && BaseMain.Length > 0)
         {
             var main = await ResolveAsync(BaseMain);
-            OpenIn.SelectedItem = Launcher.TargetApp;
-            var claude = await LaunchAsync(new Launcher.Session($"Claude Code · {main}", args[ti + 1], Launcher.ClaudeEnv(main, main),
-                ["Remove-Item Env:ANTHROPIC_API_KEY -ErrorAction SilentlyContinue"], Launcher.ClaudeCommand(false)), SymbolRegular.Sparkle24, "Claude Code", main);
+            var folder = args[ti + 1];
+            var claude = await LaunchAsync(new Launcher.Session($"Claude Code · {main}", folder, Launcher.ClaudeEnv(main, main),
+                ["Remove-Item Env:ANTHROPIC_API_KEY -ErrorAction SilentlyContinue"], Launcher.ClaudeCommand("ask")), "claude", "Claude Code", main, Launcher.TargetApp);
             await Task.Delay(15000);
-            if (claude is not null) await claude.CaptureAsync(Path.Combine(dir, "term-claude.png"));
+            string claudeScreen = "";
+            if (claude is not null) { await claude.CaptureAsync(Path.Combine(dir, "term-claude.png")); claudeScreen = await claude.ReadScreenAsync(); }
             Snap(Path.Combine(dir, "terminals.png"));
-            var qwen = await LaunchAsync(new Launcher.Session($"Qwen Code · {main}", args[ti + 1], Launcher.QwenEnv(main), null, Launcher.QwenCommand(main, false)),
-                SymbolRegular.Code24, "Qwen Code", main);
+            var qwen = await LaunchAsync(new Launcher.Session($"Qwen Code · {main}", folder, Launcher.QwenEnv(main), null, Launcher.QwenCommand(main, "ask")),
+                "qwen", "Qwen Code", main, Launcher.TargetApp);
             await Task.Delay(15000);
             if (qwen is not null) await qwen.CaptureAsync(Path.Combine(dir, "term-qwen.png"));
-            // Keyboard path: type into a plain PowerShell tab through xterm.js, then exit it.
-            var ps = await TerminalsPage.OpenAsync(new Launcher.Session("PowerShell", args[ti + 1], null, null, "Get-Location | Out-Null"), SymbolRegular.WindowConsole20);
+
+            // Keyboard path: type into a plain PowerShell tab through xterm.js.
+            var ps = await TerminalsPage.OpenAsync(new Launcher.Session("PowerShell", folder, null, null, "Get-Location | Out-Null"), "shell");
             await Task.Delay(4000);
             await ps.TypeAsync("Write-Output ('typed-' + (6*7))\r");
             await Task.Delay(2500);
             var screen = await ps.ReadScreenAsync();
+            var jsErrors = await ps.EvalAsync("JSON.stringify({ errs: window.__errs, term: typeof term, cols: typeof term === 'object' ? term.cols : -1 })");
+            termResult += "JS: " + jsErrors + " | ";
+
+            // Mirror: a pop-out window on the same session shows the same live output, and input from it reaches the shell.
+            var pop = new PopOutWindow(ps.Session);
+            pop.Show();
+            await Task.Delay(4000);
+            var mirrorHistory = (await pop.Viewer.ReadScreenAsync()).Contains("typed-42");
+            await pop.Viewer.TypeAsync("Write-Output ('mirror-' + (5*5))\r");
+            await Task.Delay(2500);
+            var mainSeesMirrorInput = (await ps.ReadScreenAsync()).Contains("mirror-25");
+            await pop.Viewer.CaptureAsync(Path.Combine(dir, "term-popout.png"));
+            pop.Close();
+
+            // Paste: one Ctrl+V pastes exactly once.
+            Clipboard.SetText("echo paste-once");
+            ps.FocusTerminal();
+            await ps.EvalAsync("document.querySelector('.xterm-helper-textarea').dispatchEvent(new KeyboardEvent('keydown', {key:'v', code:'KeyV', ctrlKey:true, bubbles:true}))");
+            await Task.Delay(1500);
+            var afterPaste = await ps.ReadScreenAsync();
+            int pastes = System.Text.RegularExpressions.Regex.Matches(afterPaste, "paste-once").Count;
+            await ps.TypeAsync("\x1b");   // clear the line
             await ps.CaptureAsync(Path.Combine(dir, "term-ps.png"));
+
             await ps.TypeAsync("exit\r");
             await Task.Delay(2500);
-            termResult = $"TERM: typedOutputSeen={screen.Contains("typed-42")} psEndedAfterExit={!ps.IsRunning} tabs={TerminalsPage.Count} running={TerminalsPage.RunningCount}";
+            termResult += $"TERM: claudeStarted={claudeScreen.Length > 50} claudeAutoModeWarning={claudeScreen.Contains("Auto mode")} typedOutputSeen={screen.Contains("typed-42")} " +
+                         $"mirrorShowsHistory={mirrorHistory} mirrorInputReachesShell={mainSeesMirrorInput} ctrlVPasteCount={pastes} " +
+                         $"psEndedAfterExit={!ps.IsRunning} tabs={TerminalsPage.Count} running={TerminalsPage.RunningCount}";
             TerminalsPage.CloseAll();
-            termResult += $" afterClose={TerminalsPage.Count}";
+            termResult += $" afterClose={TerminalsPage.Count} hubSessions={TerminalHub.Sessions.Count}";
         }
 
-        var lines = new List<string> { "STATUS:", pullResult, termResult };
+        // Optional: --portal <password> starts the web portal and exercises it over real HTTPS (use with MAISON_CONFIG_DIR).
+        var po = Array.IndexOf(args, "--portal");
+        var portalResult = "";
+        if (po >= 0 && po + 1 < args.Length)
+        {
+            try { portalResult = await Services.PortalSelfTest.RunAsync(args[po + 1], dir); }
+            catch (Exception ex) { portalResult = "PORTAL: exception " + ex; }
+        }
+
+        var lines = new List<string> { "STATUS:", pullResult, termResult, portalResult };
         lines.AddRange(_status.Select(s => $"[{s.Level}] {s.Title} | {s.Detail}"));
-        lines.Add($"GAUGES: temp={GTemp.Display} load={GLoad.Display} power={GPower.Display} vram={GVram.Display} | {GpuTitle.Text} | {GpuExtra.Text}");
+        lines.Add($"GAUGES: temp={GTemp.Display} load={GLoad.Display} power={GPower.Display} vram={GVram.Display} cpu={GCpu.Display} ram={GRam.Display} | {GpuTitle.Text} | {GpuExtra.Text}");
+        if (_stats is { } st)
+            lines.Add("VRAM USERS: " + string.Join(", ", st.VramUsers.Select(p => $"{p.Name} {p.VramGb:0.0}GB")) + $" | warning: {HealthAdvice.VramWarning(st) ?? "none"}");
+        lines.Add($"VERSION: {AppInfo.Version} | PERMS: {_config.Permissions} | ACCENT: {_config.Accent}");
         lines.Add($"MAIN: {MainModel.Text} | ITEMS: " + string.Join(", ", MainModel.Items.Cast<object>()));
         lines.Add("COMMANDS:\n" + Commands.Text);
         lines.Add("LOG:\n" + LogBox.Text);

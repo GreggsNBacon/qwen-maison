@@ -1,0 +1,123 @@
+<UserControl x:Class="Maison.Views.ExtensionsView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml">
+  <Grid Margin="20,4,28,20">
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto" />
+      <RowDefinition Height="Auto" />
+      <RowDefinition Height="*" />
+    </Grid.RowDefinitions>
+
+    <Grid Margin="0,0,0,12">
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="*" />
+        <ColumnDefinition Width="Auto" />
+      </Grid.ColumnDefinitions>
+      <StackPanel>
+        <TextBlock Text="Extensions" FontSize="28" FontWeight="SemiBold" Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+        <TextBlock TextWrapping="Wrap" FontSize="13.5" Margin="0,2,0,0" Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                   Text="Skills, commands, agents and MCP tools for Qwen Code. Qwen Code installs Claude Code marketplace plugins (converted automatically) and Gemini CLI extensions. Installs run in a terminal tab so you can answer any prompt." />
+      </StackPanel>
+      <ui:Button Grid.Column="1" Content="Refresh" Icon="{ui:SymbolIcon ArrowClockwise24}" VerticalAlignment="Top" Click="Refresh_Click"
+                 ToolTip="Re-read installed extensions and marketplace sources" />
+    </Grid>
+
+    <!-- Installed + sources -->
+    <Grid Grid.Row="1" Margin="0,0,0,12">
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="*" />
+        <ColumnDefinition Width="12" />
+        <ColumnDefinition Width="*" />
+      </Grid.ColumnDefinitions>
+      <ui:Card VerticalAlignment="Stretch" VerticalContentAlignment="Top">
+        <StackPanel>
+          <TextBlock Text="Installed in Qwen Code" FontSize="15" FontWeight="SemiBold" Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+          <TextBox x:Name="Installed" IsReadOnly="True" FontFamily="Cascadia Mono, Consolas" FontSize="12" Height="120" Margin="0,8,0,8"
+                   TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" />
+          <Grid>
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="*" />
+              <ColumnDefinition Width="Auto" />
+              <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <ui:TextBox x:Name="ExtName" PlaceholderText="Extension name" ToolTip="Name as shown in the list above" />
+            <ui:Button Grid.Column="1" Content="Update" Margin="8,0,0,0" Click="Update_Click" ToolTip="Update this extension (leave the name empty to update all)" />
+            <ui:Button Grid.Column="2" Content="Uninstall" Margin="8,0,0,0" Click="Uninstall_Click" ToolTip="Remove this extension from Qwen Code" />
+          </Grid>
+        </StackPanel>
+      </ui:Card>
+      <ui:Card Grid.Column="2" VerticalAlignment="Stretch" VerticalContentAlignment="Top">
+        <StackPanel>
+          <TextBlock Text="Install from anywhere" FontSize="15" FontWeight="SemiBold" Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+          <TextBlock TextWrapping="Wrap" FontSize="12" Margin="0,4,0,8" Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                     Text="A GitHub repo (owner/repo or URL) — e.g. a Gemini CLI extension — an npm package, or marketplace:plugin." />
+          <Grid>
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="*" />
+              <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <ui:TextBox x:Name="CustomSource" PlaceholderText="https://github.com/owner/repo" ToolTip="Anything 'qwen extensions install' accepts" />
+            <ui:Button Grid.Column="1" Content="Install" Appearance="Primary" Margin="8,0,0,0" Click="InstallCustom_Click" ToolTip="Install it in a terminal tab" />
+          </Grid>
+          <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+            <ui:HyperlinkButton Content="Browse Gemini CLI extensions" NavigateUri="https://geminicli.com/extensions/" ToolTip="Opens the Gemini CLI extension gallery in your browser; copy a repo URL back here" />
+            <ui:HyperlinkButton Content="Claude plugin docs" NavigateUri="https://code.claude.com/docs/en/discover-plugins" Margin="8,0,0,0" />
+          </StackPanel>
+          <TextBlock TextWrapping="Wrap" FontSize="11" Margin="0,8,0,0" Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                     Text="Extensions can run code on this PC with your permissions. Only install ones you trust." />
+        </StackPanel>
+      </ui:Card>
+    </Grid>
+
+    <!-- Marketplace browser -->
+    <ui:Card Grid.Row="2" VerticalAlignment="Stretch" VerticalContentAlignment="Stretch">
+      <Grid>
+        <Grid.RowDefinitions>
+          <RowDefinition Height="Auto" />
+          <RowDefinition Height="Auto" />
+          <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+        <Grid>
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="Auto" />
+          </Grid.ColumnDefinitions>
+          <TextBlock Text="Marketplace" FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,12,0" Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+          <ComboBox x:Name="Markets" Grid.Column="1" DisplayMemberPath="Title" SelectionChanged="Markets_Changed" MaxWidth="420" HorizontalAlignment="Left"
+                    ToolTip="Default marketplaces. Add any Claude-format marketplace by owner/repo." />
+          <StackPanel Grid.Column="2" Orientation="Horizontal">
+            <ui:TextBox x:Name="NewMarket" PlaceholderText="owner/repo" Width="200" ToolTip="A GitHub repo with .claude-plugin/marketplace.json" />
+            <ui:Button Content="Add" Margin="8,0,0,0" Click="AddMarket_Click" ToolTip="Add this marketplace to the list (and to Qwen Code's sources)" />
+          </StackPanel>
+        </Grid>
+        <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,8,0,8">
+          <TextBlock x:Name="MarketDesc" FontSize="12.5" TextWrapping="Wrap" Foreground="{DynamicResource TextFillColorSecondaryBrush}" MaxWidth="700" />
+          <ui:TextBox x:Name="Filter" PlaceholderText="Filter…" Width="220" Margin="16,0,0,0" TextChanged="Filter_Changed" Icon="{ui:SymbolIcon Search24}" />
+        </StackPanel>
+        <ListBox x:Name="PluginList" Grid.Row="2" ScrollViewer.HorizontalScrollBarVisibility="Disabled" Background="Transparent" BorderThickness="0">
+          <ListBox.ItemTemplate>
+            <DataTemplate>
+              <Grid Margin="0,4">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="*" />
+                  <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel>
+                  <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="{Binding Name}" FontWeight="SemiBold" Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+                    <TextBlock Text="{Binding Category}" FontSize="11" Margin="8,2,0,0" Foreground="{DynamicResource TextFillColorTertiaryBrush}" />
+                  </StackPanel>
+                  <TextBlock Text="{Binding Description}" FontSize="12" TextWrapping="Wrap" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                </StackPanel>
+                <ui:Button Grid.Column="1" Content="Install" Margin="12,0,0,0" VerticalAlignment="Center" Tag="{Binding}" Click="InstallPlugin_Click"
+                           ToolTip="Install into Qwen Code (runs in a terminal tab)" />
+              </Grid>
+            </DataTemplate>
+          </ListBox.ItemTemplate>
+        </ListBox>
+      </Grid>
+    </ui:Card>
+  </Grid>
+</UserControl>

@@ -2,35 +2,101 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml">
+  <UserControl.Resources>
+    <Style x:Key="Pill" TargetType="Border">
+      <Setter Property="Background" Value="{DynamicResource CardBackgroundFillColorDefaultBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource CardStrokeColorDefaultBrush}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="8" />
+      <Setter Property="Padding" Value="10,5" />
+      <Setter Property="Margin" Value="0,0,8,0" />
+    </Style>
+    <Style x:Key="PillLabel" TargetType="TextBlock">
+      <Setter Property="FontSize" Value="11" />
+      <Setter Property="Foreground" Value="{DynamicResource TextFillColorTertiaryBrush}" />
+    </Style>
+    <Style x:Key="PillValue" TargetType="TextBlock">
+      <Setter Property="FontSize" Value="13" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
+    </Style>
+  </UserControl.Resources>
   <Grid Margin="20,4,28,20">
     <Grid.RowDefinitions>
+      <RowDefinition Height="Auto" />
       <RowDefinition Height="Auto" />
       <RowDefinition Height="*" />
     </Grid.RowDefinitions>
 
-    <Grid Margin="0,0,0,12">
+    <Grid Margin="0,0,0,10">
       <Grid.ColumnDefinitions>
         <ColumnDefinition Width="*" />
         <ColumnDefinition Width="Auto" />
       </Grid.ColumnDefinitions>
       <StackPanel>
         <TextBlock Text="Terminals" FontSize="28" FontWeight="SemiBold" Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
-        <TextBlock Text="Sessions running inside the launcher · right-click pastes (or copies a selection) · Ctrl+Shift+C copies"
-                   FontSize="14" Margin="0,2,0,0" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+        <TextBlock Text="Ctrl+V or right-click pastes · select + right-click or Ctrl+Shift+C copies · a dot on a tab means that agent has gone idle"
+                   FontSize="13" Margin="0,2,0,0" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
       </StackPanel>
       <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
         <ui:Button Content="PowerShell" Icon="{ui:SymbolIcon WindowConsole20}" Click="NewShell_Click" Margin="0,0,8,0"
                    ToolTip="Open a plain PowerShell tab in the working folder (PATH refreshed, nothing else set)" />
         <ui:Button x:Name="BtnPopOut" Content="Pop out" Icon="{ui:SymbolIcon WindowNew24}" Click="PopOut_Click" Margin="0,0,8,0"
-                   ToolTip="Open the current tab's session in a separate Windows Terminal window instead (starts a fresh session there)" />
+                   ToolTip="Open a second window that mirrors this session live: same process, same screen. Type in either one. Closing the window keeps the session." />
         <ui:Button x:Name="BtnCloseTab" Content="Close tab" Icon="{ui:SymbolIcon Dismiss24}" Click="CloseCurrent_Click"
-                   ToolTip="End the current session and close its tab" />
+                   ToolTip="End the current session (and any pop-out mirrors of it) and close its tab" />
       </StackPanel>
     </Grid>
 
-    <TabControl x:Name="Tabs" Grid.Row="1" SelectionChanged="Tabs_SelectionChanged" />
+    <!-- Live machine stats -->
+    <WrapPanel Grid.Row="1" Margin="0,0,0,10" ToolTip="Live machine stats, refreshed every 2 seconds">
+      <Border Style="{StaticResource Pill}">
+        <StackPanel Orientation="Horizontal">
+          <TextBlock Text="GPU " Style="{StaticResource PillLabel}" VerticalAlignment="Center" />
+          <TextBlock x:Name="SGpu" Text="—" Style="{StaticResource PillValue}" />
+        </StackPanel>
+      </Border>
+      <Border Style="{StaticResource Pill}">
+        <StackPanel Orientation="Horizontal">
+          <TextBlock Text="TEMP " Style="{StaticResource PillLabel}" VerticalAlignment="Center" />
+          <TextBlock x:Name="STemp" Text="—" Style="{StaticResource PillValue}" />
+        </StackPanel>
+      </Border>
+      <Border Style="{StaticResource Pill}">
+        <StackPanel Orientation="Horizontal">
+          <TextBlock Text="VRAM " Style="{StaticResource PillLabel}" VerticalAlignment="Center" />
+          <TextBlock x:Name="SVram" Text="—" Style="{StaticResource PillValue}" />
+        </StackPanel>
+      </Border>
+      <Border Style="{StaticResource Pill}">
+        <StackPanel Orientation="Horizontal">
+          <TextBlock Text="CPU " Style="{StaticResource PillLabel}" VerticalAlignment="Center" />
+          <TextBlock x:Name="SCpu" Text="—" Style="{StaticResource PillValue}" />
+        </StackPanel>
+      </Border>
+      <Border Style="{StaticResource Pill}">
+        <StackPanel Orientation="Horizontal">
+          <TextBlock Text="RAM " Style="{StaticResource PillLabel}" VerticalAlignment="Center" />
+          <TextBlock x:Name="SRam" Text="—" Style="{StaticResource PillValue}" />
+        </StackPanel>
+      </Border>
+      <Border Style="{StaticResource Pill}" ToolTip="CPU and memory used by Ollama itself. High CPU here means the model doesn't fit on the GPU.">
+        <StackPanel Orientation="Horizontal">
+          <TextBlock Text="OLLAMA " Style="{StaticResource PillLabel}" VerticalAlignment="Center" />
+          <TextBlock x:Name="SOllama" Text="—" Style="{StaticResource PillValue}" />
+        </StackPanel>
+      </Border>
+      <Border x:Name="SWarnPill" Style="{StaticResource Pill}" Visibility="Collapsed" BorderBrush="#E5B454">
+        <StackPanel Orientation="Horizontal">
+          <ui:SymbolIcon Symbol="Warning16" Foreground="#E5B454" Margin="0,0,6,0" />
+          <TextBlock x:Name="SWarn" Text="" FontSize="12" Foreground="#E5B454" VerticalAlignment="Center" />
+        </StackPanel>
+      </Border>
+    </WrapPanel>
 
-    <StackPanel x:Name="EmptyState" Grid.Row="1" VerticalAlignment="Center" HorizontalAlignment="Center">
+    <TabControl x:Name="Tabs" Grid.Row="2" SelectionChanged="Tabs_SelectionChanged" />
+
+    <StackPanel x:Name="EmptyState" Grid.Row="2" VerticalAlignment="Center" HorizontalAlignment="Center">
       <ui:SymbolIcon Symbol="WindowConsole20" FontSize="48" HorizontalAlignment="Center" Foreground="{DynamicResource TextFillColorTertiaryBrush}" />
       <TextBlock Text="No sessions yet" FontSize="18" FontWeight="SemiBold" HorizontalAlignment="Center" Margin="0,10,0,4"
                  Foreground="{DynamicResource TextFillColorPrimaryBrush}" />

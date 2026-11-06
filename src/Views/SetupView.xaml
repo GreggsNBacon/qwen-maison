@@ -18,9 +18,13 @@
           <TextBlock Text="Everything needed to run Qwen locally on this PC. Safe to re-run: finished steps are skipped."
                      FontSize="14" Margin="0,2,0,0" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
         </StackPanel>
-        <ui:Button x:Name="BtnAll" Grid.Column="1" Appearance="Primary" Icon="{ui:SymbolIcon Rocket24}" Content="Set up everything"
-                   VerticalAlignment="Center" Padding="16,8" Click="All_Click"
-                   ToolTip="Run every unfinished step below in order: Ollama, the recommended model, Claude Code, Node.js and Qwen Code" />
+        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+          <ui:Button x:Name="BtnReinstall" Icon="{ui:SymbolIcon ArrowRepeatAll24}" Content="Reinstall everything" Padding="14,8" Margin="0,0,8,0" Click="ReinstallAll_Click"
+                     ToolTip="Reinstall Ollama, Claude Code, Node.js and Qwen Code from scratch (latest versions). Your models and settings are kept." />
+          <ui:Button x:Name="BtnAll" Appearance="Primary" Icon="{ui:SymbolIcon Rocket24}" Content="Set up everything"
+                     Padding="16,8" Click="All_Click"
+                     ToolTip="Run every unfinished step below in order: Ollama, the recommended model, Claude Code, Node.js and Qwen Code" />
+        </StackPanel>
       </Grid>
 
       <!-- System summary -->
@@ -83,9 +87,14 @@
                     <ProgressBar Value="{Binding Progress}" Maximum="100" Height="5" Margin="0,8,0,0" MaxWidth="520" HorizontalAlignment="Left" Width="520"
                                  Visibility="{Binding ShowProgress, Converter={StaticResource BoolToVis}}" />
                   </StackPanel>
-                  <ui:Button Grid.Column="2" Content="{Binding ButtonText}" VerticalAlignment="Center" MinWidth="110"
-                             Tag="{Binding}" Click="Step_Click" IsEnabled="{Binding CanRun}" ToolTip="{Binding ButtonTip}"
-                             Visibility="{Binding ShowButton, Converter={StaticResource BoolToVis}}" />
+                  <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                    <ui:Button Content="{Binding UninstallText}" MinWidth="96" Margin="0,0,8,0" Appearance="Transparent"
+                               Tag="{Binding}" Click="Uninstall_Click" IsEnabled="{Binding NotBusy}" ToolTip="{Binding UninstallTip}"
+                               Visibility="{Binding ShowUninstall, Converter={StaticResource BoolToVis}}" />
+                    <ui:Button Content="{Binding ButtonText}" MinWidth="110"
+                               Tag="{Binding}" Click="Step_Click" IsEnabled="{Binding CanRun}" ToolTip="{Binding ButtonTip}"
+                               Visibility="{Binding ShowButton, Converter={StaticResource BoolToVis}}" />
+                  </StackPanel>
                 </Grid>
               </Border>
             </DataTemplate>

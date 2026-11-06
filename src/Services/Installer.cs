@@ -92,6 +92,71 @@ public static class Installer
         log("Qwen Code installed: " + QwenPath);
     }
 
+    // ------------------------------------------------------------------ uninstall / reinstall
+
+    /// <summary>Runs Ollama's own uninstaller silently. Downloaded models (in the model folder) are kept.</summary>
+    public static async Task UninstallOllamaAsync(Action<string> log, CancellationToken ct)
+    {
+        var unins = Path.Combine(SystemProbe.OllamaDir, "unins000.exe");
+        if (!File.Exists(unins)) throw new InvalidOperationException("Ollama's uninstaller wasn't found — it may already be removed.");
+        log("Stopping Ollama…");
+        await SystemProbe.StopOllamaAsync();
+        log("Running the Ollama uninstaller…");
+        int code = await RunAsync(unins, ["/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART"], log, ct);
+        for (int i = 0; i < 20 && SystemProbe.OllamaInstalled; i++) await Task.Delay(500, ct);   // the uninstaller finishes in a child process
+        if (SystemProbe.OllamaInstalled) throw new InvalidOperationException($"Ollama is still installed (uninstaller exit {code}).");
+        log("Ollama removed. Your models are still in " + OllamaClient.ModelsDir);
+    }
+
+    /// <summary>Removes the native Claude Code install (program files only; ~/.claude settings and history are kept).</summary>
+    public static Task UninstallClaudeAsync(Action<string> log, CancellationToken ct)
+    {
+        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        var exe = Path.Combine(home, ".local", "bin", "claude.exe");
+        var data = Path.Combine(home, ".local", "share", "claude");
+        if (!File.Exists(exe) && !Directory.Exists(data))
+            throw new InvalidOperationException("No native Claude Code install found in ~/.local (it may have been installed another way, e.g. npm).");
+        try
+        {
+            if (File.Exists(exe)) { File.Delete(exe); log("Removed " + exe); }
+            if (Directory.Exists(data)) { Directory.Delete(data, recursive: true); log("Removed " + data); }
+        }
+        catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
+        {
+            throw new InvalidOperationException("Claude Code is running somewhere (a terminal, an editor or a background session). Close every Claude Code window and try again.");
+        }
+        log("Claude Code removed. Your settings in ~/.claude were kept.");
+        return Task.CompletedTask;
+    }
+
+    public static async Task UninstallNodeAsync(Action<string> log, CancellationToken ct)
+    {
+        if (!HasWinget) throw new InvalidOperationException("winget is not available — remove Node.js from Settings → Apps.");
+        log("Uninstalling Node.js LTS with winget (approve the Windows admin prompt if it appears)…");
+        int code = await RunAsync("winget", ["uninstall", "--id", "OpenJS.NodeJS.LTS", "-e", "--silent", "--accept-source-agreements"], log, ct);
+        if (NpmPath is not null) throw new InvalidOperationException($"Node.js is still installed (winget exit {code}). It may have been installed another way — remove it from Settings → Apps.");
+        log("Node.js removed.");
+    }
+
+    public static async Task UninstallQwenAsync(Action<string> log, CancellationToken ct)
+    {
+        var npm = NpmPath ?? throw new InvalidOperationException("npm not found, so Qwen Code can't be uninstalled through it.");
+        log("Uninstalling Qwen Code (npm uninstall -g @qwen-code/qwen-code)…");
+        int code = await RunAsync("cmd.exe", ["/d", "/c", npm, "uninstall", "-g", "@qwen-code/qwen-code"], log, ct);
+        if (QwenPath is not null) throw new InvalidOperationException($"Qwen Code is still installed (npm exit {code}). Close any running Qwen Code and try again.");
+        log("Qwen Code removed. Its settings in ~/.qwen were kept.");
+    }
+
+    /// <summary>Reinstalls Node.js over the top (winget --force).</summary>
+    public static async Task ReinstallNodeAsync(Action<string> log, CancellationToken ct)
+    {
+        if (!HasWinget) throw new InvalidOperationException("winget is not available.");
+        log("Reinstalling Node.js LTS with winget…");
+        await RunAsync("winget", ["install", "--id", "OpenJS.NodeJS.LTS", "-e", "--silent", "--force", "--accept-source-agreements", "--accept-package-agreements"], log, ct);
+        if (NpmPath is null) throw new InvalidOperationException("Node.js reinstall did not complete.");
+        log("Node.js reinstalled.");
+    }
+
     /// <summary>Runs a process hidden, streaming its output lines to <paramref name="log"/>. Uses the fresh PATH.</summary>
     public static async Task<int> RunAsync(string file, IEnumerable<string> args, Action<string> log, CancellationToken ct)
     {
