@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>mAIson — "AI under a roof" logo concepts</title>
+<style>
+  :root { --bg:#16171b; --card:#202127; --line:#2c2e36; --text:#ecedf0; --muted:#9ba1ad; --coral:#e8825f; --violet:#7c5cff; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font-family:"Segoe UI Variable Text","Segoe UI",sans-serif; }
+  main { max-width:1320px; margin:0 auto; padding:48px 40px 64px; }
+  h1 { font:600 34px "Segoe UI Variable Display","Segoe UI",sans-serif; margin:0 0 6px; }
+  h2 { font:600 22px "Segoe UI Variable Display","Segoe UI",sans-serif; margin:44px 0 6px; }
+  p.lead { color:var(--muted); margin:0; font-size:15px; max-width:900px; line-height:1.5; }
+  .grid { display:grid; gap:18px; margin-top:18px; }
+  .g3 { grid-template-columns:repeat(3,1fr); } .g2 { grid-template-columns:repeat(2,1fr); }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:22px; }
+  .card h3 { margin:14px 0 4px; font:600 16px "Segoe UI Variable Display","Segoe UI",sans-serif; }
+  .card p { margin:0; color:var(--muted); font-size:13.5px; line-height:1.45; }
+  .stage { display:flex; align-items:center; justify-content:center; gap:28px; height:190px; border-radius:10px;
+           background:radial-gradient(120% 120% at 30% 20%,#262833 0%,#18191e 70%); }
+  .stage.light { background:#f4f2ee; }
+  .icons { display:flex; align-items:flex-end; gap:14px; }
+  .lockup { display:flex; align-items:center; gap:16px; }
+  .wm { font:600 54px/1 "Segoe UI Variable Display","Segoe UI",sans-serif; letter-spacing:-0.01em; color:var(--text); }
+  .light .wm { color:#1d1e22; }
+  .wm .ai { font-weight:700; background:linear-gradient(100deg,var(--coral) 0%,#c76ad8 50%,var(--violet) 100%);
+            -webkit-background-clip:text; background-clip:text; color:transparent; }
+  .sub { font-size:13px; color:var(--muted); margin-top:8px; } .light .sub { color:#6b6f78; }
+  .taskbar { display:flex; align-items:center; gap:10px; background:#202020; border-radius:8px; padding:8px 14px; margin-top:12px; width:max-content; }
+  .taskbar span { width:4px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>“AI under a roof” — simple marks</h1>
+  <p class="lead">Just the letters with a roof over them. Each variant is drawn from simple strokes (no font needed), shown as a big icon and at
+     48 / 32 / 16 px. Wordmark is option <b>D</b> — lowercase <i>maison</i> with the <i>ai</i> in the gradient.</p>
+
+  <svg width="0" height="0" style="position:absolute">
+    <defs>
+      <linearGradient id="g" gradientUnits="userSpaceOnUse" x1="10" y1="10" x2="90" y2="90">
+        <stop offset="0" stop-color="#e8825f"/><stop offset=".5" stop-color="#c76ad8"/><stop offset="1" stop-color="#7c5cff"/>
+      </linearGradient>
+      <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#2a2c36"/><stop offset="1" stop-color="#1b1c22"/>
+      </linearGradient>
+
+      <!-- shared pieces -->
+      <path id="roof" d="M20 44 L50 18 L80 44"/>
+      <g id="AI">
+        <path d="M33 80 L44 52 L55 80"/>
+        <path d="M38 71 H50"/>
+        <path d="M67 52 V80"/>
+      </g>
+
+      <!-- 1. White AI, gradient roof -->
+      <symbol id="v1" viewBox="0 0 100 100">
+        <rect x="2" y="2" width="96" height="96" rx="22" fill="url(#tile)"/>
+        <use href="#roof" fill="none" stroke="url(#g)" stroke-width="7.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <use href="#AI" fill="none" stroke="#fff" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+      </symbol>
+
+      <!-- 2. Everything in the gradient -->
+      <symbol id="v2" viewBox="0 0 100 100">
+        <rect x="2" y="2" width="96" height="96" rx="22" fill="url(#tile)"/>
+        <g fill="none" stroke="url(#g)" stroke-linecap="round" stroke-linejoin="round">
+          <use href="#roof" stroke-width="7.5"/><use href="#AI" stroke-width="7"/>
+        </g>
+      </symbol>
+
+      <!-- 3. Serif I (can't be read as l) -->
+      <symbol id="v3" viewBox="0 0 100 100">
+        <rect x="2" y="2" width="96" height="96" rx="22" fill="url(#tile)"/>
+        <use href="#roof" fill="none" stroke="url(#g)" stroke-width="7.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <g fill="none" stroke="#fff" stroke-width="7" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M31 80 L42 52 L53 80"/><path d="M36 71 H48"/>
+          <path d="M67 52 V80"/><path d="M61 52 H73 M61 80 H73" stroke-width="6"/>
+        </g>
+      </symbol>
+
+      <!-- 4. Lowercase ai — matches wordmark D; the i's dot is the warm accent -->
+      <symbol id="v4" viewBox="0 0 100 100">
+        <rect x="2" y="2" width="96" height="96" rx="22" fill="url(#tile)"/>
+        <path d="M20 42 L50 17 L80 42" fill="none" stroke="url(#g)" stroke-width="7.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <g fill="none" stroke="#fff" stroke-width="7" stroke-linecap="round">
+          <circle cx="43" cy="68" r="10.5"/><path d="M53.5 57.5 V79"/><path d="M67 61 V79"/>
+        </g>
+        <circle cx="67" cy="50" r="4.6" fill="#e8825f"/>
+      </symbol>
+
+      <!-- 5. Roof with a chimney -->
+      <symbol id="v5" viewBox="0 0 100 100">
+        <rect x="2" y="2" width="96" height="96" rx="22" fill="url(#tile)"/>
+        <path d="M20 44 L50 18 L66.5 32.3 V22 H73 V38 L80 44" fill="none" stroke="url(#g)" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+        <use href="#AI" fill="none" stroke="#fff" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+      </symbol>
+
+      <!-- 6. Inverse: white on the gradient tile -->
+      <symbol id="v6" viewBox="0 0 100 100">
+        <rect x="2" y="2" width="96" height="96" rx="22" fill="url(#g)"/>
+        <g fill="none" stroke="#fff" stroke-linecap="round" stroke-linejoin="round">
+          <use href="#roof" stroke-width="7.5"/><use href="#AI" stroke-width="7"/>
+        </g>
+      </symbol>
+
+      <!-- 7. Lowercase ai, inverse -->
+      <symbol id="v7" viewBox="0 0 100 100">
+        <rect x="2" y="2" width="96" height="96" rx="22" fill="url(#g)"/>
+        <g fill="none" stroke="#fff" stroke-width="7" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M20 42 L50 17 L80 42" stroke-width="7.5"/>
+          <circle cx="43" cy="68" r="10.5"/><path d="M53.5 57.5 V79"/><path d="M67 61 V79"/>
+        </g>
+        <circle cx="67" cy="50" r="4.6" fill="#fff"/>
+      </symbol>
+
+      <!-- 8. No tile: bare mark for headers / light backgrounds -->
+      <symbol id="v8" viewBox="0 0 100 100">
+        <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+          <use href="#roof" stroke="url(#g)" stroke-width="8"/>
+          <use href="#AI" stroke="#1d1e22" stroke-width="7.5"/>
+        </g>
+      </symbol>
+
+      <!-- 9. Roof closes into a full outline around AI -->
+      <symbol id="v9" viewBox="0 0 100 100">
+        <rect x="2" y="2" width="96" height="96" rx="22" fill="url(#tile)"/>
+        <path d="M18 46 L50 17 L82 46 V86 H18 Z" fill="none" stroke="url(#g)" stroke-width="6" stroke-linejoin="round"/>
+        <g fill="none" stroke="#fff" stroke-width="6.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M33 78 L43 53 L53 78"/><path d="M37.5 70 H48.5"/><path d="M66 53 V78"/>
+        </g>
+      </symbol>
+    </defs>
+  </svg>
+
+  <h2>Variants</h2>
+  <div class="grid g3">
+    <div class="card"><div class="stage"><svg width="130" height="130"><use href="#v1"/></svg>
+      <div class="icons"><svg width="48" height="48"><use href="#v1"/></svg><svg width="32" height="32"><use href="#v1"/></svg><svg width="16" height="16"><use href="#v1"/></svg></div></div>
+      <h3>1 · Classic</h3><p>White AI, gradient roof, dark tile. The simplest reading of the idea.</p></div>
+
+    <div class="card"><div class="stage"><svg width="130" height="130"><use href="#v2"/></svg>
+      <div class="icons"><svg width="48" height="48"><use href="#v2"/></svg><svg width="32" height="32"><use href="#v2"/></svg><svg width="16" height="16"><use href="#v2"/></svg></div></div>
+      <h3>2 · All gradient</h3><p>Roof and letters share the gradient, so it reads as one shape. Softer, a little less contrast small.</p></div>
+
+    <div class="card"><div class="stage"><svg width="130" height="130"><use href="#v3"/></svg>
+      <div class="icons"><svg width="48" height="48"><use href="#v3"/></svg><svg width="32" height="32"><use href="#v3"/></svg><svg width="16" height="16"><use href="#v3"/></svg></div></div>
+      <h3>3 · Serif I</h3><p>Same as Classic but the I has caps, so it can never read as an l — also looks a bit like a little door frame.</p></div>
+
+    <div class="card"><div class="stage"><svg width="130" height="130"><use href="#v4"/></svg>
+      <div class="icons"><svg width="48" height="48"><use href="#v4"/></svg><svg width="32" height="32"><use href="#v4"/></svg><svg width="16" height="16"><use href="#v4"/></svg></div></div>
+      <h3>4 · Lowercase ai</h3><p>Matches wordmark D exactly: lowercase <i>ai</i> under the roof, with the i's dot as a warm coral light — like a lit window.</p></div>
+
+    <div class="card"><div class="stage"><svg width="130" height="130"><use href="#v5"/></svg>
+      <div class="icons"><svg width="48" height="48"><use href="#v5"/></svg><svg width="32" height="32"><use href="#v5"/></svg><svg width="16" height="16"><use href="#v5"/></svg></div></div>
+      <h3>5 · Chimney</h3><p>One small chimney makes it unmistakably a <i>house</i> roof rather than a caret/chevron.</p></div>
+
+    <div class="card"><div class="stage"><svg width="130" height="130"><use href="#v6"/></svg>
+      <div class="icons"><svg width="48" height="48"><use href="#v6"/></svg><svg width="32" height="32"><use href="#v6"/></svg><svg width="16" height="16"><use href="#v6"/></svg></div></div>
+      <h3>6 · Inverse</h3><p>White mark on the gradient tile. Boldest in a taskbar or Start menu.</p></div>
+
+    <div class="card"><div class="stage"><svg width="130" height="130"><use href="#v7"/></svg>
+      <div class="icons"><svg width="48" height="48"><use href="#v7"/></svg><svg width="32" height="32"><use href="#v7"/></svg><svg width="16" height="16"><use href="#v7"/></svg></div></div>
+      <h3>7 · Lowercase ai, inverse</h3><p>Variant 4 on the gradient tile.</p></div>
+
+    <div class="card"><div class="stage light"><svg width="130" height="130"><use href="#v8"/></svg>
+      <div class="icons"><svg width="48" height="48"><use href="#v8"/></svg><svg width="32" height="32"><use href="#v8"/></svg><svg width="16" height="16"><use href="#v8"/></svg></div></div>
+      <h3>8 · Bare mark</h3><p>No tile — for README headers, docs and light backgrounds.</p></div>
+
+    <div class="card"><div class="stage"><svg width="130" height="130"><use href="#v9"/></svg>
+      <div class="icons"><svg width="48" height="48"><use href="#v9"/></svg><svg width="32" height="32"><use href="#v9"/></svg><svg width="16" height="16"><use href="#v9"/></svg></div></div>
+      <h3>9 · Walls</h3><p>The roof continues into walls, putting AI fully inside the house. Slightly less minimal.</p></div>
+  </div>
+
+  <h2>With wordmark D</h2>
+  <div class="grid g2">
+    <div class="card"><div class="stage"><div class="lockup"><svg width="76" height="76"><use href="#v1"/></svg>
+      <div><div class="wm">m<span class="ai">ai</span>son</div><div class="sub">your AI, at home</div></div></div></div>
+      <h3>Classic + D</h3><p>Capital AI in the icon, lowercase in the name.</p></div>
+    <div class="card"><div class="stage"><div class="lockup"><svg width="76" height="76"><use href="#v4"/></svg>
+      <div><div class="wm">m<span class="ai">ai</span>son</div><div class="sub">your AI, at home</div></div></div></div>
+      <h3>Lowercase ai + D</h3><p>Icon and name use the same lowercase “ai” — the most consistent pair.</p></div>
+    <div class="card"><div class="stage"><div class="lockup"><svg width="76" height="76"><use href="#v6"/></svg>
+      <div><div class="wm">m<span class="ai">ai</span>son</div><div class="sub">your AI, at home</div></div></div></div>
+      <h3>Inverse + D</h3><p>Strong tile next to the gradient “ai”.</p></div>
+    <div class="card"><div class="stage light"><div class="lockup"><svg width="76" height="76"><use href="#v8"/></svg>
+      <div><div class="wm">m<span class="ai">ai</span>son</div><div class="sub">your AI, at home</div></div></div></div>
+      <h3>Bare mark + D (light)</h3><p>How a README header could look.</p></div>
+  </div>
+
+  <h2>In a taskbar</h2>
+  <div class="taskbar">
+    <svg width="28" height="28"><use href="#v1"/></svg><svg width="28" height="28"><use href="#v3"/></svg>
+    <svg width="28" height="28"><use href="#v4"/></svg><svg width="28" height="28"><use href="#v5"/></svg>
+    <svg width="28" height="28"><use href="#v6"/></svg><svg width="28" height="28"><use href="#v7"/></svg>
+  </div>
+  <p class="lead" style="margin-top:8px">Left to right: 1 Classic · 3 Serif I · 4 Lowercase ai · 5 Chimney · 6 Inverse · 7 Lowercase inverse</p>
+</main>
+</body>
+</html>
