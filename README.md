@@ -1,4 +1,4 @@
-﻿<p align="center">
+<p align="center">
   <picture>
     <source media="(prefers-color-scheme: light)" srcset="docs/logo-light.png">
     <img src="docs/logo-dark.png" alt="maison — the Qwen-tissential AI home" width="560">
@@ -8,12 +8,74 @@
 **maison** is a Windows app that sets up and runs AI models on your own GPU with [Ollama](https://ollama.com), and launches
 **Claude Code** or **Qwen Code** against them. It needs no API keys and makes no cloud calls, so everything stays at home.
 
-- **Run:** `dist\maison.exe`. It's one self-contained file, so you can copy it to any 64-bit Windows 10/11 PC without
-  installing .NET. On a fresh PC it opens on **Setup** and installs everything else for you.
-- **Build:** `cd src` then `dotnet publish -c Release -o ..\dist`
-- **Settings:** `%APPDATA%\Maison\config.json`. Settings from the older "Qwen Local Launcher" build are migrated automatically.
-
 ![Dashboard](docs/screenshot-dashboard.png)
+
+## Install
+
+### What you need
+- **Windows 10 or 11, 64-bit.**
+- **A graphics card with plenty of memory.** An NVIDIA GPU is recommended, and the GPU gauges only work on NVIDIA.
+  maison picks a model that fits your card:
+
+  | GPU memory (VRAM) | Model maison installs | Download |
+  |---|---|---|
+  | 24 GB (e.g. RTX 3090 / 4090) | qwen3.8:27b | ~18 GB |
+  | 10–16 GB | qwen3.5:9b | ~6.6 GB |
+  | 6–8 GB | qwen3.5:4b | ~3.3 GB |
+  | No GPU / under 6 GB | qwen3.5:4b or 2b on the CPU | ~3 GB (slow) |
+
+- **Free disk space:** about 2 GB for the tools, plus the model.
+- **Internet**, for the first setup only. After that everything runs offline on your PC.
+- No accounts, API keys or subscriptions.
+
+### 1. Download
+Go to the [latest release](https://github.com/GreggsNBacon/qwen-maison/releases/latest) and download **`maison.exe`**.
+It's a single self-contained file (no .NET install needed), so you can put it anywhere, e.g. your Desktop or `C:\Tools`.
+
+### 2. Run it
+Double-click `maison.exe`. The exe isn't code-signed, so Windows SmartScreen may say **"Windows protected your PC"**.
+Click **More info**, then **Run anyway**. This happens only the first time.
+
+> To check the download, compare its hash with the SHA-256 in the release notes:
+> `Get-FileHash .\maison.exe` in PowerShell.
+
+### 3. Press Start
+On a new PC maison opens in the **simple view**. Press **Start** and it installs everything, showing each step as it goes:
+
+1. **Ollama**, the engine that runs AI models (official installer, about 1.6 GB, no admin needed).
+2. **A Qwen model** sized for your GPU (the big download, see the table above).
+3. **Claude Code** (Anthropic's official installer).
+4. **Node.js LTS** through winget. Windows asks for permission once, so click **Yes**.
+5. **Qwen Code** (`npm install -g @qwen-code/qwen-code`).
+
+Steps already done on your PC are skipped. If one fails, press **Try again**, or **Show details** to see the installer output.
+
+### 4. Use it
+When it's ready you'll see a ✓ **Qwen is ready** and a Qwen Code terminal. Type what you want it to do.
+- **Change folder** picks the project Qwen works in.
+- Turn on **Advanced** (top right) for the full app: Claude Code, models, tabs, system stats, extensions, settings and the phone portal.
+
+Windows may ask whether maison can use the network. That's only needed for the optional phone portal; allow **Private networks** if you plan to use it.
+
+### Updating
+Download the newer `maison.exe` from [Releases](https://github.com/GreggsNBacon/qwen-maison/releases) and replace the old one.
+Your settings and models are kept.
+
+### Uninstalling
+1. *(Optional)* In **Advanced → Setup**, use **Uninstall** on the parts you no longer want (Ollama, Claude Code, Node.js, Qwen Code).
+2. Delete `maison.exe`, and the settings folder `%APPDATA%\Maison` if you want them gone too.
+3. Models live in Ollama's folder (`%USERPROFILE%\.ollama\models` unless you moved it in Settings). Uninstalling Ollama
+   doesn't always delete them, so remove that folder to get the disk space back.
+
+### Build from source
+You'll need the [.NET 10 SDK](https://dotnet.microsoft.com/download) on Windows.
+```powershell
+git clone https://github.com/GreggsNBacon/qwen-maison.git
+cd qwen-maison\src
+dotnet publish -c Release -o ..\dist
+..\dist\maison.exe
+```
+Settings live in `%APPDATA%\Maison\config.json`. Settings from the older "Qwen Local Launcher" build are migrated automatically.
 
 ## Pages
 
