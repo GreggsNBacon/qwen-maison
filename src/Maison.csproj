@@ -10,7 +10,7 @@
     <UseWindowsForms>true</UseWindowsForms>
     <AssemblyName>maison</AssemblyName>
     <RootNamespace>Maison</RootNamespace>
-    <Version>0.0.1</Version>
+    <Version>0.0.2</Version>
     <Product>maison</Product>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>Assets\brand\maison.ico</ApplicationIcon>
