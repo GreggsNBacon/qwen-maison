@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>maison — logo 4 in the wordmark font</title>
+<style>
+  :root { --bg:#16171b; --card:#202127; --line:#2c2e36; --text:#ecedf0; --muted:#9ba1ad; --coral:#e8825f; --violet:#7c5cff; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font-family:"Segoe UI Variable Text","Segoe UI",sans-serif; }
+  main { max-width:1320px; margin:0 auto; padding:48px 40px 64px; }
+  h1 { font:600 34px "Segoe UI Variable Display","Segoe UI",sans-serif; margin:0 0 6px; }
+  h2 { font:600 22px "Segoe UI Variable Display","Segoe UI",sans-serif; margin:40px 0 6px; }
+  p.lead { color:var(--muted); margin:0; font-size:15px; max-width:920px; line-height:1.5; }
+  .row { display:grid; gap:18px; margin-top:18px; }
+  .r2 { grid-template-columns:1fr 1fr; } .r3 { grid-template-columns:repeat(3,1fr); }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:22px; }
+  .card h3 { margin:14px 0 4px; font:600 16px "Segoe UI Variable Display","Segoe UI",sans-serif; }
+  .card p { margin:0; color:var(--muted); font-size:13.5px; line-height:1.45; }
+  .stage { display:flex; align-items:center; justify-content:center; gap:26px; min-height:200px; border-radius:10px; padding:20px;
+           background:radial-gradient(120% 120% at 30% 20%,#262833 0%,#18191e 70%); }
+  .stage.light { background:#f4f2ee; }
+  .sizes { display:flex; align-items:flex-end; gap:16px; }
+  .lockup { display:flex; align-items:center; gap:18px; }
+  .wm { font:600 58px/1 "Segoe UI Variable Display","Segoe UI",sans-serif; letter-spacing:-0.01em; color:var(--text); }
+  .light .wm { color:#1d1e22; }
+  .wm .ai { font-weight:700; background:linear-gradient(100deg,var(--coral) 0%,#c76ad8 50%,var(--violet) 100%);
+            -webkit-background-clip:text; background-clip:text; color:transparent; }
+  .tag { font:400 15px "Segoe UI Variable Text","Segoe UI",sans-serif; color:var(--muted); margin-top:9px; }
+  .light .tag { color:#6b6f78; }
+  #check { font:13px "Cascadia Mono",Consolas,monospace; color:var(--muted); margin-top:10px; }
+  .ok { color:#4cc38a; } .bad { color:#e5534b; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Logo 4 in the wordmark's font</h1>
+  <p class="lead">The icon's <i>ai</i> is now Segoe UI Variable Display Bold — the same face as <b>m<span style="color:var(--coral)">ai</span>son</b> (option D).
+     The i keeps its own dot, coloured coral, and the letters sit low enough that the dot never touches the roof (measured below).</p>
+
+  <svg width="0" height="0" style="position:absolute">
+    <defs>
+      <linearGradient id="g" gradientUnits="userSpaceOnUse" x1="10" y1="10" x2="90" y2="90">
+        <stop offset="0" stop-color="#e8825f"/><stop offset=".5" stop-color="#c76ad8"/><stop offset="1" stop-color="#7c5cff"/>
+      </linearGradient>
+      <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#2a2c36"/><stop offset="1" stop-color="#1b1c22"/>
+      </linearGradient>
+      <!-- Final mark -->
+      <symbol id="mark" viewBox="0 0 100 100">
+        <rect x="2" y="2" width="96" height="96" rx="22" fill="url(#tile)"/>
+        <path id="roof" d="M18 41 L50 15 L82 41" fill="none" stroke="url(#g)" stroke-width="7.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <text class="ai" x="50" y="83" text-anchor="middle" fill="#fff" font-family="Segoe UI Variable Display, Segoe UI" font-weight="700" font-size="58">a<tspan fill="#e8825f">i</tspan></text>
+        <text class="ai" x="50" y="83" text-anchor="middle" fill="#fff" font-family="Segoe UI Variable Display, Segoe UI" font-weight="700" font-size="58">a&#x131;</text>
+      </symbol>
+    </defs>
+  </svg>
+
+  <h2>Icon</h2>
+  <div class="row r2">
+    <div class="card">
+      <div class="stage">
+        <svg width="180" height="180"><use href="#mark"/></svg>
+        <div class="sizes">
+          <svg width="64" height="64"><use href="#mark"/></svg><svg width="48" height="48"><use href="#mark"/></svg>
+          <svg width="32" height="32"><use href="#mark"/></svg><svg width="24" height="24"><use href="#mark"/></svg><svg width="16" height="16"><use href="#mark"/></svg>
+        </div>
+      </div>
+      <h3>App icon · 180 / 64 / 48 / 32 / 24 / 16 px</h3>
+      <div id="check">measuring…</div>
+    </div>
+    <div class="card">
+      <div class="stage" style="padding:0">
+        <!-- 4x zoom of the critical corner, with the measured gap drawn in -->
+        <svg id="zoom" width="380" height="200" viewBox="26 10 56 44" preserveAspectRatio="xMidYMid meet"><use href="#mark" width="100" height="100"/></svg>
+      </div>
+      <h3>Close-up of the roof and dot</h3>
+      <p>Zoomed in on the roof and the i: the coral dot sits well under the roofline, with clear dark tile between them.</p>
+    </div>
+  </div>
+
+  <h2>With the wordmark</h2>
+  <div class="row r3">
+    <div class="card"><div class="stage"><div class="lockup"><svg width="78" height="78"><use href="#mark"/></svg>
+      <div><div class="wm">m<span class="ai">ai</span>son</div><div class="tag">qwentissentially yours</div></div></div></div>
+      <h3>qwentissentially yours</h3><p>Short and warm.</p></div>
+    <div class="card"><div class="stage"><div class="lockup"><svg width="78" height="78"><use href="#mark"/></svg>
+      <div><div class="wm">m<span class="ai">ai</span>son</div><div class="tag">the qwentissential AI home</div></div></div></div>
+      <h3>the qwentissential AI home</h3><p>Says what it is.</p></div>
+    <div class="card"><div class="stage"><div class="lockup"><svg width="78" height="78"><use href="#mark"/></svg>
+      <div><div class="wm">m<span class="ai">ai</span>son</div><div class="tag">qwentissentially local</div></div></div></div>
+      <h3>qwentissentially local</h3><p>Privacy angle.</p></div>
+  </div>
+  <div class="row r2">
+    <div class="card"><div class="stage light"><div class="lockup"><svg width="78" height="78"><use href="#mark"/></svg>
+      <div><div class="wm">m<span class="ai">ai</span>son</div><div class="tag">qwentissentially yours</div></div></div></div>
+      <h3>On light</h3><p>README / docs header.</p></div>
+    <div class="card"><div class="stage"><div class="lockup" style="gap:10px"><svg width="28" height="28"><use href="#mark"/></svg>
+      <div class="wm" style="font-size:17px">m<span class="ai">ai</span>son</div></div></div>
+      <h3>Title-bar size</h3><p>How it would sit in the app's window title bar.</p></div>
+  </div>
+</main>
+
+<script>
+  // Measure the real gap between the coral dot and the roof stroke, in icon units (icon = 100 × 100).
+  document.fonts.ready.then(() => requestAnimationFrame(() => {
+    const ctx = document.createElement("canvas").getContext("2d");
+    const SIZE = 58, BASE = 83;
+    ctx.font = `700 ${SIZE}px "Segoe UI Variable Display"`;
+    const total = ctx.measureText("aı").width, aAdv = ctx.measureText("a").width;
+    const i = ctx.measureText("i"), dl = ctx.measureText("ı");
+    const origin = 50 - total / 2 + aAdv;
+    const dotTop = BASE - i.actualBoundingBoxAscent;            // top of the i's dot
+    const stemTop = BASE - dl.actualBoundingBoxAscent;          // top of the stem (dot bottom is above this)
+    const xL = origin - i.actualBoundingBoxLeft, xR = origin + i.actualBoundingBoxRight;
+    // Roof right leg: from (50,15) to (82,41), stroke 7.5 → bottom edge offset by half-stroke perpendicular.
+    const slope = (41 - 15) / (82 - 50), half = 7.5 / 2, perp = half * Math.sqrt(1 + slope * slope);
+    const roofBottom = x => 15 + (x - 50) * slope + perp;      // y of roof underside at x (x ≥ 50)
+    // Worst case is the dot's left edge (roof is highest there for the right leg).
+    const worstX = Math.max(50, xL);
+    const gap = dotTop - roofBottom(worstX);
+    const el = document.getElementById("check");
+    el.innerHTML = `dot top y=${dotTop.toFixed(1)} · roof underside at dot y=${roofBottom(worstX).toFixed(1)} · ` +
+      `<span class="${gap >= 3 ? "ok" : "bad"}">gap ${gap.toFixed(1)} units (${(gap / 100 * 180).toFixed(1)} px at 180 px, ${(gap / 100 * 32).toFixed(1)} px at 32 px)</span>`;
+    document.title = "gap=" + gap.toFixed(2);
+  }));
+</script>
+</body>
+</html>
