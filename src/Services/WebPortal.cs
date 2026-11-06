@@ -79,6 +79,8 @@ public static class WebPortal
             var ip = ctx.Connection.RemoteIpAddress?.ToString() ?? "?";
             if (PortalAuth.LockedOut(ip) is { } wait)
                 return Results.Json(new { ok = false, error = $"Too many attempts. Try again in {Math.Ceiling(wait.TotalMinutes)} min." }, statusCode: 429);
+            // A login is tiny; refuse anything bigger before reading it.
+            if (ctx.Request.ContentLength is null or > 4096) return Results.StatusCode(413);
             LoginRequest? req;
             try { req = await JsonSerializer.DeserializeAsync<LoginRequest>(ctx.Request.Body, JsonOpts); }
             catch { return Results.BadRequest(); }
@@ -89,7 +91,7 @@ public static class WebPortal
                 return Results.Json(new { ok = false, error = "Wrong password." }, statusCode: 401);
             }
             PortalAuth.Succeeded(ip);
-            var name = string.IsNullOrWhiteSpace(req.Device) ? DeviceName(ctx) : req.Device.Trim();
+            var name = string.IsNullOrWhiteSpace(req.Device) ? DeviceName(ctx) : new string(req.Device.Trim().Where(ch => !char.IsControl(ch)).Take(40).ToArray());
             var token = PortalAuth.NewDevice(name, ip);
             ctx.Response.Cookies.Append(Cookie, token, new CookieOptions
             {

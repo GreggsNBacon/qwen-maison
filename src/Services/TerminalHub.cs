@@ -39,7 +39,10 @@ public sealed class TermSession : IDisposable
     public DateTime LastInput { get; private set; } = DateTime.MinValue;
     /// <summary>True when the agent went quiet after working on something the user asked.</summary>
     public bool IsIdle { get; private set; }
-    private bool _workingSinceInput;
+    // Idle notification: armed by a submitted request (Enter), fired once when the work it started goes quiet.
+    private bool _armed;
+    private DateTime _armedAt;
+    private long _workChars;
 
     /// <summary>Coalesced output chunks (background thread). Each chunk is a complete-ish frame.</summary>
     public event Action<TermSession, string>? Output;
@@ -161,7 +164,7 @@ public sealed class TermSession : IDisposable
         }
         LastOutput = DateTime.Now;
         if (IsIdle) { IsIdle = false; StateChanged?.Invoke(this); }
-        if (LastInput != DateTime.MinValue) _workingSinceInput = true;
+        if (_armed) _workChars += VisibleLength(text);
         TrackTitle(text);
     }
 
@@ -195,13 +198,21 @@ public sealed class TermSession : IDisposable
     private void CheckIdle()
     {
         var secs = Math.Max(3, AppConfig.Current.IdleSeconds);
-        if (!IsRunning || IsIdle || !_workingSinceInput) return;
+        if (!IsRunning || IsIdle || !_armed) return;
         if ((DateTime.Now - LastOutput).TotalSeconds < secs) return;
+        // Only real work counts: output kept coming for a few seconds after the request and amounted to something
+        // (a menu pick or a quick redraw after Enter is not "the AI finished").
+        bool worked = (LastOutput - _armedAt).TotalSeconds >= 3 && _workChars >= 200;
+        _armed = false;                       // one notification per request, never repeated by idle redraws
+        if (!worked) return;
         IsIdle = true;
-        _workingSinceInput = false;
         StateChanged?.Invoke(this);
         BecameIdle?.Invoke(this);
     }
+
+    // Output length without title updates (OSC) — Claude Code animates a spinner in the title even when idle.
+    private static readonly System.Text.RegularExpressions.Regex Osc = new(@"\x1b\][^\x07\x1b]*(\x07|\x1b\\)", System.Text.RegularExpressions.RegexOptions.Compiled);
+    private static int VisibleLength(string text) => text.IndexOf("\x1b]", StringComparison.Ordinal) < 0 ? text.Length : Osc.Replace(text, "").Length;
 
     /// <summary>Everything printed so far (for a viewer that just attached).</summary>
     public string History { get { lock (_lock) return _history.ToString(); } }
@@ -218,7 +229,7 @@ public sealed class TermSession : IDisposable
         {
             TakeControl(viewer);
             LastInput = DateTime.Now;
-            if (data.Contains('\r')) _workingSinceInput = false;   // a new request starts; output after this counts
+            if (data.Contains('\r')) { _armed = true; _armedAt = DateTime.Now; _workChars = 0; }   // a request was sent
             if (IsIdle) { IsIdle = false; StateChanged?.Invoke(this); }
         }
         _pty?.Write(data);

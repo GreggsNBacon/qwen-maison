@@ -142,7 +142,19 @@ public partial class MainWindow : FluentWindow, IShell
         foreach (var (key, view, nav) in pages)
         {
             view.Visibility = key == page ? Visibility.Visible : Visibility.Collapsed;
-            nav.Appearance = key == page ? ControlAppearance.Secondary : ControlAppearance.Transparent;
+            nav.Appearance = ControlAppearance.Transparent;
+            if (key == page)
+            {
+                nav.SetResourceReference(BackgroundProperty, "MaisonAccentSoftBrush");
+                nav.SetResourceReference(ForegroundProperty, "MaisonAccentTextBrush");
+                nav.FontWeight = FontWeights.SemiBold;
+            }
+            else
+            {
+                nav.ClearValue(BackgroundProperty);
+                nav.ClearValue(ForegroundProperty);
+                nav.ClearValue(FontWeightProperty);
+            }
         }
         StatsService.Detailed = page == "system";
         if (page == "terminals") Dispatcher.BeginInvoke(() => TerminalsPage.Current?.FocusTerminal(), DispatcherPriority.Input);
@@ -780,10 +792,29 @@ public partial class MainWindow : FluentWindow, IShell
             await ps.TypeAsync("\x1b");   // clear the line
             await ps.CaptureAsync(Path.Combine(dir, "term-ps.png"));
 
+            // Idle notification fires once per request, never for typing or idle redraws.
+            var shell = TerminalHub.Sessions.Last(s => s.Kind == "shell");
+            int idleEvents = 0;
+            shell.BecameIdle += _ => Interlocked.Increment(ref idleEvents);
+            var wait = TimeSpan.FromSeconds(Math.Max(3, _config.IdleSeconds) + 3);
+            await ps.TypeAsync("1..250 | % { 'working line ' + $_; Start-Sleep -Milliseconds 16 }\r");   // ~4 s of output
+            for (int i = 0; i < 60 && idleEvents == 0; i++) await Task.Delay(500);   // the work takes ~4-8 s, then the idle delay
+            await Task.Delay(wait);                                                    // nothing more should follow
+            int afterWork = idleEvents;
+            await ps.TypeAsync("x");                                                                      // typing only
+            await Task.Delay(wait);
+            int afterTyping = idleEvents;
+            await ps.TypeAsync("\x1b");                                                                   // clear the line
+            await Task.Delay(300);
+            await ps.TypeAsync("\r");                                                                     // empty Enter: quick prompt redraw
+            await Task.Delay(wait);
+            int afterQuickEnter = idleEvents;
+
             await ps.TypeAsync("exit\r");
             await Task.Delay(2500);
             termResult += $"TERM: claudeStarted={claudeScreen.Length > 50} claudeAutoModeWarning={claudeScreen.Contains("Auto mode")} typedOutputSeen={screen.Contains("typed-42")} " +
                          $"mirrorShowsHistory={mirrorHistory} mirrorInputReachesShell={mainSeesMirrorInput} ctrlVPasteCount={pastes} " +
+                         $"idleAfterWork={afterWork} idleAfterTyping={afterTyping} idleAfterQuickEnter={afterQuickEnter} " +
                          $"psEndedAfterExit={!ps.IsRunning} tabs={TerminalsPage.Count} running={TerminalsPage.RunningCount}";
             TerminalsPage.CloseAll();
             termResult += $" afterClose={TerminalsPage.Count} hubSessions={TerminalHub.Sessions.Count}";

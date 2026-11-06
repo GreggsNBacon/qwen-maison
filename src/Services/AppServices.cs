@@ -29,14 +29,28 @@ public static class Theming
     public static void ApplyAccent(string name)
     {
         var hex = Accents.FirstOrDefault(a => a.Name == name).Hex;
+        Color c;
         if (string.IsNullOrEmpty(hex))
         {
             ApplicationAccentColorManager.ApplySystemAccent();
-            return;
+            c = ApplicationAccentColorManager.SystemAccent;
         }
-        var c = (Color)ColorConverter.ConvertFromString(hex);
-        ApplicationAccentColorManager.Apply(c, ApplicationTheme.Dark, systemGlassColor: false);
+        else
+        {
+            c = (Color)ColorConverter.ConvertFromString(hex);
+            // Keep accent buttons close to the chosen colour (the default dark-theme shades wash it out to near-white).
+            ApplicationAccentColorManager.Apply(c, c, Mix(c, Colors.White, 0.12), Mix(c, Colors.White, 0.28));
+        }
+        // maison's own accent brushes: sidebar selection, tab underline, labels, icons, gauges.
+        var res = System.Windows.Application.Current.Resources;
+        res["MaisonAccentBrush"] = Frozen(c);
+        res["MaisonAccentSoftBrush"] = Frozen(Color.FromArgb(0x38, c.R, c.G, c.B));
+        res["MaisonAccentTextBrush"] = Frozen(Mix(c, Colors.White, 0.35));
     }
+
+    private static SolidColorBrush Frozen(Color c) { var b = new SolidColorBrush(c); b.Freeze(); return b; }
+    private static Color Mix(Color a, Color b, double t) =>
+        Color.FromRgb((byte)(a.R + (b.R - a.R) * t), (byte)(a.G + (b.G - a.G) * t), (byte)(a.B + (b.B - a.B) * t));
 }
 
 /// <summary>"This terminal is idle" notifications: tray balloon + taskbar flash when maison isn't in front, a snackbar when it is.</summary>

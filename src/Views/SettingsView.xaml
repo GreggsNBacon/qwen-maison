@@ -115,7 +115,7 @@
               <ui:PasswordBox x:Name="Pw1" PlaceholderText="New password" ToolTip="The one password the portal asks for. Stored only as a salted hash." />
               <ui:PasswordBox x:Name="Pw2" PlaceholderText="Repeat it" Margin="0,8,0,0" />
               <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
-                <ui:Button Content="Set password" Icon="{ui:SymbolIcon Key24}" Click="SetPassword_Click"
+                <ui:Button Content="Set password" Appearance="Primary" Icon="{ui:SymbolIcon Key24}" Click="SetPassword_Click"
                            ToolTip="Save the password. Changing it signs out every remembered device." />
                 <TextBlock x:Name="PwState" VerticalAlignment="Center" Margin="12,0,0,0" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
               </StackPanel>

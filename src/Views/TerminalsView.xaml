@@ -13,7 +13,7 @@
     </Style>
     <Style x:Key="PillLabel" TargetType="TextBlock">
       <Setter Property="FontSize" Value="11" />
-      <Setter Property="Foreground" Value="{DynamicResource TextFillColorTertiaryBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource MaisonAccentTextBrush}" />
     </Style>
     <Style x:Key="PillValue" TargetType="TextBlock">
       <Setter Property="FontSize" Value="13" />
@@ -39,7 +39,7 @@
                    FontSize="13" Margin="0,2,0,0" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
       </StackPanel>
       <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-        <ui:Button Content="PowerShell" Icon="{ui:SymbolIcon WindowConsole20}" Click="NewShell_Click" Margin="0,0,8,0"
+        <ui:Button Content="PowerShell" Appearance="Primary" Icon="{ui:SymbolIcon WindowConsole20}" Click="NewShell_Click" Margin="0,0,8,0"
                    ToolTip="Open a plain PowerShell tab in the working folder (PATH refreshed, nothing else set)" />
         <ui:Button x:Name="BtnPopOut" Content="Pop out" Icon="{ui:SymbolIcon WindowNew24}" Click="PopOut_Click" Margin="0,0,8,0"
                    ToolTip="Open a second window that mirrors this session live: same process, same screen. Type in either one. Closing the window keeps the session." />

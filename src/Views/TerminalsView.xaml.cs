@@ -83,13 +83,23 @@ public partial class TerminalsView : UserControl
             Padding = new Thickness(4), Margin = new Thickness(8, 0, -4, 0), BorderThickness = new Thickness(0),
             ToolTip = "End this session and close the tab",
         };
-        var header = new StackPanel { Orientation = Orientation.Horizontal };
-        header.Children.Add(new SymbolIcon(IconFor(session.Kind)) { Margin = new Thickness(0, 0, 6, 0), FontSize = 14 });
-        header.Children.Add(title);
-        header.Children.Add(idleDot);
-        header.Children.Add(close);
+        var row = new StackPanel { Orientation = Orientation.Horizontal };
+        var icon = new SymbolIcon(IconFor(session.Kind)) { Margin = new Thickness(0, 0, 6, 0), FontSize = 14 };
+        icon.SetResourceReference(ForegroundProperty, "MaisonAccentTextBrush");
+        row.Children.Add(icon);
+        row.Children.Add(title);
+        row.Children.Add(idleDot);
+        row.Children.Add(close);
 
-        var tab = new TabItem { Header = header, Content = viewer, ToolTip = $"{spec.Title}\n{spec.WorkDir}" };
+        var tab = new TabItem { Content = viewer, ToolTip = $"{spec.Title}\n{spec.WorkDir}" };
+        // Accent underline on the selected tab.
+        var underline = new Border { Height = 2, CornerRadius = new CornerRadius(1), Margin = new Thickness(0, 5, 0, -3), VerticalAlignment = VerticalAlignment.Bottom };
+        underline.SetResourceReference(Border.BackgroundProperty, "MaisonAccentBrush");
+        underline.SetBinding(VisibilityProperty, new System.Windows.Data.Binding(nameof(TabItem.IsSelected)) { Source = tab, Converter = new BooleanToVisibilityConverter() });
+        var header = new StackPanel();
+        header.Children.Add(row);
+        header.Children.Add(underline);
+        tab.Header = header;
         string lastTip = "";
         // Refresh only what changed: re-laying out the tab strip on every title tick made the terminal jitter.
         tab.Tag = (Action)(() =>

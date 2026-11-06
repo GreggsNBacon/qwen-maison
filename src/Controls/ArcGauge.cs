@@ -88,7 +88,9 @@ public sealed class ArcGauge : FrameworkElement
     {
         if (!double.IsNaN(Danger) && v >= Danger) return Color.FromRgb(0xE5, 0x53, 0x4B);
         if (!double.IsNaN(Warn) && v >= Warn) return Color.FromRgb(0xE5, 0xB4, 0x54);
-        return double.IsNaN(Warn) ? Color.FromRgb(0x6C, 0xA0, 0xDC) : Color.FromRgb(0x4C, 0xC3, 0x8A);
+        return double.IsNaN(Warn)
+            ? (TryFindResource("MaisonAccentBrush") as SolidColorBrush)?.Color ?? Color.FromRgb(0x6C, 0xA0, 0xDC)
+            : Color.FromRgb(0x4C, 0xC3, 0x8A);
     }
 
     private Brush Brush(string key, Color fallback) => TryFindResource(key) as Brush ?? new SolidColorBrush(fallback);

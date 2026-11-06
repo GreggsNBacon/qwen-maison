@@ -154,7 +154,7 @@ public static class PortalCert
         }
 
         using var rsa = RSA.Create(2048);
-        var req = new CertificateRequest($"CN=maison on {Environment.MachineName}", rsa, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+        var req = new CertificateRequest("CN=maison", rsa, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
         var san = new SubjectAlternativeNameBuilder();
         san.AddDnsName("localhost");
         san.AddDnsName(Environment.MachineName);
