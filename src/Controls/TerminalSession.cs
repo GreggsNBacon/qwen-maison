@@ -7,9 +7,9 @@ using System.Windows.Controls;
 using System.Windows.Threading;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.Wpf;
-using QwenLauncher.Services;
+using Maison.Services;
 
-namespace QwenLauncher.Controls;
+namespace Maison.Controls;
 
 /// <summary>
 /// One in-app terminal: xterm.js (in WebView2) wired to a ConPTY running PowerShell → Claude Code / Qwen Code / chat.
@@ -41,7 +41,7 @@ public sealed class TerminalSession : Grid, IDisposable
     public async Task StartAsync()
     {
         _env ??= CoreWebView2Environment.CreateAsync(null,
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "QwenLauncher", "WebView2"));
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Maison", "WebView2"));
         await _web.EnsureCoreWebView2Async(await _env);
         var s = _web.CoreWebView2.Settings;
         s.AreDefaultContextMenusEnabled = false;

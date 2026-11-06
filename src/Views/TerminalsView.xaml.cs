@@ -1,12 +1,12 @@
 using System.Windows;
 using System.Windows.Controls;
-using QwenLauncher.Controls;
-using QwenLauncher.Services;
+using Maison.Controls;
+using Maison.Services;
 using Wpf.Ui.Controls;
 using Button = Wpf.Ui.Controls.Button;
 using TextBlock = System.Windows.Controls.TextBlock;
 
-namespace QwenLauncher.Views;
+namespace Maison.Views;
 
 public partial class TerminalsView : UserControl
 {

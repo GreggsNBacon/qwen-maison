@@ -3,9 +3,9 @@ using System.IO;
 using System.Net.Http;
 using System.Net.Http.Json;
 using System.Text.Json;
-using QwenLauncher.Models;
+using Maison.Models;
 
-namespace QwenLauncher.Services;
+namespace Maison.Services;
 
 /// <summary>Thin client for the local Ollama REST API.</summary>
 public static class OllamaClient

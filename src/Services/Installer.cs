@@ -3,7 +3,7 @@ using System.IO;
 using System.Net.Http;
 using System.Text;
 
-namespace QwenLauncher.Services;
+namespace Maison.Services;
 
 /// <summary>
 /// Installs the pieces a fresh PC needs: Ollama, Claude Code, Node.js and Qwen Code.
@@ -23,7 +23,7 @@ public static class Installer
     /// <summary>Downloads OllamaSetup.exe (with progress) and runs it silently, then starts the server.</summary>
     public static async Task InstallOllamaAsync(Action<string> log, IProgress<double> progress, CancellationToken ct)
     {
-        var dir = Path.Combine(Path.GetTempPath(), "QwenLauncher");
+        var dir = Path.Combine(Path.GetTempPath(), "Maison");
         Directory.CreateDirectory(dir);
         var setup = Path.Combine(dir, "OllamaSetup.exe");
 

@@ -6,13 +6,14 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
-    <AssemblyName>QwenLauncher</AssemblyName>
-    <RootNamespace>QwenLauncher</RootNamespace>
-    <Version>1.2.0</Version>
-    <Product>Qwen Local Launcher</Product>
+    <AssemblyName>maison</AssemblyName>
+    <RootNamespace>Maison</RootNamespace>
+    <Version>1.3.0</Version>
+    <Product>maison</Product>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\brand\maison.ico</ApplicationIcon>
 
-    <!-- dotnet publish -> one self-contained QwenLauncher.exe: runs on any 64-bit Windows 10/11 PC, no .NET install needed -->
+    <!-- dotnet publish -> one self-contained Maison.exe: runs on any 64-bit Windows 10/11 PC, no .NET install needed -->
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <SelfContained>true</SelfContained>
     <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
@@ -28,6 +29,8 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- maison brand assets (generated from branding/maison-icon.svg) -->
+    <Resource Include="Assets\brand\maison.ico;Assets\brand\maison-256.png;Assets\brand\maison-32.png" />
     <EmbeddedResource Include="Assets\Repair-Ollama.ps1" LogicalName="Repair-Ollama.ps1" />
     <!-- xterm.js (MIT) for the in-app terminal; served offline from the exe -->
     <EmbeddedResource Include="Assets\terminal\*.js;Assets\terminal\*.css" LogicalName="terminal/%(Filename)%(Extension)" />

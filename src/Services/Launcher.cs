@@ -2,7 +2,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Text;
 
-namespace QwenLauncher.Services;
+namespace Maison.Services;
 
 /// <summary>
 /// Builds the per-window environment/commands for Claude Code, Qwen Code and plain chat,

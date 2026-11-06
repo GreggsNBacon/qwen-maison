@@ -1,6 +1,6 @@
 using Wpf.Ui.Controls;
 
-namespace QwenLauncher.Views;
+namespace Maison.Views;
 
 /// <summary>What the pages need from the main window.</summary>
 public interface IShell

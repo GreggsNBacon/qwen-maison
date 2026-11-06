@@ -2,9 +2,9 @@ using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Reflection;
-using QwenLauncher.Models;
+using Maison.Models;
 
-namespace QwenLauncher.Services;
+namespace Maison.Services;
 
 /// <summary>Local machine facts: Ollama install files, GPU, CLIs on PATH; plus start/stop/repair of Ollama.</summary>
 public static class SystemProbe
@@ -117,7 +117,7 @@ public static class SystemProbe
     /// <summary>Extracts the bundled Repair-Ollama.ps1 and runs it in a visible PowerShell window.</summary>
     public static void RunRepair()
     {
-        var dir = Path.Combine(Path.GetTempPath(), "QwenLauncher");
+        var dir = Path.Combine(Path.GetTempPath(), "Maison");
         Directory.CreateDirectory(dir);
         var script = Path.Combine(dir, "Repair-Ollama.ps1");
         using (var s = Assembly.GetExecutingAssembly().GetManifestResourceStream("Repair-Ollama.ps1")!)

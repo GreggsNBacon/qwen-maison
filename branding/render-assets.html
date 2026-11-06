@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<!-- Rasterisation sheet: headless Edge screenshots this page on a transparent background, then each tile is cropped out.
+     Row 1 (y=0): the icon natively rendered at 256,128,64,48,40,32,24,20,16 px, left to right with 8 px gaps.
+     Row 2 (y=272): README lockups, dark (x=0) and light (x=760), each 740 x 200. -->
+<html><head><meta charset="utf-8">
+<style>
+  html, body { margin:0; background:transparent; }
+  .ico { position:absolute; top:0; }
+  .lock { position:absolute; top:272px; width:740px; height:200px; display:flex; align-items:center; justify-content:center; gap:22px; border-radius:18px; }
+  .dark { left:0; background:#17181d; } .light { left:760px; background:#f6f4f0; }
+  .wm { font:600 84px/1 "Segoe UI Variable Display","Segoe UI",sans-serif; letter-spacing:-0.01em; color:#ecedf0; }
+  .light .wm { color:#1d1e22; }
+  .grad { font-weight:700; background:linear-gradient(100deg,#e8825f 0%,#c76ad8 50%,#7c5cff 100%); -webkit-background-clip:text; background-clip:text; color:transparent; }
+  .tag { font:400 22px "Segoe UI Variable Text","Segoe UI",sans-serif; color:#9ba1ad; margin-top:12px; }
+  .light .tag { color:#6b6f78; }
+  .tag b { font-weight:600; background:linear-gradient(100deg,#e8825f 0%,#c76ad8 60%,#7c5cff 100%); -webkit-background-clip:text; background-clip:text; color:transparent; }
+</style></head>
+<body>
+<script>
+  const sizes = [256,128,64,48,40,32,24,20,16];
+  let x = 0;
+  for (const s of sizes) {
+    const img = document.createElement("img");
+    img.src = "maison-icon.svg"; img.width = s; img.height = s; img.className = "ico"; img.style.left = x + "px";
+    document.body.appendChild(img);
+    x += s + 8;
+  }
+  for (const cls of ["dark","light"]) {
+    document.body.insertAdjacentHTML("beforeend",
+      `<div class="lock ${cls}"><img src="maison-icon.svg" width="120" height="120">
+        <div><div class="wm">m<span class="grad">ai</span>son</div><div class="tag">the <b>Qwen</b>-tissential AI home</div></div></div>`);
+  }
+</script>
+</body></html>

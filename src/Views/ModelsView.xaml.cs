@@ -5,11 +5,11 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
-using QwenLauncher.Models;
-using QwenLauncher.Services;
+using Maison.Models;
+using Maison.Services;
 using Wpf.Ui.Controls;
 
-namespace QwenLauncher.Views;
+namespace Maison.Views;
 
 public partial class ModelsView : UserControl
 {

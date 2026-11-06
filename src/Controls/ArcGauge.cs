@@ -3,7 +3,7 @@ using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 
-namespace QwenLauncher.Controls;
+namespace Maison.Controls;
 
 /// <summary>
 /// A 270° arc gauge with an animated needle-arc, centre value and caption.

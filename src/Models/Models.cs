@@ -5,7 +5,7 @@ using System.Text.Json;
 using System.Windows.Media;
 using Wpf.Ui.Controls;
 
-namespace QwenLauncher.Models;
+namespace Maison.Models;
 
 public sealed class ModelInfo
 {
@@ -114,7 +114,7 @@ public sealed class AppConfig
     public string OpenIn { get; set; } = "This app";
     public bool SkipPermissions { get; set; }
 
-    private static readonly string Dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "QwenLauncher");
+    private static readonly string Dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Maison");
     private static readonly string FilePath = Path.Combine(Dir, "config.json");
     private static readonly JsonSerializerOptions Json = new() { WriteIndented = true };
 
@@ -124,6 +124,13 @@ public sealed class AppConfig
     {
         try
         {
+            // One-time migration from the app's previous name.
+            var legacy = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "QwenLauncher", "config.json");
+            if (!File.Exists(FilePath) && File.Exists(legacy))
+            {
+                Directory.CreateDirectory(Dir);
+                File.Copy(legacy, FilePath);
+            }
             if (File.Exists(FilePath))
                 return JsonSerializer.Deserialize<AppConfig>(File.ReadAllText(FilePath)) ?? new AppConfig();
         }

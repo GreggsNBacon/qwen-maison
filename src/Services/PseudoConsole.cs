@@ -4,7 +4,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using Microsoft.Win32.SafeHandles;
 
-namespace QwenLauncher.Services;
+namespace Maison.Services;
 
 /// <summary>
 /// Runs a process attached to a Windows pseudo console (ConPTY), so full-screen TUIs such as
@@ -91,7 +91,7 @@ public sealed class PseudoConsole : IDisposable
         foreach (System.Collections.DictionaryEntry e in Environment.GetEnvironmentVariables())
             vars[(string)e.Key] = (string?)e.Value ?? "";
         vars["PATH"] = SystemProbe.FreshPath;
-        vars["TERM_PROGRAM"] = "QwenLauncher";
+        vars["TERM_PROGRAM"] = "Maison";
         vars["COLORTERM"] = "truecolor";
         if (overrides is not null) foreach (var (k, v) in overrides) vars[k] = v;
         var sb = new StringBuilder();

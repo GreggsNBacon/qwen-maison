@@ -1,4 +1,4 @@
-﻿using System.Collections.ObjectModel;
+using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.IO;
 using System.Reflection;
@@ -8,15 +8,15 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
-using QwenLauncher.Models;
-using QwenLauncher.Services;
-using QwenLauncher.Views;
+using Maison.Models;
+using Maison.Services;
+using Maison.Views;
 using Wpf.Ui;
 using Wpf.Ui.Controls;
 using MessageBox = Wpf.Ui.Controls.MessageBox;
 using MessageBoxResult = Wpf.Ui.Controls.MessageBoxResult;
 
-namespace QwenLauncher;
+namespace Maison;
 
 public partial class MainWindow : FluentWindow, IShell
 {
@@ -72,7 +72,7 @@ public partial class MainWindow : FluentWindow, IShell
             if (await SelfTestDir() is null && await SetupView.NeedsSetupAsync())
             {
                 Navigate("setup");
-                Toast("Welcome", "Let's get everything installed. Click 'Set up everything' to start.", ControlAppearance.Info, SymbolRegular.Rocket24);
+                Toast("Welcome to maison", "Let's get everything installed. Click 'Set up everything' to start.", ControlAppearance.Info, SymbolRegular.Rocket24);
             }
             await RunSelfTestIfRequestedAsync();
         };
@@ -537,7 +537,7 @@ public partial class MainWindow : FluentWindow, IShell
         try
         {
             var exe = Environment.ProcessPath!;
-            var lnk = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory), "Qwen Local Launcher.lnk");
+            var lnk = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory), "maison.lnk");
             var shellType = Type.GetTypeFromProgID("WScript.Shell")!;
             dynamic shell = Activator.CreateInstance(shellType)!;
             dynamic sc = shell.CreateShortcut(lnk);
@@ -560,7 +560,7 @@ public partial class MainWindow : FluentWindow, IShell
         return Task.FromResult(i >= 0 && i + 1 < args.Length ? args[i + 1] : null);
     }
 
-    /// <summary>QwenLauncher.exe --selftest &lt;dir&gt; : screenshots every page + dumps status, then exits.</summary>
+    /// <summary>Maison.exe --selftest &lt;dir&gt; : screenshots every page + dumps status, then exits.</summary>
     private async Task RunSelfTestIfRequestedAsync()
     {
         var dir = await SelfTestDir();

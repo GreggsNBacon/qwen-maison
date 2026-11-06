@@ -1,4 +1,4 @@
-namespace QwenLauncher.Services;
+namespace Maison.Services;
 
 public sealed record CatalogModel(string Tag, double SizeGb, string Title, string Description)
 {

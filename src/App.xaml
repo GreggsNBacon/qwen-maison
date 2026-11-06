@@ -1,4 +1,4 @@
-﻿<Application x:Class="QwenLauncher.App"
+<Application x:Class="Maison.App"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
@@ -10,6 +10,11 @@
         <ui:ControlsDictionary />
       </ResourceDictionary.MergedDictionaries>
 
+      <LinearGradientBrush x:Key="BrandGradient" StartPoint="0,0" EndPoint="1,0.3">
+        <GradientStop Offset="0" Color="#E8825F" />
+        <GradientStop Offset="0.5" Color="#C76AD8" />
+        <GradientStop Offset="1" Color="#7C5CFF" />
+      </LinearGradientBrush>
       <SolidColorBrush x:Key="ClaudeBrush" Color="#D97757" />
       <SolidColorBrush x:Key="QwenBrush" Color="#7C5CFF" />
 
