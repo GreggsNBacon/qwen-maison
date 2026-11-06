@@ -1,0 +1,31 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <AssemblyName>QwenLauncher</AssemblyName>
+    <RootNamespace>QwenLauncher</RootNamespace>
+    <Version>1.0.0</Version>
+    <Product>Qwen Local Launcher</Product>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+
+    <!-- dotnet publish -> one QwenLauncher.exe (needs the .NET 10 Desktop Runtime, already installed) -->
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>false</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <DebugType>embedded</DebugType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="WPF-UI" Version="4.3.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Assets\Repair-Ollama.ps1" LogicalName="Repair-Ollama.ps1" />
+  </ItemGroup>
+
+</Project>

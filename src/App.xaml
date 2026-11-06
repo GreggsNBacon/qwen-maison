@@ -1,0 +1,39 @@
+﻿<Application x:Class="QwenLauncher.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+             StartupUri="MainWindow.xaml">
+  <Application.Resources>
+    <ResourceDictionary>
+      <ResourceDictionary.MergedDictionaries>
+        <ui:ThemesDictionary Theme="Dark" />
+        <ui:ControlsDictionary />
+      </ResourceDictionary.MergedDictionaries>
+
+      <SolidColorBrush x:Key="ClaudeBrush" Color="#D97757" />
+      <SolidColorBrush x:Key="QwenBrush" Color="#7C5CFF" />
+
+      <Style x:Key="SectionLabel" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="Margin" Value="0,0,0,4" />
+        <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
+      </Style>
+      <Style x:Key="MetricLabel" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
+      </Style>
+      <Style x:Key="MetricValue" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="20" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Margin" Value="0,4,0,2" />
+        <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+        <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
+      </Style>
+      <Style x:Key="MetricSub" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+        <Setter Property="Foreground" Value="{DynamicResource TextFillColorTertiaryBrush}" />
+      </Style>
+    </ResourceDictionary>
+  </Application.Resources>
+</Application>

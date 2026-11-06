@@ -1,0 +1,249 @@
+﻿<ui:FluentWindow x:Class="QwenLauncher.MainWindow"
+                 xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                 xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                 xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+                 Title="Qwen Local Launcher"
+                 Width="1200" Height="860" MinWidth="1000" MinHeight="700"
+                 WindowStartupLocation="CenterScreen"
+                 ExtendsContentIntoTitleBar="True"
+                 WindowBackdropType="Mica"
+                 WindowCornerPreference="Round">
+  <Grid x:Name="Root">
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto" />
+      <RowDefinition Height="*" />
+    </Grid.RowDefinitions>
+
+    <ui:TitleBar Grid.Row="0" Title="Qwen Local Launcher">
+      <ui:TitleBar.Icon>
+        <ui:SymbolIcon Symbol="Bot24" />
+      </ui:TitleBar.Icon>
+    </ui:TitleBar>
+
+    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+      <StackPanel Margin="28,4,28,28">
+
+        <!-- Header -->
+        <Grid Margin="0,0,0,18">
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="Auto" />
+          </Grid.ColumnDefinitions>
+          <StackPanel>
+            <TextBlock Text="Local Qwen" FontSize="28" FontWeight="SemiBold" Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+            <TextBlock Text="Ollama health, and Claude Code / Qwen Code running on your own GPU"
+                       FontSize="14" Margin="0,2,0,0" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+          </StackPanel>
+          <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+            <Border x:Name="ServerPill" CornerRadius="12" Padding="12,5" Margin="0,0,10,0" Background="#33E5534B">
+              <StackPanel Orientation="Horizontal">
+                <Ellipse x:Name="ServerDot" Width="8" Height="8" Fill="#E5534B" VerticalAlignment="Center" />
+                <TextBlock x:Name="ServerPillText" Text="Checking..." Margin="8,0,0,0" FontSize="13" Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+              </StackPanel>
+            </Border>
+            <ui:Button x:Name="BtnRefresh" Content="Refresh" Icon="{ui:SymbolIcon ArrowClockwise24}" Click="Refresh_Click" />
+          </StackPanel>
+        </Grid>
+
+        <!-- Metric cards -->
+        <UniformGrid Columns="4" Margin="-6,0,-6,12">
+          <ui:Card Margin="6" VerticalAlignment="Stretch">
+            <StackPanel>
+              <StackPanel Orientation="Horizontal"><ui:SymbolIcon Symbol="Server24" FontSize="14" Margin="0,0,6,0" /><TextBlock Text="Ollama server" Style="{StaticResource MetricLabel}" /></StackPanel>
+              <TextBlock x:Name="MServer" Text="—" Style="{StaticResource MetricValue}" />
+              <TextBlock x:Name="MServerSub" Text="127.0.0.1:11434" Style="{StaticResource MetricSub}" />
+            </StackPanel>
+          </ui:Card>
+          <ui:Card Margin="6" VerticalAlignment="Stretch">
+            <StackPanel>
+              <StackPanel Orientation="Horizontal"><ui:SymbolIcon Symbol="DeveloperBoard24" FontSize="14" Margin="0,0,6,0" /><TextBlock Text="GPU memory" Style="{StaticResource MetricLabel}" /></StackPanel>
+              <TextBlock x:Name="MVram" Text="—" Style="{StaticResource MetricValue}" />
+              <ProgressBar x:Name="MVramBar" Height="4" Minimum="0" Maximum="100" Value="0" Margin="0,2,0,6" />
+              <TextBlock x:Name="MGpu" Text="—" Style="{StaticResource MetricSub}" />
+            </StackPanel>
+          </ui:Card>
+          <ui:Card Margin="6" VerticalAlignment="Stretch">
+            <StackPanel>
+              <StackPanel Orientation="Horizontal"><ui:SymbolIcon Symbol="BrainCircuit24" FontSize="14" Margin="0,0,6,0" /><TextBlock Text="Loaded model" Style="{StaticResource MetricLabel}" /></StackPanel>
+              <TextBlock x:Name="MLoaded" Text="—" Style="{StaticResource MetricValue}" />
+              <TextBlock x:Name="MLoadedSub" Text="loads on first request" Style="{StaticResource MetricSub}" />
+            </StackPanel>
+          </ui:Card>
+          <ui:Card Margin="6" VerticalAlignment="Stretch">
+            <StackPanel>
+              <StackPanel Orientation="Horizontal"><ui:SymbolIcon Symbol="TopSpeed24" FontSize="14" Margin="0,0,6,0" /><TextBlock Text="Speed" Style="{StaticResource MetricLabel}" /></StackPanel>
+              <TextBlock x:Name="MSpeed" Text="—" Style="{StaticResource MetricValue}" />
+              <TextBlock x:Name="MSpeedSub" Text="run a speed test" Style="{StaticResource MetricSub}" />
+            </StackPanel>
+          </ui:Card>
+        </UniformGrid>
+
+        <!-- Main two columns -->
+        <Grid>
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="16" />
+            <ColumnDefinition Width="*" />
+          </Grid.ColumnDefinitions>
+
+          <!-- Health -->
+          <ui:Card Grid.Column="0" VerticalAlignment="Stretch" VerticalContentAlignment="Top">
+            <StackPanel>
+              <TextBlock Text="Health" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,10" Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+              <ItemsControl x:Name="StatusList">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate>
+                    <Grid Margin="0,0,0,10">
+                      <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="30" />
+                        <ColumnDefinition Width="*" />
+                      </Grid.ColumnDefinitions>
+                      <ui:SymbolIcon Symbol="{Binding Symbol}" Foreground="{Binding Brush}" FontSize="18" VerticalAlignment="Top" Margin="0,1,0,0" />
+                      <StackPanel Grid.Column="1">
+                        <TextBlock Text="{Binding Title}" TextWrapping="Wrap" Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+                        <TextBlock Text="{Binding Detail}" TextWrapping="Wrap" FontSize="12" Margin="0,2,0,0"
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}">
+                          <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                              <Style.Triggers>
+                                <DataTrigger Binding="{Binding HasDetail}" Value="False">
+                                  <Setter Property="Visibility" Value="Collapsed" />
+                                </DataTrigger>
+                              </Style.Triggers>
+                            </Style>
+                          </TextBlock.Style>
+                        </TextBlock>
+                      </StackPanel>
+                    </Grid>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+
+              <WrapPanel Margin="0,8,0,0">
+                <ui:Button x:Name="BtnStart" Content="Start" Icon="{ui:SymbolIcon Play24}" Margin="0,0,8,8" Click="Start_Click" />
+                <ui:Button x:Name="BtnRestart" Content="Restart" Icon="{ui:SymbolIcon ArrowSync24}" Margin="0,0,8,8" Click="Restart_Click" />
+                <ui:Button x:Name="BtnSpeed" Content="Speed test" Icon="{ui:SymbolIcon TopSpeed24}" Margin="0,0,8,8" Click="Speed_Click" />
+                <ui:Button x:Name="BtnUnload" Content="Unload" Icon="{ui:SymbolIcon ArrowEject20}" Margin="0,0,8,8" Click="Unload_Click" />
+                <ui:Button x:Name="BtnRepair" Content="Repair Ollama" Icon="{ui:SymbolIcon Wrench24}" Margin="0,0,8,8" Click="Repair_Click" />
+                <ui:Button x:Name="BtnAliases" Content="Remove old aliases" Icon="{ui:SymbolIcon Delete24}" Margin="0,0,8,8" Visibility="Collapsed" Click="Aliases_Click" />
+              </WrapPanel>
+            </StackPanel>
+          </ui:Card>
+
+          <!-- Launch -->
+          <ui:Card Grid.Column="2" VerticalAlignment="Stretch" VerticalContentAlignment="Top">
+            <StackPanel>
+              <TextBlock Text="Launch" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,10" Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+
+              <Grid>
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="*" />
+                  <ColumnDefinition Width="12" />
+                  <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0">
+                  <TextBlock Text="Model" Style="{StaticResource SectionLabel}" />
+                  <ComboBox x:Name="MainModel" IsEditable="True" SelectionChanged="Selection_Changed" KeyUp="Selection_KeyUp" />
+                </StackPanel>
+                <StackPanel Grid.Column="2">
+                  <TextBlock Text="Context window" Style="{StaticResource SectionLabel}" />
+                  <ComboBox x:Name="Context" SelectionChanged="Selection_Changed"
+                            ToolTip="Above the default, a settings-only '-ctxNNk' variant is created in Ollama. Keep it 100% on GPU." />
+                </StackPanel>
+              </Grid>
+
+              <TextBlock Text="Fast model — Claude Code's haiku slot (blank = same as main, fastest on one GPU)" Style="{StaticResource SectionLabel}" Margin="0,12,0,4" />
+              <ComboBox x:Name="FastModel" IsEditable="True" SelectionChanged="Selection_Changed" KeyUp="Selection_KeyUp" />
+
+              <TextBlock Text="Working folder" Style="{StaticResource SectionLabel}" Margin="0,12,0,4" />
+              <Grid>
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="*" />
+                  <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <ui:TextBox x:Name="WorkDir" PlaceholderText="Folder to open the session in" Icon="{ui:SymbolIcon Folder24}" />
+                <ui:Button Grid.Column="1" Content="Browse" Margin="8,0,0,0" Click="Browse_Click" />
+              </Grid>
+
+              <StackPanel Orientation="Horizontal" Margin="0,14,0,0">
+                <ui:ToggleSwitch x:Name="UseTerminal" Content="Windows Terminal" Margin="0,0,24,0" />
+                <ui:ToggleSwitch x:Name="SkipPerms" Content="Skip permission prompts" Click="Skip_Click"
+                                 ToolTip="Claude: --dangerously-skip-permissions · Qwen: --yolo. Only in folders you trust." />
+              </StackPanel>
+
+              <UniformGrid Columns="3" Margin="-4,18,-4,0">
+                <Button x:Name="BtnClaude" Margin="4" Height="64" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Click="Claude_Click" Cursor="Hand"
+                        Background="{StaticResource ClaudeBrush}" Foreground="White" BorderThickness="0">
+                  <StackPanel>
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                      <ui:SymbolIcon Symbol="Sparkle24" Foreground="White" Margin="0,0,6,0" />
+                      <TextBlock Text="Claude Code" FontWeight="SemiBold" FontSize="15" Foreground="White" />
+                    </StackPanel>
+                    <TextBlock Text="on local Qwen" FontSize="11" HorizontalAlignment="Center" Foreground="#E6FFFFFF" />
+                  </StackPanel>
+                </Button>
+                <Button x:Name="BtnQwen" Margin="4" Height="64" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Click="Qwen_Click" Cursor="Hand"
+                        Background="{StaticResource QwenBrush}" Foreground="White" BorderThickness="0">
+                  <StackPanel>
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                      <ui:SymbolIcon Symbol="Code24" Foreground="White" Margin="0,0,6,0" />
+                      <TextBlock Text="Qwen Code" FontWeight="SemiBold" FontSize="15" Foreground="White" />
+                    </StackPanel>
+                    <TextBlock Text="via Ollama" FontSize="11" HorizontalAlignment="Center" Foreground="#E6FFFFFF" />
+                  </StackPanel>
+                </Button>
+                <ui:Button x:Name="BtnChat" Margin="4" Height="64" HorizontalAlignment="Stretch" Click="Chat_Click">
+                  <StackPanel>
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                      <ui:SymbolIcon Symbol="Chat24" Margin="0,0,6,0" />
+                      <TextBlock Text="Chat" FontWeight="SemiBold" FontSize="15" />
+                    </StackPanel>
+                    <TextBlock Text="ollama run" FontSize="11" HorizontalAlignment="Center" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                  </StackPanel>
+                </ui:Button>
+              </UniformGrid>
+
+              <StackPanel Orientation="Horizontal" Margin="0,14,0,0">
+                <ui:Button Content="Desktop shortcut" Icon="{ui:SymbolIcon Desktop24}" Appearance="Transparent" Click="Shortcut_Click" />
+                <ui:Button Content="Settings folder" Icon="{ui:SymbolIcon FolderOpen24}" Appearance="Transparent" Margin="8,0,0,0" Click="ConfigFolder_Click" />
+              </StackPanel>
+            </StackPanel>
+          </ui:Card>
+        </Grid>
+
+        <!-- Commands -->
+        <ui:CardExpander Margin="0,16,0,0" Icon="{ui:SymbolIcon Code24}" IsExpanded="True">
+          <ui:CardExpander.Header>
+            <Grid>
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+              </Grid.ColumnDefinitions>
+              <StackPanel>
+                <TextBlock Text="Start commands" FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+                <TextBlock Text="PowerShell, for the current selection" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+              </StackPanel>
+              <ui:Button Grid.Column="1" Content="Copy" Icon="{ui:SymbolIcon Copy24}" Margin="0,0,12,0" Click="Copy_Click" />
+            </Grid>
+          </ui:CardExpander.Header>
+          <TextBox x:Name="Commands" IsReadOnly="True" FontFamily="Cascadia Mono, Consolas" FontSize="12"
+                   TextWrapping="NoWrap" HorizontalScrollBarVisibility="Auto" MaxHeight="260" VerticalScrollBarVisibility="Auto" />
+        </ui:CardExpander>
+
+        <!-- Activity -->
+        <ui:CardExpander Margin="0,10,0,0" Icon="{ui:SymbolIcon History24}" IsExpanded="False">
+          <ui:CardExpander.Header>
+            <StackPanel>
+              <TextBlock Text="Activity" FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+              <TextBlock x:Name="LastActivity" Text="Ready" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+            </StackPanel>
+          </ui:CardExpander.Header>
+          <TextBox x:Name="LogBox" IsReadOnly="True" FontFamily="Cascadia Mono, Consolas" FontSize="12" TextWrapping="Wrap"
+                   Height="160" VerticalScrollBarVisibility="Auto" />
+        </ui:CardExpander>
+      </StackPanel>
+    </ScrollViewer>
+
+    <ui:SnackbarPresenter x:Name="Snackbar" Grid.Row="1" VerticalAlignment="Bottom" />
+  </Grid>
+</ui:FluentWindow>
