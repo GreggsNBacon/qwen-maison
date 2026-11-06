@@ -170,4 +170,15 @@ pick a smaller context (32K) on the Dashboard. maison shows a warning when this 
 ## Notes
 - The exe is unsigned. On another PC, SmartScreen may show "Windows protected your PC": click **More info**, then **Run anyway**.
 - The GPU gauges need an NVIDIA card. In-app terminals need the WebView2 Runtime, which ships with Windows 11.
-- Not affiliated with Anthropic, Alibaba/Qwen or Ollama. Those names refer to the tools that maison launches.
+
+## Legal
+- **Unofficial.** maison is an independent project. It isn't affiliated with, endorsed by or sponsored by Anthropic,
+  Alibaba Cloud / the Qwen team, Ollama or NVIDIA. "Claude", "Claude Code", "Qwen" and "Ollama" are trademarks of their
+  owners. They're used here only to name the tools that maison installs and launches.
+- **Nothing is redistributed.** Setup downloads Ollama, Claude Code (Anthropic's official installer), Node.js, Qwen Code
+  and models from their official sources. Each one is covered by its own licence and terms, which you agree to when you use it.
+- **Claude Code runs unmodified**, exactly as Anthropic publishes it. Your normal `claude` setup is untouched. maison never
+  asks for, stores or passes on Claude account credentials. For local sessions it only points Claude Code at your own
+  Ollama server (`ANTHROPIC_BASE_URL`), the setup Ollama documents.
+- **Third-party code** bundled in the exe (xterm.js, WPF UI, .NET, WebView2) is listed with its licences in
+  [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
