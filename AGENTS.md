@@ -1,13 +1,13 @@
 # Instructions for AI coding agents
 
 This file is for AI agents working on this repository (Qwen Code and most other agents read `AGENTS.md`
-automatically; Claude Code reads it through `CLAUDE.md`). People: the same steps are in the README under
-**Build from source**.
+automatically; Claude Code reads it through `CLAUDE.md`). People: the full version is
+[`docs/DEVELOPING.md`](docs/DEVELOPING.md).
 
 ## What this is
 **maison**: a Windows desktop app (C# / WPF on .NET 10, WPF-UI 4.3) that installs Ollama and launches Claude Code,
-Qwen Code or a chat against local models. It ships as one self-contained exe. Source is in `src/`; the README's
-**Project layout** table says which file does what.
+Qwen Code or a chat against local models. It ships as one self-contained exe. Source is in `src/`; the **Project layout**
+table in `docs/DEVELOPING.md` says which file does what, and **How it works** explains the tricky parts.
 
 ## Build
 From the repository root, in PowerShell:
@@ -34,7 +34,7 @@ Builds, then runs the app's self-test with a throwaway settings folder: it opens
 `dist\selftest\*.png`, writes `dist\selftest\selftest.txt` and closes. `SELF-TEST OK` + exit 0 means it started, ran
 and reported the right version. Look at the screenshots after UI changes.
 
-More checks (run the exe directly; see README **Self-test**): `--term <folder>` (terminals, typing, paste, mirroring),
+More checks (run the exe directly; see **Self-test** in `docs/DEVELOPING.md`): `--term <folder>` (terminals, typing, paste, mirroring),
 `--simple`, `--accent`, `--toast`, `--launchopts`, `--portal <password>`. Set `MAISON_CONFIG_DIR` to a scratch folder
 first so the user's real settings (`%APPDATA%\Maison`) aren't changed.
 
@@ -50,7 +50,8 @@ There are no unit tests; the self-test is the test suite. A build with errors, o
 - In XAML text shown on controls, a single `_` is eaten as a keyboard-shortcut marker. Write `__` to show `_`.
 - In-app terminals are WebView2, which draws above all WPF content in the window. Anything that must appear over a
   terminal (pop-ups, toasts) has to be its own window (see `src/Views/ToastWindow.cs`).
-- Keep the README in step with user-visible changes.
+- Keep the README (written for users: what maison does for them, not how) in step with user-visible changes,
+  and `docs/DEVELOPING.md` with technical ones.
 
 ## Releasing (only when the user asks)
 1. Bump `<Version>` in `src/Maison.csproj`, then `.\build.ps1 -Test`.
