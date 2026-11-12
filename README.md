@@ -29,15 +29,15 @@
 - No accounts, API keys or subscriptions.
 
 ### 1. Download
-Go to the [latest release](https://github.com/GreggsNBacon/qwen-maison/releases/latest) and download **`maison.exe`**.
+Go to the [latest release](https://github.com/GreggsNBacon/qwen-maison/releases/latest) and download **`maison-<version>.exe`** (e.g. `maison-0.0.5.exe`; the file name says which version it is).
 It's a single self-contained file (no .NET install needed), so you can put it anywhere, e.g. your Desktop or `C:\Tools`.
 
 ### 2. Run it
-Double-click `maison.exe`. The exe isn't code-signed, so Windows SmartScreen may say **"Windows protected your PC"**.
+Double-click `maison-<version>.exe`. The exe isn't code-signed, so Windows SmartScreen may say **"Windows protected your PC"**.
 Click **More info**, then **Run anyway**. This happens only the first time.
 
 > To check the download, compare its hash with the SHA-256 in the release notes:
-> `Get-FileHash .\maison.exe` in PowerShell.
+> `Get-FileHash .\maison-0.0.5.exe` in PowerShell.
 
 ### 3. Press Start
 On a new PC maison opens in the **simple view**. Press **Start** and it installs everything, showing each step as it goes:
@@ -58,12 +58,13 @@ When it's ready you'll see a ✓ **Qwen is ready** and a Qwen Code terminal. Typ
 Windows may ask whether maison can use the network. That's only needed for the optional phone portal; allow **Private networks** if you plan to use it.
 
 ### Updating
-Download the newer `maison.exe` from [Releases](https://github.com/GreggsNBacon/qwen-maison/releases) and replace the old one.
+Download the newer `maison-<version>.exe` from [Releases](https://github.com/GreggsNBacon/qwen-maison/releases) and delete the old one
+(update any desktop shortcut, or recreate it from Advanced → Dashboard).
 Your settings and models are kept.
 
 ### Uninstalling
 1. *(Optional)* In **Advanced → Setup**, use **Uninstall** on the parts you no longer want (Ollama, Claude Code, Node.js, Qwen Code).
-2. Delete `maison.exe`, and the settings folder `%APPDATA%\Maison` if you want them gone too.
+2. Delete the `maison-<version>.exe` file, and the settings folder `%APPDATA%\Maison` if you want them gone too.
 3. Models live in Ollama's folder (`%USERPROFILE%\.ollama\models` unless you moved it in Settings). Uninstalling Ollama
    doesn't always delete them, so remove that folder to get the disk space back.
 
@@ -73,7 +74,7 @@ You'll need the [.NET 10 SDK](https://dotnet.microsoft.com/download) on Windows.
 git clone https://github.com/GreggsNBacon/qwen-maison.git
 cd qwen-maison\src
 dotnet publish -c Release -o ..\dist
-..\dist\maison.exe
+..\dist\maison-0.0.5.exe   # publish names the exe after <Version> in Maison.csproj
 ```
 Settings live in `%APPDATA%\Maison\config.json`. Settings from the older "Qwen Local Launcher" build are migrated automatically.
 
