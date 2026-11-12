@@ -40,10 +40,149 @@ public partial class SettingsView : UserControl
         var disk = StatsService.Disk(ModelStorage.Current);
         ModelsDirSub.Text = disk is { } d ? $"{d.FreeGb:N0} GB free of {d.TotalGb:N0} GB on {d.Drive}" : "";
         LoadLaunch();
+        UseRemoteToggle.IsChecked = _c.UseRemoteAi;
+        if (RemoteAddress.Text.Length == 0) RemoteAddress.Text = _c.RemoteAiAddress;
         _loading = false;
+        RefreshSharing();
         UpdatePreview();
         BuildSwatches();
         RefreshPortal();
+    }
+
+    // ------------------------------------------------------------------ AI on another PC
+
+    /// <summary>Scrolls so the "AI on another PC" card starts at the top.</summary>
+    public void ShowAiCard() => Dispatcher.BeginInvoke(() =>
+    {
+        var y = AiCard.TransformToAncestor(Scroller).Transform(new Point(0, 0)).Y;
+        Scroller.ScrollToVerticalOffset(Scroller.VerticalOffset + y - 8);
+    }, System.Windows.Threading.DispatcherPriority.Loaded);
+
+    private void RefreshSharing()
+    {
+        var s = AiSharing.Check();
+        ShareAiToggle.IsChecked = _c.ShareAi;
+        SharePanel.Visibility = _c.ShareAi ? Visibility.Visible : Visibility.Collapsed;
+        ShareAddresses.ItemsSource = _c.ShareAi ? AiSharing.Addresses() : null;
+        ShareState.Text = !_c.ShareAi
+            ? (s.Listening
+                ? "Off in maison, but Ollama already accepts connections from the network (its own \"Expose Ollama to the network\" setting or OLLAMA_HOST). Turn sharing on here to limit it to your home network, or turn that setting off in Ollama."
+                : "Off: only this PC can use its AI.")
+            : s.Working ? "On: other PCs at home can use this PC's AI."
+            : "On, but " + string.Join(", ", new[]
+              {
+                  s.HostSet ? null : "OLLAMA_HOST isn't set",
+                  s.FirewallOpen ? null : "the firewall rule is missing",
+                  s.Listening ? null : "Ollama isn't listening on the network (restart Ollama or this PC)",
+              }.Where(x => x is not null)) + ". Turn it off and on again to fix.";
+
+        UseRemoteToggle.IsChecked = _c.UseRemoteAi;
+        RemoteState.Text = _c.UseRemoteAi && OllamaClient.IsRemote
+            ? $"Using the AI on {OllamaClient.Where}. Turn off to use this PC's own."
+            : "Off: this PC runs its own AI.";
+    }
+
+    private async void ShareAi_Click(object sender, RoutedEventArgs e)
+    {
+        bool on = ShareAiToggle.IsChecked == true;
+        if (on && !SystemProbe.OllamaInstalled)
+        {
+            ShareAiToggle.IsChecked = false;
+            ShareState.Text = "Ollama isn't installed on this PC, so there's nothing to share. Set it up on the Setup page first.";
+            return;
+        }
+        ShareAiToggle.IsEnabled = false;
+        try
+        {
+            bool ok; string message;
+            if (on)
+            {
+                ShareState.Text = "Checking Windows Firewall and your network…";
+                var survey = await AiSharing.SurveyAsync();
+                if (!await Shell.ConfirmAsync("Share this PC's AI?",
+                        "Other PCs on your home network will be able to use this PC's models (Ollama has no password, so anyone on the network can).\n\n" +
+                        "maison opens port 11434 in Windows Firewall for your home network only (and Tailscale), never the internet, and restarts Ollama." +
+                        (survey.BroadOllamaRules.Count > 0
+                            ? "\n\nWindows currently lets anyone reach Ollama on Public networks (a rule made when \"Allow\" was clicked on its prompt). maison switches that rule off so only your home network can connect."
+                            : "") +
+                        "\n\nWindows asks for admin permission once.", "Share"))
+                {
+                    ShareAiToggle.IsChecked = false;
+                    return;
+                }
+                bool makePrivate = survey.PublicNetworks.Count > 0 && await Shell.ConfirmAsync("Set your network to Private?",
+                    $"Windows treats \"{survey.PublicNetworks[0].Name}\" as a Public network (like café Wi-Fi), and the sharing rule only works on Private networks.\n\n" +
+                    "If this PC is on your home network, set it to Private: that's the normal setting at home. Choose Keep Public if this is a public network.",
+                    "Set to Private", "Keep Public");
+                (ok, message) = await AiSharing.EnableAsync(survey, makePrivate, Log);
+            }
+            else (ok, message) = await AiSharing.DisableAsync(Log);
+            Shell.Log(message);
+            Shell.Toast(ok ? (on ? "Sharing this PC's AI" : "AI is private again") : "Sharing wasn't turned on", message,
+                ok ? ControlAppearance.Success : ControlAppearance.Danger, ok ? SymbolRegular.Share24 : SymbolRegular.ErrorCircle24);
+        }
+        finally
+        {
+            ShareAiToggle.IsEnabled = true;
+            RefreshSharing();
+            await Shell.OnModelsChangedAsync();
+        }
+    }
+
+    private void Log(string line) => Dispatcher.Invoke(() => { ShareState.Text = line; Shell.Log(line); });
+
+    private async void UseRemote_Click(object sender, RoutedEventArgs e)
+    {
+        if (UseRemoteToggle.IsChecked == true) await ConnectAsync();
+        else
+        {
+            _c.UseRemoteAi = false;
+            _c.Save();
+            OllamaClient.Use(false, "");
+            RefreshSharing();
+            await Shell.OnAiLocationChangedAsync();
+        }
+    }
+
+    private async void Connect_Click(object sender, RoutedEventArgs e) => await ConnectAsync();
+
+    private async void RemoteAddress_KeyUp(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        if (e.Key == System.Windows.Input.Key.Enter) await ConnectAsync();
+    }
+
+    /// <summary>Checks the address answers like Ollama, then switches everything to it.</summary>
+    private async Task ConnectAsync()
+    {
+        var address = RemoteAddress.Text.Trim();
+        if (address.Length == 0)
+        {
+            UseRemoteToggle.IsChecked = _c.UseRemoteAi;
+            RemoteState.Text = "Enter the AI PC's name or IP first (shown on that PC under Share this PC's AI).";
+            RemoteAddress.Focus();
+            return;
+        }
+        BtnConnect.IsEnabled = UseRemoteToggle.IsEnabled = false;
+        RemoteState.Text = $"Connecting to {address}…";
+        try
+        {
+            var (ok, message) = await OllamaClient.ProbeAsync(address);
+            if (!ok)
+            {
+                UseRemoteToggle.IsChecked = _c.UseRemoteAi;
+                RemoteState.Text = message;
+                return;
+            }
+            _c.UseRemoteAi = true;
+            _c.RemoteAiAddress = address;
+            _c.Save();
+            OllamaClient.Use(true, address);
+            RefreshSharing();
+            RemoteState.Text = message + " Claude Code and Qwen Code now use it.";
+            Shell.Toast("Using the AI on another PC", message, ControlAppearance.Success, SymbolRegular.Desktop24);
+            await Shell.OnAiLocationChangedAsync();
+        }
+        finally { BtnConnect.IsEnabled = UseRemoteToggle.IsEnabled = true; }
     }
 
     // ------------------------------------------------------------------ start commands
@@ -117,7 +256,10 @@ public partial class SettingsView : UserControl
         _c.Save();
         _loading = true;
         LoadLaunch();
+        UseRemoteToggle.IsChecked = _c.UseRemoteAi;
+        if (RemoteAddress.Text.Length == 0) RemoteAddress.Text = _c.RemoteAiAddress;
         _loading = false;
+        RefreshSharing();
         UpdatePreview();
         Shell.UpdateCommands();
         Shell.Toast("Start commands reset", "Every option is back to maison's defaults.", ControlAppearance.Success, SymbolRegular.ArrowReset24);

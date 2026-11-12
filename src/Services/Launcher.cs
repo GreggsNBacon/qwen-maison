@@ -142,6 +142,10 @@ public static class Launcher
         Join($"qwen --auth-type openai --openai-base-url {Q(OllamaClient.BaseUrl + "/v1")} --openai-api-key ollama -m {Q(p.Main)}",
              $"--approval-mode {Mode(p.Perm).Qwen}", p.O.QwenContinue ? "--continue" : "", p.O.QwenExtraArgs);
 
+    /// <summary>The ollama command talks to 127.0.0.1 unless told otherwise.</summary>
+    public static Dictionary<string, string>? ChatEnv() =>
+        OllamaClient.IsRemote ? new() { ["OLLAMA_HOST"] = OllamaClient.BaseUrl } : null;
+
     public static string ChatCommand(Plan p) =>
         Join($"& {Q(SystemProbe.OllamaExe)} run {Q(p.Main)}", p.O.ChatVerbose ? "--verbose" : "",
              p.O.ChatThink switch { "on" => "--think=true", "off" => "--think=false", _ => "" }, p.O.ChatExtraArgs);
@@ -182,6 +186,7 @@ public static class Launcher
         sb.AppendLine(QwenCommand(p));
         sb.AppendLine();
         sb.AppendLine("# Plain chat");
+        foreach (var (k, v) in ChatEnv() ?? []) sb.AppendLine($"$env:{k} = {Q(v)}");
         sb.AppendLine(ChatCommand(p));
         if (p.Main != baseMain)
         {

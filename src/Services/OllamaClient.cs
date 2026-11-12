@@ -10,9 +10,57 @@ namespace Maison.Services;
 /// <summary>Thin client for the local Ollama REST API.</summary>
 public static class OllamaClient
 {
-    public const string BaseUrl = "http://127.0.0.1:11434";
+    public const string LocalUrl = "http://127.0.0.1:11434";
+    public const int DefaultPort = 11434;
 
-    private static readonly HttpClient Http = new() { BaseAddress = new Uri(BaseUrl), Timeout = Timeout.InfiniteTimeSpan };
+    /// <summary>Where Ollama is: this PC, or another PC on the network that shares its AI (Settings → AI on another PC).</summary>
+    public static string BaseUrl { get; private set; } = LocalUrl;
+    /// <summary>True when the models run on another PC (nothing to install or start here).</summary>
+    public static bool IsRemote { get; private set; }
+    /// <summary>"gpu-pc:11434" when remote, "this PC" when local.</summary>
+    public static string Where => IsRemote ? new Uri(BaseUrl).Authority : "this PC";
+
+    private static HttpClient Http = NewClient(LocalUrl);
+    private static HttpClient NewClient(string url) => new() { BaseAddress = new Uri(url), Timeout = Timeout.InfiniteTimeSpan };
+
+    /// <summary>Points everything (health, models, launches) at this PC or at another PC's shared Ollama.</summary>
+    public static void Use(bool remote, string address)
+    {
+        var url = remote && NormalizeAddress(address) is { } u ? u : LocalUrl;
+        IsRemote = url != LocalUrl;
+        if (url == BaseUrl) return;
+        BaseUrl = url;
+        Http = NewClient(url);
+    }
+
+    /// <summary>"gpu-pc", "192.168.1.20:11434" or "http://gpu-pc:11434/" → "http://gpu-pc:11434"; null if unusable.</summary>
+    public static string? NormalizeAddress(string? address)
+    {
+        var a = (address ?? "").Trim().TrimEnd('/');
+        if (a.Length == 0) return null;
+        if (!a.Contains("://")) a = "http://" + a;
+        if (!Uri.TryCreate(a, UriKind.Absolute, out var u) || u.Scheme is not ("http" or "https") || u.Host.Length == 0) return null;
+        var port = u.IsDefaultPort && !a.Contains($":{u.Port}") ? DefaultPort : u.Port;
+        return $"{u.Scheme}://{u.Host}:{port}";
+    }
+
+    /// <summary>Checks an address without switching to it: Ollama's version and model count, or why it failed.</summary>
+    public static async Task<(bool Ok, string Message)> ProbeAsync(string address)
+    {
+        if (NormalizeAddress(address) is not { } url) return (false, "That doesn't look like an address. Use the PC's name or IP, e.g. gpu-pc or 192.168.1.20.");
+        try
+        {
+            using var http = NewClient(url);
+            using var cts = After(5);
+            var v = await http.GetFromJsonAsync<JsonElement>("/api/version", cts.Token);
+            var tags = await http.GetFromJsonAsync<JsonElement>("/api/tags", cts.Token);
+            int n = tags.GetProperty("models").GetArrayLength();
+            return (true, $"Connected: Ollama v{v.GetProperty("version").GetString()} with {n} model{(n == 1 ? "" : "s")} at {new Uri(url).Authority}.");
+        }
+        catch (TaskCanceledException) { return (false, $"No answer from {new Uri(url).Authority}. Is that PC on, with \"Share this PC's AI\" turned on in maison?"); }
+        catch (HttpRequestException ex) { return (false, $"Can't connect to {new Uri(url).Authority}: {ex.Message} Check the name, that sharing is on there, and that both PCs are on the same network."); }
+        catch (Exception ex) { return (false, $"{new Uri(url).Authority} answered, but not like Ollama: {ex.Message}"); }
+    }
 
     private static CancellationTokenSource After(double seconds) => new(TimeSpan.FromSeconds(seconds));
 
@@ -70,16 +118,34 @@ public static class OllamaClient
     /// <summary>
     /// The context window Ollama will actually use for <paramref name="model"/> when no size is forced:
     /// the loaded model's own size if it's running, else the server's VRAM-based default from its log, else 4096.
+    /// On another PC there's no log to read, so the model is loaded first and Ollama asked directly.
     /// </summary>
     public static async Task<int> EffectiveContextAsync(string model)
+    {
+        if (await LoadedContextAsync(model) is { } c) return c;
+        if (IsRemote)
+        {
+            try
+            {
+                using var cts = After(300);   // loading a big model over there can take a while
+                using var resp = await Http.PostAsJsonAsync("/api/generate", new { model, prompt = "", keep_alive = "10m" }, cts.Token);
+            }
+            catch { /* fall through to the default */ }
+            if (await LoadedContextAsync(model) is { } c2) return c2;
+            return 32768;
+        }
+        return ServerDefaultContext();
+    }
+
+    private static async Task<int?> LoadedContextAsync(string model)
     {
         try
         {
             var loaded = await GetLoadedAsync();
             if (loaded.FirstOrDefault(m => m.Name == model || m.Name == model + ":latest") is { Context: > 0 } m) return m.Context;
         }
-        catch { /* server busy: fall back to the default */ }
-        return ServerDefaultContext();
+        catch { /* server busy */ }
+        return null;
     }
 
     /// <summary>Ollama's default num_ctx (it logs "default_num_ctx=32768" at start, sized to the GPU).</summary>

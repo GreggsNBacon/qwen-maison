@@ -33,6 +33,7 @@ public partial class SetupView : UserControl
     /// <summary>True when the essentials (Ollama + at least one model) are missing — used to open Setup on first run.</summary>
     public static async Task<bool> NeedsSetupAsync()
     {
+        if (OllamaClient.IsRemote) return false;   // the models live on the other PC
         if (!SystemProbe.OllamaInstalled) return true;
         if (await OllamaClient.GetVersionAsync(2) is null) return false; // installed but stopped: Dashboard handles it
         try { return (await OllamaClient.GetModelsAsync()).Count(m => !m.Name.StartsWith("claude-")) == 0; }
@@ -63,13 +64,21 @@ public partial class SetupView : UserControl
         List<ModelInfo> models = [];
         if (running) { try { models = await OllamaClient.GetModelsAsync(); } catch { } }
 
-        if (!_ollama.Busy)
+        bool remote = OllamaClient.IsRemote;
+        if (remote && !_ollama.Busy)
+            _ollama.SetDone(installed ? "Installed (not used: the AI runs on " + OllamaClient.Where + ")" : "Not needed: the AI runs on " + OllamaClient.Where);
+        else if (!_ollama.Busy)
         {
             if (installed && runtime) _ollama.SetDone("Installed");
             else if (installed) _ollama.SetMissing("Broken install — llama-server.exe missing", "Repair", "Reinstall Ollama and fix locked files (opens a PowerShell window)");
             else _ollama.SetMissing("Not installed", "Install", "Download and install Ollama (~1.6 GB download)");
         }
-        if (!_server.Busy)
+        if (remote && !_server.Busy)
+        {
+            if (running) _server.SetDone("Connected to " + OllamaClient.Where);
+            else _server.SetMissing("Can't reach " + OllamaClient.Where, "Retry", "Try to connect to the AI PC again");
+        }
+        else if (!_server.Busy)
         {
             if (running) _server.SetDone("Running");
             else _server.SetMissing(installed ? "Not running" : "Needs Ollama", "Start", "Start the Ollama server", enabled: installed);
@@ -77,7 +86,9 @@ public partial class SetupView : UserControl
         if (!_model.Busy)
         {
             _model.Title = $"Qwen model · {_recommended.Tag}";
-            _model.Description = $"{_recommended.Description} Chosen for {(vram > 0 ? $"{vram:N0} GB of GPU memory" : "a CPU-only PC")}; pick others on the Models page.";
+            _model.Description = remote
+                ? $"Downloads onto {OllamaClient.Where}. {_recommended.Description} Pick others on the Models page."
+                : $"{_recommended.Description} Chosen for {(vram > 0 ? $"{vram:N0} GB of GPU memory" : "a CPU-only PC")}; pick others on the Models page.";
             var have = models.Any(m => m.Name.Equals(_recommended.Tag, StringComparison.OrdinalIgnoreCase));
             var other = models.FirstOrDefault(m => !m.Name.StartsWith("claude-") && !Launcher.IsVariant(m.Name));
             if (have) _model.SetDone("Installed");
@@ -101,8 +112,8 @@ public partial class SetupView : UserControl
         }
 
         // Uninstall buttons, so any part can be removed and set up again.
-        if (installed) _ollama.OfferUninstall("Uninstall", "Remove Ollama (silent). Downloaded models are kept in " + OllamaClient.ModelsDir); else _ollama.NoUninstall();
-        if (running) _server.OfferUninstall("Stop", "Stop the Ollama server (unloads models)"); else _server.NoUninstall();
+        if (installed && !remote) _ollama.OfferUninstall("Uninstall", "Remove Ollama (silent). Downloaded models are kept in " + OllamaClient.ModelsDir); else _ollama.NoUninstall();
+        if (running && !remote) _server.OfferUninstall("Stop", "Stop the Ollama server (unloads models)"); else _server.NoUninstall();
         if (Installer.ClaudePath is not null) _claude.OfferUninstall("Uninstall", "Remove Claude Code's program files. Your ~/.claude settings and history are kept."); else _claude.NoUninstall();
         if (Installer.NpmPath is not null) _node.OfferUninstall("Uninstall", "Remove Node.js with winget (asks for admin). Qwen Code needs it."); else _node.NoUninstall();
         if (Installer.QwenPath is not null) _qwen.OfferUninstall("Uninstall", "Remove Qwen Code (npm). Your ~/.qwen settings are kept."); else _qwen.NoUninstall();
@@ -141,6 +152,13 @@ public partial class SetupView : UserControl
                     return false;
                 }
                 await Installer.InstallOllamaAsync(Out, new Progress<double>(p => step.Progress = p), CancellationToken.None);
+            }
+            else if (step == _server && OllamaClient.IsRemote)
+            {
+                Out($"Connecting to {OllamaClient.Where}…");
+                var (ok, message) = await OllamaClient.ProbeAsync(OllamaClient.BaseUrl);
+                Out(message);
+                if (!ok) throw new InvalidOperationException(message);
             }
             else if (step == _server)
             {

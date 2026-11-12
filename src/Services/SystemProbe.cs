@@ -88,6 +88,7 @@ public static class SystemProbe
     public static async Task<bool> StartOllamaAsync()
     {
         if (await OllamaClient.GetVersionAsync(2) is not null) return true;
+        if (OllamaClient.IsRemote) return false;   // it runs on the other PC: nothing to start here
         if (File.Exists(OllamaApp))
             Process.Start(new ProcessStartInfo(OllamaApp) { UseShellExecute = true, WorkingDirectory = OllamaDir });
         else if (OllamaInstalled)

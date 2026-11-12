@@ -38,6 +38,7 @@ public partial class MainWindow : FluentWindow, IShell
     public MainWindow()
     {
         Instance = this;
+        OllamaClient.Use(_config.UseRemoteAi, _config.RemoteAiAddress);
         InitializeComponent();
         StatusList.ItemsSource = _status;
         // Messages live in their own owned window so they show above the terminals (WebView2 draws over WPF content).
@@ -138,6 +139,22 @@ public partial class MainWindow : FluentWindow, IShell
 
     public async Task OnModelsChangedAsync() => await RefreshAsync(quiet: true);
 
+    public async Task OnAiLocationChangedAsync()
+    {
+        Log(OllamaClient.IsRemote ? $"Using the AI on {OllamaClient.Where}" : "Using this PC's AI");
+        _models = []; _loaded = [];
+        await RefreshAsync(quiet: true);
+        await SetupPage.RefreshAsync();
+        if (_config.UiMode == "simple") await SimplePage.ActivateAsync();
+    }
+
+    public void ShowAiSettings()
+    {
+        SetSimpleMode(false);
+        Navigate("settings");
+        SettingsPage.ShowAiCard();
+    }
+
     public void Navigate(string page)
     {
         _page = page;
@@ -183,9 +200,9 @@ public partial class MainWindow : FluentWindow, IShell
     public void Toast(string title, string message, ControlAppearance appearance = ControlAppearance.Secondary, SymbolRegular icon = SymbolRegular.Info24) =>
         _snackbar.Show(title, message, appearance, new SymbolIcon(icon), TimeSpan.FromSeconds(4));
 
-    public async Task<bool> ConfirmAsync(string title, string text, string yes)
+    public async Task<bool> ConfirmAsync(string title, string text, string yes, string no = "Cancel")
     {
-        var box = new MessageBox { Title = title, Content = text, PrimaryButtonText = yes, CloseButtonText = "Cancel" };
+        var box = new MessageBox { Title = title, Content = text, PrimaryButtonText = yes, CloseButtonText = no };
         return await box.ShowDialogAsync() == MessageBoxResult.Primary;
     }
 
@@ -226,7 +243,7 @@ public partial class MainWindow : FluentWindow, IShell
     /// <summary>The context window sessions will really get: the chosen size, or what Ollama uses by default.</summary>
     private int RealContext => ContextSize > 0 ? ContextSize
         : _loaded.FirstOrDefault(m => m.Name == BaseMain || m.Name == BaseMain + ":latest") is { Context: > 0 } l ? l.Context
-        : _ollamaDefaultCtx;
+        : OllamaClient.IsRemote ? 32768 : _ollamaDefaultCtx;
     private readonly int _ollamaDefaultCtx = OllamaClient.ServerDefaultContext();
 
     private Launcher.Plan PlanFor(string main, string fast, int ctx) =>
@@ -241,7 +258,11 @@ public partial class MainWindow : FluentWindow, IShell
         var fast = Launcher.EffectiveModel(BaseFast.Length > 0 ? BaseFast : baseMain, ContextSize);
         var plan = PlanFor(main, fast, RealContext);
         Commands.Text = Launcher.CommandsText(plan, baseMain);
-        ContextHint.Text = (ContextSize == 0 ? $"Ollama is giving this model {RealContext / 1024}K. " : "") +
+        ContextHint.Text = (ContextSize == 0
+                ? OllamaClient.IsRemote && !_loaded.Any(m => m.Name == BaseMain || m.Name == BaseMain + ":latest")
+                    ? "The exact window is read from the AI PC when you launch (about 32K is typical). "
+                    : $"Ollama is giving this model {RealContext / 1024}K. "
+                : "") +
             $"Agents are told the window is {RealContext / 1024}K and replies are capped at {plan.OutputTokens / 1024}K, so they compact instead of overflowing." +
             (RealContext < 49152 ? " Claude Code's own instructions and tools take ~20–25K, so 64K or more works much better for it." : "");
     }
@@ -330,12 +351,14 @@ public partial class MainWindow : FluentWindow, IShell
             }
 
             var items = new List<StatusItem>();
-            if (SystemProbe.OllamaInstalled)
+            if (OllamaClient.IsRemote)
+                items.Add(new() { Level = Health.Info, Title = $"Using the AI on {OllamaClient.Where}", Detail = "Models run on that PC. Change this in Settings → AI on another PC." });
+            else if (SystemProbe.OllamaInstalled)
                 items.Add(new() { Level = Health.Ok, Title = "Ollama installed", Detail = SystemProbe.OllamaDir });
             else
                 items.Add(new() { Level = Health.Bad, Title = "Ollama is not installed", Detail = "Open Setup to install it." });
 
-            if (SystemProbe.OllamaInstalled)
+            if (SystemProbe.OllamaInstalled && !OllamaClient.IsRemote)
             {
                 var cuda = SystemProbe.CudaDirs;
                 items.Add(SystemProbe.RuntimeOk
@@ -345,7 +368,9 @@ public partial class MainWindow : FluentWindow, IShell
 
             items.Add(running
                 ? new() { Level = Health.Ok, Title = $"Server responding · v{version}", Detail = OllamaClient.BaseUrl }
-                : new() { Level = Health.Bad, Title = "Server not responding", Detail = SystemProbe.OllamaInstalled ? "Click Start." : "Install Ollama from the Setup page." });
+                : OllamaClient.IsRemote
+                    ? new() { Level = Health.Bad, Title = $"Can't reach {OllamaClient.Where}", Detail = "Check that PC is on, that maison there has \"Share this PC's AI\" on, and that both PCs are on the same network." }
+                    : new() { Level = Health.Bad, Title = "Server not responding", Detail = SystemProbe.OllamaInstalled ? "Click Start." : "Install Ollama from the Setup page." });
 
             foreach (var m in _loaded)
             {
@@ -401,14 +426,28 @@ public partial class MainWindow : FluentWindow, IShell
     {
         var red = (Color)ColorConverter.ConvertFromString("#E5534B");
         var green = (Color)ColorConverter.ConvertFromString("#4CC38A");
-        var ok = running && SystemProbe.RuntimeOk;
+        bool remote = OllamaClient.IsRemote;
+        var ok = running && (remote || SystemProbe.RuntimeOk);
         var c = ok ? green : red;
         ServerDot.Fill = new SolidColorBrush(c);
         ServerPill.Background = new SolidColorBrush(Color.FromArgb(0x33, c.R, c.G, c.B));
-        ServerPillText.Text = !SystemProbe.OllamaInstalled ? "Ollama not installed" : !running ? "Ollama offline" : SystemProbe.RuntimeOk ? "Ollama ready" : "Ollama broken";
+        ServerPillText.Text = remote ? (running ? $"AI on {new Uri(OllamaClient.BaseUrl).Host}" : $"Can't reach {new Uri(OllamaClient.BaseUrl).Host}")
+            : !SystemProbe.OllamaInstalled ? "Ollama not installed" : !running ? "Ollama offline" : SystemProbe.RuntimeOk ? "Ollama ready" : "Ollama broken";
 
         MServer.Text = running ? "Running" : "Offline";
-        MServerSub.Text = running ? $"v{version} · 127.0.0.1:11434" : SystemProbe.OllamaInstalled ? "click Start" : "install from Setup";
+        MServerSub.Text = running ? $"v{version} · {new Uri(OllamaClient.BaseUrl).Authority}"
+            : remote ? "check the AI PC" : SystemProbe.OllamaInstalled ? "click Start" : "install from Setup";
+        // Start / Restart / Repair act on this PC's Ollama; with the AI on another PC they belong over there.
+        foreach (var b in new[] { BtnStart, BtnRestart, BtnRepair })
+        {
+            b.Tag ??= b.ToolTip;   // the normal tooltip, to put back
+            b.IsEnabled = !remote;
+            b.ToolTip = remote ? $"Ollama runs on {OllamaClient.Where}: start or repair it there" : b.Tag;
+        }
+        bool noChat = remote && !SystemProbe.OllamaInstalled;
+        BtnChat.Tag ??= BtnChat.ToolTip;
+        BtnChat.IsEnabled = !noChat;
+        BtnChat.ToolTip = noChat ? "Chat uses the ollama command, which isn't installed on this PC. Use Qwen Code or Claude Code, or install Ollama from Setup." : BtnChat.Tag;
 
         var top = _loaded.FirstOrDefault();
         MLoaded.Text = top?.Name ?? "None";
@@ -570,7 +609,7 @@ public partial class MainWindow : FluentWindow, IShell
             "claude" => new($"Claude Code · {main}", folder, Launcher.ClaudeEnv(p),
                 ["Remove-Item Env:ANTHROPIC_API_KEY -ErrorAction SilentlyContinue"], Launcher.ClaudeCommand(p)),
             "qwen" => new($"Qwen Code · {main}", folder, Launcher.QwenEnv(p, Launcher.WriteQwenSettings(p)), null, Launcher.QwenCommand(p)),
-            _ => new($"Chat · {main}", folder, null, null, Launcher.ChatCommand(p)),
+            _ => new($"Chat · {main}", folder, Launcher.ChatEnv(), null, Launcher.ChatCommand(p)),
         };
     }
 
@@ -637,6 +676,7 @@ public partial class MainWindow : FluentWindow, IShell
 
     private async void Start_Click(object sender, RoutedEventArgs e) => await WithBusy(async () =>
     {
+        if (OllamaClient.IsRemote) { await RefreshAsync(quiet: true); return; }
         if (!SystemProbe.OllamaInstalled) { Navigate("setup"); return; }
         Log("Starting Ollama...");
         var ok = await SystemProbe.StartOllamaAsync();
@@ -646,6 +686,7 @@ public partial class MainWindow : FluentWindow, IShell
 
     private async void Restart_Click(object sender, RoutedEventArgs e) => await WithBusy(async () =>
     {
+        if (OllamaClient.IsRemote) { await RefreshAsync(quiet: true); return; }
         Log("Restarting Ollama...");
         await SystemProbe.StopOllamaAsync();
         var ok = await SystemProbe.StartOllamaAsync();
@@ -1044,6 +1085,71 @@ public partial class MainWindow : FluentWindow, IShell
             Navigate("dashboard");
         }
 
+        // Optional: --remote <address> switches to "use the AI from another PC" (in memory only) and checks every place
+        // that changes. "localhost" exercises it against this PC's own Ollama.
+        var remoteResult = "";
+        var ri = Array.IndexOf(args, "--remote");
+        if (ri >= 0 && ri + 1 < args.Length)
+        {
+            var (probeOk, probeMsg) = await OllamaClient.ProbeAsync(args[ri + 1]);
+            var (badOk, badMsg) = await OllamaClient.ProbeAsync("no-such-pc-maison-test");
+            OllamaClient.Use(true, args[ri + 1]);
+            await OnAiLocationChangedAsync();
+            Navigate("dashboard");
+            await Task.Delay(1500);
+            Snap(Path.Combine(dir, "remote-dashboard.png"));
+            var claude = (await BuildSpecAsync("claude"))!;
+            var qwen = (await BuildSpecAsync("qwen"))!;
+            var chat = (await BuildSpecAsync("chat"))!;
+            Navigate("setup");
+            await Task.Delay(1500);
+            Snap(Path.Combine(dir, "remote-setup.png"));
+            var v = await LaunchAsync(qwen, "qwen", "Qwen Code", qwen.Title, Launcher.TargetApp);
+            await Task.Delay(15000);
+            var screen = v is null ? "" : await v.ReadScreenAsync();
+            if (v is not null) await v.CaptureAsync(Path.Combine(dir, "remote-qwen.png"));
+            SetSimpleMode(true);
+            await Task.Delay(4000);
+            Snap(Path.Combine(dir, "remote-simple.png"));
+            SetSimpleMode(false);
+            remoteResult = "REMOTE: " +
+                $"probe=[{probeOk}: {probeMsg}] badProbe=[{badOk}: {badMsg}] isRemote={OllamaClient.IsRemote} base={OllamaClient.BaseUrl} " +
+                $"health=[{string.Join(" / ", _status.Take(3).Select(s => s.Title))}] pill=[{ServerPillText.Text}] startEnabled={BtnStart.IsEnabled} " +
+                $"setup=[{string.Join(" / ", SetupPage.Steps.Take(3).Select(s => s.Title + ": " + s.StatusText))}] " +
+                $"claudeUrl={(claude.Env is { } ce && ce.TryGetValue("ANTHROPIC_BASE_URL", out var cu) ? cu : "")} " +
+                $"qwenCmdRemote={qwen.Command.Contains(OllamaClient.BaseUrl)} chatHost={(chat.Env is { } he && he.TryGetValue("OLLAMA_HOST", out var hu) ? hu : "")} " +
+                $"qwenRuns={screen.Contains("Type your message")} ctxLog=[{string.Join(" | ", LogBox.Text.Split('\n').Where(l => l.Contains(": context")).TakeLast(1))}]";
+            OllamaClient.Use(false, "");
+            await OnAiLocationChangedAsync();
+            remoteResult += $" backToLocal={!OllamaClient.IsRemote && BtnStart.IsEnabled}";
+        }
+
+        // Optional: --share-dry restarts Ollama listening on the network for this run only (nothing saved), reaches it
+        // through this PC's LAN address, then puts Ollama back. The firewall part needs admin and isn't tested.
+        var shareResult = "";
+        if (args.Contains("--share-dry"))
+        {
+            var before = AiSharing.Check();
+            Environment.SetEnvironmentVariable("OLLAMA_HOST", "0.0.0.0:11434", EnvironmentVariableTarget.Process);
+            await SystemProbe.StopOllamaAsync();
+            var started = await SystemProbe.StartOllamaAsync();
+            var during = AiSharing.Check();
+            var lan = PortalNet.LanAddresses().FirstOrDefault(a => !a.ToString().StartsWith("100."))?.ToString() ?? "";
+            var (lanOk, lanMsg) = lan.Length > 0 ? await OllamaClient.ProbeAsync(lan) : (false, "no LAN address");
+            Environment.SetEnvironmentVariable("OLLAMA_HOST", null, EnvironmentVariableTarget.Process);
+            await SystemProbe.StopOllamaAsync();
+            await SystemProbe.StartOllamaAsync();
+            var after = AiSharing.Check();
+            var survey = await AiSharing.SurveyAsync();
+            Navigate("settings");
+            SettingsPage.Refresh();
+            SettingsPage.ShowAiCard();
+            await Task.Delay(1200);
+            Snap(Path.Combine(dir, "share-card.png"));
+            Navigate("dashboard");
+            shareResult = $"SHARE: broadRules={survey.BroadOllamaRules.Count} publicNets=[{string.Join(",", survey.PublicNetworks.Select(n => n.Name))}] before={before} started={started} during={during} viaLan=[{lanOk}: {lanMsg}] after={after} addresses=[{string.Join(", ", AiSharing.Addresses().Count)} found]";
+        }
+
         // Optional: --toast opens a terminal tab, shows a message and checks Windows really puts it above the terminal.
         var toastResult = "";
         if (args.Contains("--toast"))
@@ -1109,7 +1215,7 @@ public partial class MainWindow : FluentWindow, IShell
             catch (Exception ex) { portalResult = "PORTAL: exception " + ex; }
         }
 
-        var lines = new List<string> { "STATUS:", pullResult, termResult, simpleResult, accentResult, toastResult, jitterResult, launchResult, portalResult };
+        var lines = new List<string> { "STATUS:", pullResult, termResult, simpleResult, accentResult, toastResult, jitterResult, launchResult, remoteResult, shareResult, portalResult };
         lines.AddRange(_status.Select(s => $"[{s.Level}] {s.Title} | {s.Detail}"));
         lines.Add($"GAUGES: temp={GTemp.Display} load={GLoad.Display} power={GPower.Display} vram={GVram.Display} cpu={GCpu.Display} ram={GRam.Display} | ai: load={GLoad.AiDisplay} power={GPower.AiDisplay} vram={GVram.AiDisplay} cpu={GCpu.AiDisplay} ram={GRam.AiDisplay} | {GpuTitle.Text} | {GpuExtra.Text}");
         if (_stats is { } st)

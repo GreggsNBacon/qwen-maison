@@ -53,6 +53,10 @@ settings aren't touched.
 - `--toast` checks that in-app messages are drawn above a terminal (asks Windows which window owns those pixels).
 - `--launchopts` edits Settings → Start commands through its controls and checks the preview, the saved settings and the
   real launch, then resets.
+- `--remote <address>` switches to "use the AI from another PC" in memory and checks health, setup, launches and a real
+  Qwen session, then switches back. `localhost` tests it against this PC's own Ollama.
+- `--share-dry` restarts Ollama listening on the network for that run only, reaches it through the LAN address, checks
+  the firewall survey and puts Ollama back. The firewall change itself needs admin and isn't run.
 - `--jitter` records every frame Qwen Code sends while it streams a long answer (`jitter-frames.txt`).
 - `--portal` runs the web portal over real HTTPS and checks login, cookies, lockout, origin checks, state, launching and
   the mirrored terminal WebSocket.
@@ -74,6 +78,14 @@ There are no unit tests; the self-test is the test suite.
   replies at a quarter of it, so they compact in time. The real window is the chosen variant's size, else the loaded
   model's (`/api/ps`), else Ollama's default from its log.
 - Settings → Start commands exposes every flag and variable, with a live preview of the exact command.
+
+**AI on another PC.** `OllamaClient.BaseUrl` is configurable (`AppConfig.UseRemoteAi` / `RemoteAiAddress`), and
+`OllamaClient.IsRemote` switches off everything that acts on this PC's Ollama: install/start/repair, the local log for
+the context size (the model is loaded over there and `/api/ps` asked instead) and the Ollama health checks. Chat gets
+`OLLAMA_HOST`. Sharing (`AiSharing`): one elevated PowerShell script adds a firewall rule (TCP 11434, `LocalSubnet` and
+`100.64.0.0/10`, Private/Domain), disables Windows' broad "allow ollama.exe from anywhere" rules, and optionally marks
+Public networks Private; then `OLLAMA_HOST=0.0.0.0:11434` and an Ollama restart. The firewall comes first so Windows
+doesn't show its own, broader prompt.
 
 **Terminals.** Each tab is a Windows pseudo console (ConPTY) drawn by xterm.js (WebGL) in WebView2, so full-screen TUIs
 behave as in Windows Terminal. Sessions live in `TerminalHub` and any number of viewers attach (tabs, pop-outs, the phone
@@ -115,6 +127,7 @@ an accent shade when the accent changes.
 | `src/Services/TermLink.cs`, `TerminalPage.cs` | One viewer ↔ session protocol; the xterm.js page (app and portal) |
 | `src/Services/StatsService.cs`, `HealthAdvice.cs` | CPU/RAM/GPU and per-app VRAM/GPU polling; the VRAM-crowding warning |
 | `src/Services/AppServices.cs` | Version, accent theming, idle notifications |
+| `src/Services/AiSharing.cs` | Sharing this PC's Ollama with the home network (firewall, OLLAMA_HOST) |
 | `src/Services/WebPortal.cs`, `PortalSecurity.cs` | Phone portal (Kestrel HTTPS + WebSockets), auth, cert |
 | `src/Services/QwenExtensions.cs`, `ModelStorage.cs` | Extension marketplaces; moving the model store |
 | `src/Controls/TerminalViewer.cs` | A WebView2 view onto a shared session (tabs and pop-outs) |

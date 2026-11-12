@@ -180,6 +180,14 @@ public sealed class AppConfig
     public Dictionary<string, DateTime> ModelLastUsed { get; set; } = [];
     public DateTime UsageTrackingSince { get; set; } = DateTime.Now;
 
+    // AI on another PC
+    /// <summary>Use the Ollama of another PC on the network instead of this one.</summary>
+    public bool UseRemoteAi { get; set; }
+    /// <summary>That PC's name or IP (port 11434 unless given), e.g. "gpu-pc" or "192.168.1.20".</summary>
+    public string RemoteAiAddress { get; set; } = "";
+    /// <summary>This PC shares its Ollama with the home network (OLLAMA_HOST=0.0.0.0 + a LAN-only firewall rule).</summary>
+    public bool ShareAi { get; set; }
+
     // Web portal
     public bool PortalEnabled { get; set; }
     public int PortalPort { get; set; } = Random.Shared.Next(20000, 60000);

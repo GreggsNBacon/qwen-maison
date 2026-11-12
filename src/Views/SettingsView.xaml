@@ -16,7 +16,7 @@
       <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
     </Style>
   </UserControl.Resources>
-  <ScrollViewer VerticalScrollBarVisibility="Auto">
+  <ScrollViewer x:Name="Scroller" VerticalScrollBarVisibility="Auto">
     <StackPanel Margin="28,4,28,28" MaxWidth="1100" HorizontalAlignment="Left">
       <TextBlock Text="Settings" FontSize="28" FontWeight="SemiBold" Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
       <TextBlock Text="Saved automatically." FontSize="14" Margin="0,2,0,18" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
@@ -189,6 +189,63 @@
           </Grid>
           <TextBox x:Name="MoveLog" Visibility="Collapsed" IsReadOnly="True" FontFamily="Cascadia Mono, Consolas" FontSize="12" Height="110" Margin="0,10,0,0"
                    TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" />
+        </StackPanel>
+      </ui:Card>
+
+      <!-- AI on another PC -->
+      <ui:Card x:Name="AiCard" Margin="0,0,0,12">
+        <StackPanel>
+          <TextBlock Text="AI on another PC" Style="{StaticResource H}" />
+          <TextBlock Style="{StaticResource Sub}"
+                     Text="Run the AI on the PC with the best graphics card, and use it from your other PCs at home. The agent still works on the PC you're sitting at, with its files; only the model's thinking happens on the AI PC, like Claude Code with a model in the cloud." />
+          <Grid>
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="*" />
+              <ColumnDefinition Width="24" />
+              <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <!-- This PC is the AI PC -->
+            <StackPanel>
+              <TextBlock Text="On the AI PC" Style="{StaticResource SectionLabel}" />
+              <ui:ToggleSwitch x:Name="ShareAiToggle" Content="Share this PC's AI on my home network" Click="ShareAi_Click"
+                               ToolTip="Lets maison on your other PCs use this PC's models. Opens port 11434 in Windows Firewall for your home network only (and Tailscale), never the internet. Windows asks for admin permission once." />
+              <TextBlock x:Name="ShareState" FontSize="12.5" TextWrapping="Wrap" Margin="0,8,0,0" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+              <StackPanel x:Name="SharePanel" Margin="0,8,0,0" Visibility="Collapsed">
+                <TextBlock Text="On your other PC, enter one of these" FontSize="12" Foreground="{DynamicResource TextFillColorTertiaryBrush}" />
+                <ItemsControl x:Name="ShareAddresses">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                      <StackPanel Orientation="Horizontal" Margin="0,2">
+                        <TextBlock Text="{Binding}" FontFamily="Cascadia Mono, Consolas" FontSize="14" VerticalAlignment="Center" Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+                        <ui:Button Content="Copy" Appearance="Transparent" Margin="8,0,0,0" Padding="8,2" Tag="{Binding}" Click="CopyUrl_Click" ToolTip="Copy this address" />
+                      </StackPanel>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+                <TextBlock FontSize="12" TextWrapping="Wrap" Margin="0,6,0,0" Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                           Text="Anyone on your home network can use this PC's AI while sharing is on (Ollama has no password). Your home network must be set to Private in Windows." />
+              </StackPanel>
+            </StackPanel>
+
+            <!-- This PC uses another PC's AI -->
+            <StackPanel Grid.Column="2">
+              <TextBlock Text="On your other PCs" Style="{StaticResource SectionLabel}" />
+              <ui:ToggleSwitch x:Name="UseRemoteToggle" Content="Use the AI from another PC" Click="UseRemote_Click"
+                               ToolTip="Claude Code, Qwen Code, the Models page and setup use the AI PC's Ollama instead of this PC's. Nothing big needs installing here." />
+              <Grid Margin="0,10,0,0">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="*" />
+                  <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <ui:TextBox x:Name="RemoteAddress" PlaceholderText="AI PC's name or IP, e.g. gpu-pc" Icon="{ui:SymbolIcon Desktop24}" KeyUp="RemoteAddress_KeyUp"
+                            ToolTip="The name or address shown on the AI PC under Share this PC's AI (port 11434 unless you add :port)" />
+                <ui:Button Grid.Column="1" x:Name="BtnConnect" Content="Connect" Appearance="Primary" Margin="8,0,0,0" Click="Connect_Click"
+                           ToolTip="Check the AI PC answers, then use it" />
+              </Grid>
+              <TextBlock x:Name="RemoteState" FontSize="12.5" TextWrapping="Wrap" Margin="0,8,0,0" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+            </StackPanel>
+          </Grid>
         </StackPanel>
       </ui:Card>
 

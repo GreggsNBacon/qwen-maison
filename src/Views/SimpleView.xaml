@@ -70,6 +70,9 @@
         <ui:Button x:Name="StartButton" Content="Start" Appearance="Primary" HorizontalAlignment="Center" Margin="0,28,0,0"
                    FontSize="20" Padding="56,14" Click="Start_Click" Icon="{ui:SymbolIcon Play24}"
                    ToolTip="Install and start everything: the Ollama engine, a Qwen model sized for this PC, Qwen Code (and Claude Code)" />
+        <ui:Button x:Name="RemoteLink" Appearance="Transparent" HorizontalAlignment="Center" Margin="0,10,0,0" Padding="10,4" Click="RemoteLink_Click"
+                   Content="Got a PC with a better graphics card? Use its AI instead" Foreground="{DynamicResource MaisonAccentTextBrush}"
+                   ToolTip="Skip the big download: use the AI of another PC at home that has maison with sharing turned on" />
 
         <StackPanel x:Name="ProgressPanel" Visibility="Collapsed" Margin="0,26,0,0" Width="520">
           <ProgressBar x:Name="Overall" Height="8" Maximum="100" />
