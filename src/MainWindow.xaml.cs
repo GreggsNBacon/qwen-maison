@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.IO;
+using System.Net.Http.Json;
 using System.Reflection;
 using System.Windows;
 using System.Windows.Controls;
@@ -38,7 +39,9 @@ public partial class MainWindow : FluentWindow, IShell
     public MainWindow()
     {
         Instance = this;
-        OllamaClient.Use(_config.UseRemoteAi, _config.RemoteAiAddress);
+        OllamaClient.UsePool(_config.UseRemoteAi);
+        if (_config.UseRemoteAi) _ = StartPoolPartAsync("pool", Services.Pool.PoolRelay.StartAsync);
+        if (_config.ShareAi) _ = StartPoolPartAsync("AI sharing", Services.Pool.PoolHost.StartAsync);
         InitializeComponent();
         StatusList.ItemsSource = _status;
         // Messages live in their own owned window so they show above the terminals (WebView2 draws over WPF content).
@@ -50,6 +53,7 @@ public partial class MainWindow : FluentWindow, IShell
         SimplePage.Shell = this;
         ExtensionsPage.Shell = this;
         SettingsPage.Shell = this;
+        PoolPage.Shell = this;
         VersionText.Text = "v" + AppInfo.Version;
         TitleVersion.Text = "v" + AppInfo.Version;
         Theming.ApplyAccent(_config.Accent);
@@ -139,20 +143,47 @@ public partial class MainWindow : FluentWindow, IShell
 
     public async Task OnModelsChangedAsync() => await RefreshAsync(quiet: true);
 
+    private async Task StartPoolPartAsync(string what, Func<Task> start)
+    {
+        try { await start(); await RefreshAsync(quiet: true); }
+        catch (Exception ex) { Log($"Couldn't start the {what}: {ex.Message}"); Toast($"The {what} didn't start", ex.Message, ControlAppearance.Danger, SymbolRegular.ErrorCircle24); }
+    }
+
     public async Task OnAiLocationChangedAsync()
     {
-        Log(OllamaClient.IsRemote ? $"Using the AI on {OllamaClient.Where}" : "Using this PC's AI");
+        Log(OllamaClient.IsRemote ? "Using your AI pool" : "Using this PC's AI");
         _models = []; _loaded = [];
         await RefreshAsync(quiet: true);
         await SetupPage.RefreshAsync();
         if (_config.UiMode == "simple") await SimplePage.ActivateAsync();
     }
 
-    public void ShowAiSettings()
+    public void ShowAiSettings() => ShowPool();
+
+    public void ShowPool()
     {
         SetSimpleMode(false);
-        Navigate("settings");
-        SettingsPage.ShowAiCard();
+        Navigate("pool");
+    }
+
+    public async Task SetUsePoolAsync(bool on)
+    {
+        if (on)
+        {
+            try { await Services.Pool.PoolRelay.StartAsync(); }
+            catch (Exception ex)
+            {
+                Toast("The AI pool didn't start", ex.Message, ControlAppearance.Danger, SymbolRegular.ErrorCircle24);
+                on = false;
+            }
+        }
+        else await Services.Pool.PoolRelay.StopAsync();
+        _config.UseRemoteAi = on;
+        _config.Save();
+        OllamaClient.UsePool(on);
+        SettingsPage.RefreshPool();
+        await OnAiLocationChangedAsync();
+        await PoolPage.RefreshAsync();
     }
 
     public void Navigate(string page)
@@ -162,7 +193,7 @@ public partial class MainWindow : FluentWindow, IShell
         {
             ("dashboard", DashboardPage, NavDashboard), ("terminals", TerminalsPage, NavTerminals), ("models", ModelsPage, NavModels),
             ("setup", SetupPage, NavSetup), ("system", SystemPage, NavSystem), ("extensions", ExtensionsPage, NavExtensions),
-            ("settings", SettingsPage, NavSettings),
+            ("settings", SettingsPage, NavSettings), ("pool", PoolPage, NavPool),
         };
         foreach (var (key, view, nav) in pages)
         {
@@ -188,6 +219,7 @@ public partial class MainWindow : FluentWindow, IShell
         if (page == "system") SystemPage.Refresh();
         if (page == "extensions") _ = ExtensionsPage.RefreshAsync();
         if (page == "settings") SettingsPage.Refresh();
+        if (page == "pool") _ = PoolPage.RefreshAsync();
     }
 
     public void Log(string message)
@@ -215,7 +247,11 @@ public partial class MainWindow : FluentWindow, IShell
 
     private string BaseMain => MainModel.Text.Trim();
     private string BaseFast => string.IsNullOrWhiteSpace(FastModel.Text) ? BaseMain : FastModel.Text.Trim();
-    private int ContextSize => Context.SelectedItem is string s && Launcher.ContextSizes.TryGetValue(s, out var n) ? n : 0;
+    /// <summary>
+    /// The chosen context window (0 = Ollama's default). In the AI pool every PC must give the same window, and their
+    /// defaults differ with their GPUs, so "Ollama default" means a fixed 32K there.
+    /// </summary>
+    private int ContextSize => Context.SelectedItem is string s && Launcher.ContextSizes.TryGetValue(s, out var n) ? (n == 0 && OllamaClient.IsRemote ? 32768 : n) : 0;
     private string PermMode => (Perms.SelectedItem as PermChoice)?.Key ?? "ask";
 
     private void SaveConfig()
@@ -352,7 +388,7 @@ public partial class MainWindow : FluentWindow, IShell
 
             var items = new List<StatusItem>();
             if (OllamaClient.IsRemote)
-                items.Add(new() { Level = Health.Info, Title = $"Using the AI on {OllamaClient.Where}", Detail = "Models run on that PC. Change this in Settings → AI on another PC." });
+                items.Add(new() { Level = Health.Info, Title = "Using your AI pool", Detail = "Models run on the AI PCs in your pool. See and manage them on the AI pool page." });
             else if (SystemProbe.OllamaInstalled)
                 items.Add(new() { Level = Health.Ok, Title = "Ollama installed", Detail = SystemProbe.OllamaDir });
             else
@@ -369,7 +405,7 @@ public partial class MainWindow : FluentWindow, IShell
             items.Add(running
                 ? new() { Level = Health.Ok, Title = $"Server responding · v{version}", Detail = OllamaClient.BaseUrl }
                 : OllamaClient.IsRemote
-                    ? new() { Level = Health.Bad, Title = $"Can't reach {OllamaClient.Where}", Detail = "Check that PC is on, that maison there has \"Share this PC's AI\" on, and that both PCs are on the same network." }
+                    ? new() { Level = Health.Bad, Title = "No AI PC in your pool is reachable", Detail = "Check your AI PCs are on with maison running, and that both are on the same network. The AI pool page shows each one's status." }
                     : new() { Level = Health.Bad, Title = "Server not responding", Detail = SystemProbe.OllamaInstalled ? "Click Start." : "Install Ollama from the Setup page." });
 
             foreach (var m in _loaded)
@@ -442,7 +478,7 @@ public partial class MainWindow : FluentWindow, IShell
         {
             b.Tag ??= b.ToolTip;   // the normal tooltip, to put back
             b.IsEnabled = !remote;
-            b.ToolTip = remote ? $"Ollama runs on {OllamaClient.Where}: start or repair it there" : b.Tag;
+            b.ToolTip = remote ? "The AI runs on your AI pool: set up or fix its PCs on the AI pool page" : b.Tag;
         }
         bool noChat = remote && !SystemProbe.OllamaInstalled;
         BtnChat.Tag ??= BtnChat.ToolTip;
@@ -603,6 +639,8 @@ public partial class MainWindow : FluentWindow, IShell
         var p = await PlanAsync();
         var main = p.Main;
         var folder = WorkingFolder;
+        if (OllamaClient.IsRemote && kind != "chat")   // its own address on the pool relay, so its requests stay together
+            p = p with { Url = Services.Pool.PoolRelay.SessionUrl(Services.Pool.PoolRelay.Register(kind, $"{(kind == "claude" ? "Claude Code" : "Qwen Code")} · {main}")) };
         Log($"{kind}: context {p.Ctx:N0} tokens, replies up to {p.OutputTokens:N0}");
         return kind switch
         {
@@ -854,7 +892,7 @@ public partial class MainWindow : FluentWindow, IShell
         Directory.CreateDirectory(dir);
         await Task.Delay(7000);   // first stats sample + gauge animation
         Snap(Path.Combine(dir, "dashboard.png"));
-        foreach (var page in new[] { "models", "setup", "system", "extensions", "settings", "terminals" })
+        foreach (var page in new[] { "models", "setup", "system", "extensions", "settings", "pool", "terminals" })
         {
             Navigate(page);
             await Task.Delay(3000);
@@ -1085,69 +1123,104 @@ public partial class MainWindow : FluentWindow, IShell
             Navigate("dashboard");
         }
 
-        // Optional: --remote <address> switches to "use the AI from another PC" (in memory only) and checks every place
-        // that changes. "localhost" exercises it against this PC's own Ollama.
-        var remoteResult = "";
-        var ri = Array.IndexOf(args, "--remote");
-        if (ri >= 0 && ri + 1 < args.Length)
+        // Optional: --pool <port:code,port:code> pairs with AI PCs started with --pool-host on this machine and checks
+        // discovery, pairing, routing, spreading work, moving off a busy PC, agents shown, remote install and keys.
+        var poolResult = "";
+        if (args.Contains("--pool"))
         {
-            var (probeOk, probeMsg) = await OllamaClient.ProbeAsync(args[ri + 1]);
-            var (badOk, badMsg) = await OllamaClient.ProbeAsync("no-such-pc-maison-test");
-            OllamaClient.Use(true, args[ri + 1]);
-            await OnAiLocationChangedAsync();
-            Navigate("dashboard");
-            await Task.Delay(1500);
-            Snap(Path.Combine(dir, "remote-dashboard.png"));
-            var claude = (await BuildSpecAsync("claude"))!;
-            var qwen = (await BuildSpecAsync("qwen"))!;
-            var chat = (await BuildSpecAsync("chat"))!;
-            Navigate("setup");
-            await Task.Delay(1500);
-            Snap(Path.Combine(dir, "remote-setup.png"));
-            var v = await LaunchAsync(qwen, "qwen", "Qwen Code", qwen.Title, Launcher.TargetApp);
-            await Task.Delay(15000);
-            var screen = v is null ? "" : await v.ReadScreenAsync();
-            if (v is not null) await v.CaptureAsync(Path.Combine(dir, "remote-qwen.png"));
-            SetSimpleMode(true);
-            await Task.Delay(4000);
-            Snap(Path.Combine(dir, "remote-simple.png"));
-            SetSimpleMode(false);
-            remoteResult = "REMOTE: " +
-                $"probe=[{probeOk}: {probeMsg}] badProbe=[{badOk}: {badMsg}] isRemote={OllamaClient.IsRemote} base={OllamaClient.BaseUrl} " +
-                $"health=[{string.Join(" / ", _status.Take(3).Select(s => s.Title))}] pill=[{ServerPillText.Text}] startEnabled={BtnStart.IsEnabled} " +
-                $"setup=[{string.Join(" / ", SetupPage.Steps.Take(3).Select(s => s.Title + ": " + s.StatusText))}] " +
-                $"claudeUrl={(claude.Env is { } ce && ce.TryGetValue("ANTHROPIC_BASE_URL", out var cu) ? cu : "")} " +
-                $"qwenCmdRemote={qwen.Command.Contains(OllamaClient.BaseUrl)} chatHost={(chat.Env is { } he && he.TryGetValue("OLLAMA_HOST", out var hu) ? hu : "")} " +
-                $"qwenRuns={screen.Contains("Type your message")} ctxLog=[{string.Join(" | ", LogBox.Text.Split('\n').Where(l => l.Contains(": context")).TakeLast(1))}]";
-            OllamaClient.Use(false, "");
-            await OnAiLocationChangedAsync();
-            remoteResult += $" backToLocal={!OllamaClient.IsRemote && BtnStart.IsEnabled}";
-        }
+            var spec = args[Array.IndexOf(args, "--pool") + 1].Split(',').Select(x => x.Split(':')).Select(x => (Port: int.Parse(x[0]), Code: x[1])).ToList();
+            var pr = new List<string>();
+            void PAdd(string s) { pr.Add(s); try { File.AppendAllText(Path.Combine(dir, "pool-progress.txt"), s + Environment.NewLine); } catch { } }
+            try
+            {
+                _config.PoolIncludeThisPc = false;
+                _config.Save();
+                var found = await Services.Pool.AiPool.DiscoverAsync();
+                PAdd($"discovered={found.Count}");
+                var pcs = new List<Services.Pool.FoundPc>();
+                foreach (var (port, _) in spec) if (await Services.Pool.AiPool.LookupAsync($"127.0.0.1:{port}") is { } pc) pcs.Add(pc);
+                PAdd($"lookup={pcs.Count}/{spec.Count}");
+                var (badOk, _) = await Services.Pool.AiPool.PairAsync(pcs[0], "000000");
+                PAdd($"badCodeRejected={!badOk}");
+                for (int k = 0; k < pcs.Count; k++)
+                {
+                    var (ok, msg) = await Services.Pool.AiPool.PairAsync(pcs[k], spec[k].Code);
+                    PAdd($"pair{k}={ok}");
+                    if (!ok) PAdd($"pairMsg={msg}");
+                }
+                await SetUsePoolAsync(true);
+                await Services.Pool.AiPool.RefreshAsync();
+                var members = Services.Pool.AiPool.Members.ToList();
+                PAdd($"online={members.Count(m => m.Online)}/{members.Count}");
+                using var relay = new System.Net.Http.HttpClient { BaseAddress = new Uri(Services.Pool.PoolRelay.Url), Timeout = TimeSpan.FromMinutes(5) };
+                var tags = await relay.GetFromJsonAsync<System.Text.Json.JsonElement>("/api/tags");
+                var models = tags.GetProperty("models").EnumerateArray()
+                    .Select(m => (Name: m.GetProperty("name").GetString()!, Size: m.GetProperty("size").GetInt64()))
+                    .Where(m => !System.Text.RegularExpressions.Regex.IsMatch(m.Name, @"-ctx\d+k")).OrderBy(m => m.Size).ToList();
+                PAdd($"relayTags={models.Count}");
+                var small = models[0].Name;
+                PAdd($"model={small}");
+                object Gen(int n) => new { model = small, prompt = "Count from 1 upwards, one number per line.", stream = false, options = new { num_predict = n }, keep_alive = "10m" };
 
-        // Optional: --share-dry restarts Ollama listening on the network for this run only (nothing saved), reaches it
-        // through this PC's LAN address, then puts Ollama back. The firewall part needs admin and isn't tested.
-        var shareResult = "";
-        if (args.Contains("--share-dry"))
-        {
-            var before = AiSharing.Check();
-            Environment.SetEnvironmentVariable("OLLAMA_HOST", "0.0.0.0:11434", EnvironmentVariableTarget.Process);
-            await SystemProbe.StopOllamaAsync();
-            var started = await SystemProbe.StartOllamaAsync();
-            var during = AiSharing.Check();
-            var lan = PortalNet.LanAddresses().FirstOrDefault(a => !a.ToString().StartsWith("100."))?.ToString() ?? "";
-            var (lanOk, lanMsg) = lan.Length > 0 ? await OllamaClient.ProbeAsync(lan) : (false, "no LAN address");
-            Environment.SetEnvironmentVariable("OLLAMA_HOST", null, EnvironmentVariableTarget.Process);
-            await SystemProbe.StopOllamaAsync();
-            await SystemProbe.StartOllamaAsync();
-            var after = AiSharing.Check();
-            var survey = await AiSharing.SurveyAsync();
-            Navigate("settings");
-            SettingsPage.Refresh();
-            SettingsPage.ShowAiCard();
-            await Task.Delay(1200);
-            Snap(Path.Combine(dir, "share-card.png"));
-            Navigate("dashboard");
-            shareResult = $"SHARE: broadRules={survey.BroadOllamaRules.Count} publicNets=[{string.Join(",", survey.PublicNetworks.Select(n => n.Name))}] before={before} started={started} during={during} viaLan=[{lanOk}: {lanMsg}] after={after} addresses=[{string.Join(", ", AiSharing.Addresses().Count)} found]";
+                // warm up (load the model) through a session-less request
+                await relay.PostAsJsonAsync("/api/generate", Gen(1));
+                // two sessions at once go to different PCs
+                var a = Services.Pool.PoolRelay.Register("qwen", "Test A");
+                var b = Services.Pool.PoolRelay.Register("claude", "Test B");
+                var ta = relay.PostAsJsonAsync($"/s/{a}/api/generate", Gen(400));
+                await Task.Delay(800);
+                var rb = await relay.PostAsJsonAsync($"/s/{b}/api/generate", Gen(5));
+                await ta;
+                var routes = Services.Pool.PoolRelay.Routes.ToDictionary(r => r.Id);
+                PAdd($"genOk={rb.IsSuccessStatusCode}");
+                PAdd($"spread={routes[a].MemberId != routes[b].MemberId}");
+
+                // someone else keeps A's PC busy: A's next request moves to the other PC
+                var busyMember = members.First(m => m.Member.Id == routes[a].MemberId);
+                var handler = new System.Net.Http.HttpClientHandler { ServerCertificateCustomValidationCallback = (_, _, _, _) => true };
+                using var other = new System.Net.Http.HttpClient(handler) { BaseAddress = new Uri($"https://127.0.0.1:{busyMember.Member.Port}"), Timeout = TimeSpan.FromMinutes(5) };
+                var code = spec[members.IndexOf(busyMember)].Code;
+                var pairResp = await other.PostAsJsonAsync("/maison/pair", new Services.Pool.PairRequest(code, "OTHER-PC", "other-pc-id"));
+                var otherToken = (await pairResp.Content.ReadFromJsonAsync<Services.Pool.PairReply>(new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web)))!.Token;
+                other.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", otherToken);
+                var busy = other.PostAsJsonAsync("/api/generate", Gen(600));
+                await Task.Delay(300);
+                await Services.Pool.AiPool.RefreshAsync();
+                PAdd($"seenBusy={busyMember.BusyForUs}");
+                var agentsSeen = busyMember.Info?.Agents.Select(x => $"{x.Kind}@{x.Client}").ToList() ?? [];
+                PAdd($"agents=[{string.Join(" ", agentsSeen)}]");
+                await relay.PostAsJsonAsync($"/s/{a}/api/generate", Gen(5));
+                routes = Services.Pool.PoolRelay.Routes.ToDictionary(r => r.Id);
+                PAdd($"movedOffBusy={routes[a].MemberId != busyMember.Member.Id && routes[a].Moves == 1}");
+                await busy;
+
+                // bad key is refused
+                using var bad = new System.Net.Http.HttpClient(new System.Net.Http.HttpClientHandler { ServerCertificateCustomValidationCallback = (_, _, _, _) => true })
+                    { BaseAddress = new Uri($"https://127.0.0.1:{busyMember.Member.Port}") };
+                bad.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", "not-a-real-key-not-a-real-key");
+                PAdd($"badKey={(int)(await bad.GetAsync("/api/tags")).StatusCode}");
+
+                // remote install (a model it already has: quick) and its progress
+                var target = members[^1];
+                var (pullOk, _) = await Services.Pool.AiPool.InstallModelAsync(target.Member, small);
+                Services.Pool.PoolTask? task = null;
+                for (int k = 0; k < 60 && pullOk; k++)
+                {
+                    await Task.Delay(1000);
+                    await Services.Pool.AiPool.RefreshAsync();
+                    task = target.Info?.Task;
+                    if (task is { Running: false }) break;
+                }
+                PAdd($"remotePull={pullOk && task is { Running: false, Error: null }}");
+                if (task?.Error is { } te) PAdd($"pullErr={te}");
+
+                Navigate("pool");
+                await Task.Delay(2500);
+                Snap(Path.Combine(dir, "pool-test.png"));
+                await SetUsePoolAsync(false);
+            }
+            catch (Exception ex) { PAdd($"error={ex.GetType().Name}: {ex.Message}"); }
+            poolResult = string.Join(" ", pr);
         }
 
         // Optional: --toast opens a terminal tab, shows a message and checks Windows really puts it above the terminal.
@@ -1215,7 +1288,7 @@ public partial class MainWindow : FluentWindow, IShell
             catch (Exception ex) { portalResult = "PORTAL: exception " + ex; }
         }
 
-        var lines = new List<string> { "STATUS:", pullResult, termResult, simpleResult, accentResult, toastResult, jitterResult, launchResult, remoteResult, shareResult, portalResult };
+        var lines = new List<string> { "STATUS:", pullResult, termResult, simpleResult, accentResult, toastResult, jitterResult, launchResult, poolResult, portalResult };
         lines.AddRange(_status.Select(s => $"[{s.Level}] {s.Title} | {s.Detail}"));
         lines.Add($"GAUGES: temp={GTemp.Display} load={GLoad.Display} power={GPower.Display} vram={GVram.Display} cpu={GCpu.Display} ram={GRam.Display} | ai: load={GLoad.AiDisplay} power={GPower.AiDisplay} vram={GVram.AiDisplay} cpu={GCpu.AiDisplay} ram={GRam.AiDisplay} | {GpuTitle.Text} | {GpuExtra.Text}");
         if (_stats is { } st)

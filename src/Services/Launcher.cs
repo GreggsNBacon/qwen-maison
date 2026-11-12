@@ -30,6 +30,8 @@ public static class Launcher
     /// <summary>Everything one launch needs: models, the real context window, permissions and the Start-command options.</summary>
     public sealed record Plan(string Main, string Fast, int Ctx, string Perm, LaunchOptions O, IReadOnlyList<string> Models)
     {
+        /// <summary>Where the agent sends requests: Ollama, or this session's address on the AI pool relay.</summary>
+        public string Url { get; init; } = OllamaClient.BaseUrl;
         /// <summary>Max tokens per reply: the user's number, or a quarter of the window (4K–32K) so prompt + reply fit.</summary>
         public int OutputTokens => O.MaxOutputTokens > 0 ? O.MaxOutputTokens : Math.Clamp(Ctx / 4, 4096, 32768);
     }
@@ -39,7 +41,7 @@ public static class Launcher
         var o = p.O;
         var env = new Dictionary<string, string>
         {
-            ["ANTHROPIC_BASE_URL"] = OllamaClient.BaseUrl,
+            ["ANTHROPIC_BASE_URL"] = p.Url,
             ["ANTHROPIC_AUTH_TOKEN"] = "ollama",
             ["ANTHROPIC_MODEL"] = p.Main,
             ["ANTHROPIC_DEFAULT_OPUS_MODEL"] = p.Main,
@@ -82,7 +84,7 @@ public static class Launcher
     {
         var env = new Dictionary<string, string>
         {
-            ["OPENAI_BASE_URL"] = OllamaClient.BaseUrl + "/v1",
+            ["OPENAI_BASE_URL"] = p.Url + "/v1",
             ["OPENAI_API_KEY"] = "ollama",
             ["OPENAI_MODEL"] = p.Main,
             // Unset, Qwen Code asks for the model's full output limit (64K+), which alone overflows a 32K/64K window.
@@ -123,7 +125,7 @@ public static class Launcher
                 {
                     ["id"] = id,
                     ["name"] = $"{id} (Ollama via maison)",
-                    ["baseUrl"] = OllamaClient.BaseUrl + "/v1",
+                    ["baseUrl"] = p.Url + "/v1",
                     ["envKey"] = "OPENAI_API_KEY",
                     ["generationConfig"] = Gen(),
                 }).ToList(),
@@ -139,7 +141,7 @@ public static class Launcher
     }
 
     public static string QwenCommand(Plan p) =>
-        Join($"qwen --auth-type openai --openai-base-url {Q(OllamaClient.BaseUrl + "/v1")} --openai-api-key ollama -m {Q(p.Main)}",
+        Join($"qwen --auth-type openai --openai-base-url {Q(p.Url + "/v1")} --openai-api-key ollama -m {Q(p.Main)}",
              $"--approval-mode {Mode(p.Perm).Qwen}", p.O.QwenContinue ? "--continue" : "", p.O.QwenExtraArgs);
 
     /// <summary>The ollama command talks to 127.0.0.1 unless told otherwise.</summary>

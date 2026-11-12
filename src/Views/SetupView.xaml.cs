@@ -66,7 +66,7 @@ public partial class SetupView : UserControl
 
         bool remote = OllamaClient.IsRemote;
         if (remote && !_ollama.Busy)
-            _ollama.SetDone(installed ? "Installed (not used: the AI runs on " + OllamaClient.Where + ")" : "Not needed: the AI runs on " + OllamaClient.Where);
+            _ollama.SetDone(installed ? "Installed (the AI runs on your AI pool)" : "Not needed: the AI runs on your AI pool");
         else if (!_ollama.Busy)
         {
             if (installed && runtime) _ollama.SetDone("Installed");
@@ -75,8 +75,8 @@ public partial class SetupView : UserControl
         }
         if (remote && !_server.Busy)
         {
-            if (running) _server.SetDone("Connected to " + OllamaClient.Where);
-            else _server.SetMissing("Can't reach " + OllamaClient.Where, "Retry", "Try to connect to the AI PC again");
+            if (running) _server.SetDone("Connected to your AI pool");
+            else _server.SetMissing("No AI PC in your pool is reachable", "Retry", "Try the AI pool again");
         }
         else if (!_server.Busy)
         {
@@ -87,12 +87,13 @@ public partial class SetupView : UserControl
         {
             _model.Title = $"Qwen model · {_recommended.Tag}";
             _model.Description = remote
-                ? $"Downloads onto {OllamaClient.Where}. {_recommended.Description} Pick others on the Models page."
+                ? "Install models on your AI PCs from the AI pool page."
                 : $"{_recommended.Description} Chosen for {(vram > 0 ? $"{vram:N0} GB of GPU memory" : "a CPU-only PC")}; pick others on the Models page.";
             var have = models.Any(m => m.Name.Equals(_recommended.Tag, StringComparison.OrdinalIgnoreCase));
             var other = models.FirstOrDefault(m => !m.Name.StartsWith("claude-") && !Launcher.IsVariant(m.Name));
             if (have) _model.SetDone("Installed");
             else if (other is not null) _model.SetDone($"Using {other.Name}", optionalButton: "Download", tip: $"Also download {_recommended.Tag} ({_recommended.SizeGb:0.#} GB)");
+            else if (remote) _model.SetMissing(running ? "None on your AI PCs yet" : "Needs your AI pool", "Download", "Download a model sized for your strongest AI PC onto it", enabled: running);
             else _model.SetMissing(running ? "Not downloaded" : "Needs the Ollama server", "Download", $"Download {_recommended.Tag} ({_recommended.SizeGb:0.#} GB)", enabled: running);
         }
         if (!_claude.Busy)
@@ -155,16 +156,40 @@ public partial class SetupView : UserControl
             }
             else if (step == _server && OllamaClient.IsRemote)
             {
-                Out($"Connecting to {OllamaClient.Where}…");
-                var (ok, message) = await OllamaClient.ProbeAsync(OllamaClient.BaseUrl);
-                Out(message);
-                if (!ok) throw new InvalidOperationException(message);
+                Out("Connecting to your AI pool…");
+                await Maison.Services.Pool.AiPool.RefreshAsync();
+                var v = await OllamaClient.GetVersionAsync(4);
+                if (v is null) throw new InvalidOperationException("No AI PC in your pool is reachable. Check they're on and maison is running there, or add one on the AI pool page.");
+                Out($"Connected to your AI pool (Ollama v{v}).");
             }
             else if (step == _server)
             {
                 Out("Starting Ollama…");
                 if (!await SystemProbe.StartOllamaAsync()) throw new InvalidOperationException("Ollama did not start within 20 seconds.");
                 Out("Ollama is running.");
+            }
+            else if (step == _model && OllamaClient.IsRemote)
+            {
+                // Install on the strongest AI PC in the pool, sized for its GPU.
+                await Maison.Services.Pool.AiPool.RefreshAsync();
+                var target = Maison.Services.Pool.AiPool.Members.Where(m => m.Online && m.Info is { OllamaRunning: true })
+                    .OrderByDescending(m => m.Info!.Gpu?.TotalGb ?? 0).FirstOrDefault()
+                    ?? throw new InvalidOperationException("No AI PC in your pool is ready. Set one up from the AI pool page.");
+                var tag = target.Info!.RecommendedModel;
+                Out($"Downloading {tag} onto {target.Member.Name}…");
+                var (ok, msg) = await Maison.Services.Pool.AiPool.InstallModelAsync(target.Member, tag);
+                if (!ok) throw new InvalidOperationException(msg);
+                while (true)
+                {
+                    await Task.Delay(2000);
+                    await Maison.Services.Pool.AiPool.RefreshAsync();
+                    if (target.Info?.Task is not { } t) continue;
+                    step.Progress = t.Percent;
+                    step.StatusText = t.Status;
+                    if (!t.Running) { if (t.Error is { } err) throw new InvalidOperationException(err); break; }
+                }
+                Shell.UseModel(tag);
+                Out($"{tag} installed on {target.Member.Name} and selected as the main model.");
             }
             else if (step == _model)
             {

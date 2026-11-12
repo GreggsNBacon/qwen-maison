@@ -8,37 +8,26 @@ using Maison.Models;
 namespace Maison.Services;
 
 /// <summary>
-/// "Share this PC's AI": lets maison (or Claude Code / Qwen Code) on other PCs at home use this PC's Ollama, the way
-/// Claude Code uses a model in the cloud. The agent and its files stay on the other PC; only the model runs here.
-///
-/// Ollama has no password, so the port is opened in Windows Firewall only for the home network (the local subnet)
-/// and Tailscale's range, on Private/Domain networks. Never the internet.
+/// "Share this PC's AI": makes this PC an AI PC in the AI pool. maison's pool service (HTTPS, paired PCs only) fronts
+/// this PC's Ollama, which itself stays on 127.0.0.1. Windows Firewall opens the pool's ports only for the home
+/// network (the local subnet) and Tailscale's range, on Private/Domain networks. Never the internet.
 /// </summary>
 public static class AiSharing
 {
-    public const string RuleName = "maison: share this PC's AI (Ollama)";
-    private const string ShareHost = "0.0.0.0:11434";
+    public const string RuleName = "maison: AI pool";
 
     /// <summary>What's actually in place right now (not just what the setting says).</summary>
-    public sealed record State(bool HostSet, bool FirewallOpen, bool Listening)
+    public sealed record State(bool ServiceRunning, bool FirewallOpen, bool OllamaExposed)
     {
-        public bool Working => HostSet && FirewallOpen && Listening;
+        public bool Working => ServiceRunning && FirewallOpen;
     }
 
+    /// <summary>OllamaExposed: Ollama itself listens on the network (its own setting or OLLAMA_HOST), with no password.</summary>
     public static State Check() => new(
-        HostSet: (Environment.GetEnvironmentVariable("OLLAMA_HOST", EnvironmentVariableTarget.User) ?? "").StartsWith("0.0.0.0"),
+        ServiceRunning: Pool.PoolHost.IsRunning,
         FirewallOpen: RuleExists(),
-        Listening: IPGlobalProperties.GetIPGlobalProperties().GetActiveTcpListeners()
+        OllamaExposed: IPGlobalProperties.GetIPGlobalProperties().GetActiveTcpListeners()
             .Any(e => e.Port == OllamaClient.DefaultPort && (e.Address.Equals(IPAddress.Any) || e.Address.Equals(IPAddress.IPv6Any))));
-
-    /// <summary>Addresses other PCs can type in "Use the AI from another PC".</summary>
-    public static List<string> Addresses()
-    {
-        var list = new List<string> { Environment.MachineName.ToLowerInvariant() };
-        list.AddRange(PortalNet.LanAddresses().Select(a => a.ToString()));
-        return list;
-    }
-
     /// <summary>What the firewall and network look like before sharing (read without admin).</summary>
     public sealed record Survey(IReadOnlyList<string> BroadOllamaRules, IReadOnlyList<(string Name, int Index)> PublicNetworks);
 
@@ -74,9 +63,10 @@ public static class AiSharing
         var script = new System.Text.StringBuilder();
         script.AppendLine("$ErrorActionPreference = 'Stop'");
         script.AppendLine($"Get-NetFirewallRule -DisplayName '{RuleName}' -ErrorAction SilentlyContinue | Remove-NetFirewallRule");
-        script.AppendLine($"New-NetFirewallRule -DisplayName '{RuleName}' -Direction Inbound -Action Allow -Protocol TCP -LocalPort {OllamaClient.DefaultPort} " +
-                          "-RemoteAddress LocalSubnet,100.64.0.0/10 -Profile Private,Domain " +
-                          "-Description 'Lets PCs on your home network use this PC''s Ollama. Added by maison; turn off in maison Settings.' | Out-Null");
+        foreach (var (proto, port) in new[] { ("TCP", Pool.PoolPorts.Service), ("UDP", Pool.PoolPorts.Discovery) })
+            script.AppendLine($"New-NetFirewallRule -DisplayName '{RuleName}' -Direction Inbound -Action Allow -Protocol {proto} -LocalPort {port} " +
+                              "-RemoteAddress LocalSubnet,100.64.0.0/10 -Profile Private,Domain " +
+                              "-Description 'Lets paired PCs on your home network use this PC''s AI through maison. Turn off in maison Settings.' | Out-Null");
         foreach (var r in survey.BroadOllamaRules)
             script.AppendLine($"Disable-NetFirewallRule -Name '{r.Replace("'", "''")}'");
         if (makePrivate)
@@ -88,51 +78,35 @@ public static class AiSharing
         if (!RuleExists()) return (false, "The firewall rule wasn't created, so other PCs would be blocked. Nothing else was changed.");
         if (survey.BroadOllamaRules.Count > 0) log("Switched off Windows' \"allow Ollama from anywhere\" rules.");
 
-        log("Telling Ollama to listen on the network (OLLAMA_HOST=0.0.0.0:11434)…");
-        Environment.SetEnvironmentVariable("OLLAMA_HOST", ShareHost, EnvironmentVariableTarget.User);
-        Environment.SetEnvironmentVariable("OLLAMA_HOST", ShareHost, EnvironmentVariableTarget.Process);   // Ollama started by maison inherits it
-        await RestartOllamaAsync(log);
+        log("Starting maison's AI pool service…");
+        await Pool.PoolHost.StartAsync();
+        if (await OllamaClient.GetLocalVersionAsync(2) is null) await SystemProbe.StartOllamaAsync();
 
         AppConfig.Current.ShareAi = true;
         AppConfig.Current.Save();
         var stillPublic = !makePrivate && survey.PublicNetworks.Count > 0;
-        return Check().Listening
-            ? (true, stillPublic
-                ? $"Shared, but your network ({survey.PublicNetworks[0].Name}) is set to Public in Windows, so other PCs are still blocked. Set it to Private in Windows Settings → Network."
-                : "This PC's AI is shared with your home network.")
-            : (true, "Sharing is set up, but Ollama isn't listening on the network yet. Restart Ollama (or this PC) and check again.");
+        return (true, stillPublic
+            ? $"Shared, but your network ({survey.PublicNetworks[0].Name}) is set to Public in Windows, so other PCs are still blocked. Set it to Private in Windows Settings → Network."
+            : "This PC is an AI PC in your pool. Other PCs find it on the AI pool page and pair with the code shown here.");
     }
-
-    /// <summary>Turns sharing off: Ollama back to this PC only, firewall rule removed.</summary>
+    /// <summary>Turns sharing off: the pool service stops and the firewall rules are removed. Paired PCs stay paired.</summary>
     public static async Task<(bool Ok, string Message)> DisableAsync(Action<string> log)
     {
-        log("Ollama back to this PC only…");
-        Environment.SetEnvironmentVariable("OLLAMA_HOST", null, EnvironmentVariableTarget.User);
-        Environment.SetEnvironmentVariable("OLLAMA_HOST", null, EnvironmentVariableTarget.Process);
-        await RestartOllamaAsync(log);
+        log("Stopping the AI pool service…");
+        await Pool.PoolHost.StopAsync();
         AppConfig.Current.ShareAi = false;
         AppConfig.Current.Save();
-
         string? fwError = null;
         if (RuleExists())
         {
-            log("Closing the firewall port (Windows will ask for permission)…");
+            log("Closing the firewall ports (Windows will ask for permission)…");
             fwError = await RunElevatedPowerShellAsync($"Get-NetFirewallRule -DisplayName '{RuleName}' | Remove-NetFirewallRule");
         }
-        var listening = Check().Listening;
-        return (true, (listening
-                ? "maison stopped sharing, but Ollama still listens on the network by its own setting (\"Expose Ollama to the network\" in Ollama's settings). Turn that off too to keep it private."
+        return (true, (Check().OllamaExposed
+                ? "This PC no longer shares through maison, but Ollama itself still listens on the network (\"Expose Ollama to the network\" in Ollama's settings). Turn that off too to keep it private."
                 : "This PC's AI is private again.")
-            + (fwError is null ? "" : " The firewall rule is still there: " + fwError));
+            + (fwError is null ? "" : " The firewall rules are still there: " + fwError));
     }
-    private static async Task RestartOllamaAsync(Action<string> log)
-    {
-        if (!SystemProbe.OllamaInstalled) return;
-        log("Restarting Ollama…");
-        await SystemProbe.StopOllamaAsync();
-        log(await SystemProbe.StartOllamaAsync() ? "Ollama is running." : "Ollama didn't come back by itself: click Start on the Dashboard.");
-    }
-
     private static bool RuleExists()
     {
         try

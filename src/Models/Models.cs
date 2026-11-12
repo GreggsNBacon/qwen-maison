@@ -152,6 +152,31 @@ public sealed class LaunchOptions
     public string ChatExtraArgs { get; set; } = "";
 }
 
+/// <summary>An AI PC this PC has paired with (client side).</summary>
+public sealed class PoolMember
+{
+    public string Id { get; set; } = "";
+    public string Name { get; set; } = "";
+    /// <summary>Last address it was seen at (refreshed by discovery).</summary>
+    public string Address { get; set; } = "";
+    public int Port { get; set; } = 11435;
+    /// <summary>The key it gave us at pairing.</summary>
+    public string Token { get; set; } = "";
+    /// <summary>Its HTTPS certificate's SHA-256, pinned at pairing.</summary>
+    public string Thumbprint { get; set; } = "";
+    public bool Enabled { get; set; } = true;
+}
+
+/// <summary>A PC paired with this AI PC (host side).</summary>
+public sealed class PoolClient
+{
+    public string Id { get; set; } = "";
+    public string Name { get; set; } = "";
+    public string TokenHash { get; set; } = "";
+    public DateTime Added { get; set; }
+    public DateTime LastSeen { get; set; }
+}
+
 public sealed class AppConfig
 {
     public LaunchOptions Launch { get; set; } = new();
@@ -180,13 +205,24 @@ public sealed class AppConfig
     public Dictionary<string, DateTime> ModelLastUsed { get; set; } = [];
     public DateTime UsageTrackingSince { get; set; } = DateTime.Now;
 
-    // AI on another PC
-    /// <summary>Use the Ollama of another PC on the network instead of this one.</summary>
+    // AI pool
+    /// <summary>Stable id for this PC in AI pools (so a PC is recognised when its address changes).</summary>
+    public string MachineId { get; set; } = Guid.NewGuid().ToString("N");
+    /// <summary>Use the AI pool (paired AI PCs, and optionally this PC) instead of only this PC's Ollama.</summary>
     public bool UseRemoteAi { get; set; }
-    /// <summary>That PC's name or IP (port 11434 unless given), e.g. "gpu-pc" or "192.168.1.20".</summary>
+    /// <summary>Also use this PC's own Ollama as part of the pool.</summary>
+    public bool PoolIncludeThisPc { get; set; } = true;
+    /// <summary>AI PCs this PC has paired with.</summary>
+    public List<PoolMember> PoolMembers { get; set; } = [];
+    /// <summary>Legacy (unreleased builds): a single remote address.</summary>
     public string RemoteAiAddress { get; set; } = "";
-    /// <summary>This PC shares its Ollama with the home network (OLLAMA_HOST=0.0.0.0 + a LAN-only firewall rule).</summary>
+
+    /// <summary>This PC is an AI PC: maison's pool service shares its Ollama with paired PCs at home.</summary>
     public bool ShareAi { get; set; }
+    /// <summary>The code other PCs enter once to pair with this AI PC.</summary>
+    public string PoolPairCode { get; set; } = "";
+    /// <summary>PCs paired with this AI PC (only a hash of each key is kept).</summary>
+    public List<PoolClient> PoolClients { get; set; } = [];
 
     // Web portal
     public bool PortalEnabled { get; set; }

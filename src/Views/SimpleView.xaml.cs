@@ -66,7 +66,7 @@ public partial class SimpleView : UserControl
         bool remote = OllamaClient.IsRemote;
         if (!remote && (!SystemProbe.OllamaInstalled || !SystemProbe.RuntimeOk)) missing.Add("the AI engine (Ollama)");
         bool running = await OllamaClient.GetVersionAsync(remote ? 4 : 2) is not null;
-        if (remote && !running) missing.Add($"a connection to the AI PC ({OllamaClient.Where})");
+        if (remote && !running) missing.Add("a connection to your AI pool");
         if (!running && SystemProbe.OllamaInstalled && SystemProbe.RuntimeOk)
         {
             ShowBusy("Waking things up", "Starting the AI engine (Ollama server)…");
@@ -135,14 +135,14 @@ public partial class SimpleView : UserControl
             ? "One click installs everything Qwen needs to run privately on this PC. No account, no subscription. Grab a coffee — the first setup downloads a lot."
             : "Still to do: " + string.Join(", ", missing) + ". Press Start and maison takes care of it.";
         StartButton.Content = fresh ? "Start" : "Finish setup";
-        RemoteLink.Content = "Got a PC with a better graphics card? Use its AI instead";
+        RemoteLink.Content = "Got a PC with a better graphics card? Use its AI instead (AI pool)";
         RemoteLink.Visibility = OllamaClient.IsRemote ? Visibility.Collapsed : Visibility.Visible;
         if (OllamaClient.IsRemote && missing.Any(m => m.Contains("AI PC")))
         {
             Headline.Text = "Can't reach the AI PC";
-            Subline.Text = $"maison is set to use the AI on {OllamaClient.Where}. Check that PC is on and sharing is turned on there, then press Try again.";
+            Subline.Text = "maison is set to use your AI pool, but no AI PC in it answers. Check they're on with maison running, then press Try again.";
             StartButton.Content = "Try again";
-            RemoteLink.Content = "Change the AI PC, or use this PC's own AI";
+            RemoteLink.Content = "Open the AI pool";
             RemoteLink.Visibility = Visibility.Visible;
         }
     }
@@ -264,7 +264,7 @@ public partial class SimpleView : UserControl
         SetupPanel.Visibility = Visibility.Collapsed;
         ReadyPanel.Visibility = Visibility.Visible;
         var gpu = StatsService.Latest?.Gpu?.Name.Replace("NVIDIA GeForce ", "").Replace("NVIDIA ", "");
-        var where = OllamaClient.IsRemote ? new Uri(OllamaClient.BaseUrl).Host : gpu is null ? "this PC" : "your " + gpu;
+        var where = OllamaClient.IsRemote ? "your AI pool" : gpu is null ? "this PC" : "your " + gpu;
         ReadySub.Text = $"Running {Shell.MainModelName} on {where} · working in {Shell.WorkingFolder}";
         if (StatsService.Latest is { } st) ShowStats(st);
 

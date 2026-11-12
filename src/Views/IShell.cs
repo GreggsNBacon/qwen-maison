@@ -18,10 +18,14 @@ public interface IShell
     IReadOnlyDictionary<string, DateTime> ModelLastUsed { get; }
     /// <summary>Refreshes the Dashboard's copyable commands after a start-command option changed.</summary>
     void UpdateCommands();
-    /// <summary>The AI moved (this PC ↔ another PC): re-check health, setup and the simple view.</summary>
+    /// <summary>The AI moved (this PC ↔ the AI pool): re-check health, setup and the simple view.</summary>
     Task OnAiLocationChangedAsync();
-    /// <summary>Opens the advanced view at Settings → AI on another PC.</summary>
+    /// <summary>Opens the advanced view at the AI pool page.</summary>
     void ShowAiSettings();
+    /// <summary>Opens the advanced view at the AI pool page.</summary>
+    void ShowPool();
+    /// <summary>Switches this PC's agents to the AI pool (or back to this PC's own AI).</summary>
+    Task SetUsePoolAsync(bool on);
     /// <summary>The PowerShell maison would run for "claude", "qwen" or "chat" with the current selection and options.</summary>
     string StartCommandPreview(string kind);
 }

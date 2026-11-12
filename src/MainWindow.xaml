@@ -80,6 +80,9 @@
           <ui:Button x:Name="NavSystem" Content="System" Icon="{ui:SymbolIcon Board24}" Tag="system" Click="Nav_Click"
                      HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Padding="12,9" Margin="0,0,0,4" BorderThickness="0"
                      ToolTip="What this PC is and what it's doing: CPU, memory, GPU, which apps use GPU memory, busiest processes" />
+          <ui:Button x:Name="NavPool" Content="AI pool" Icon="{ui:SymbolIcon Server24}" Tag="pool" Click="Nav_Click"
+                     HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Padding="12,9" Margin="0,0,0,4" BorderThickness="0"
+                     ToolTip="Other PCs at home that run the AI for this one: find and add them, see what they're doing, manage their models" />
           <ui:Button x:Name="NavExtensions" Content="Extensions" Icon="{ui:SymbolIcon PuzzlePiece24}" Tag="extensions" Click="Nav_Click"
                      HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Padding="12,9" Margin="0,0,0,4" BorderThickness="0"
                      ToolTip="Qwen Code extensions, skills and plugins from marketplaces" />
@@ -96,6 +99,7 @@
       <v:SystemView x:Name="SystemPage" Grid.Column="1" Visibility="Collapsed" />
       <v:ExtensionsView x:Name="ExtensionsPage" Grid.Column="1" Visibility="Collapsed" />
       <v:SettingsView x:Name="SettingsPage" Grid.Column="1" Visibility="Collapsed" />
+      <v:PoolView x:Name="PoolPage" Grid.Column="1" Visibility="Collapsed" />
 
       <ScrollViewer x:Name="DashboardPage" Grid.Column="1" VerticalScrollBarVisibility="Auto">
         <StackPanel Margin="20,4,28,28">

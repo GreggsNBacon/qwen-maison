@@ -192,12 +192,12 @@
         </StackPanel>
       </ui:Card>
 
-      <!-- AI on another PC -->
+      <!-- AI pool -->
       <ui:Card x:Name="AiCard" Margin="0,0,0,12">
         <StackPanel>
-          <TextBlock Text="AI on another PC" Style="{StaticResource H}" />
+          <TextBlock Text="AI pool" Style="{StaticResource H}" />
           <TextBlock Style="{StaticResource Sub}"
-                     Text="Run the AI on the PC with the best graphics card, and use it from your other PCs at home. The agent still works on the PC you're sitting at, with its files; only the model's thinking happens on the AI PC, like Claude Code with a model in the cloud." />
+                     Text="Run the AI on the PCs with good graphics cards, and use them from any PC at home. The agent works on the PC you're sitting at, with its files; only the model's thinking happens on an AI PC. With several AI PCs, a busy one hands work to a free one." />
           <Grid>
             <Grid.ColumnDefinitions>
               <ColumnDefinition Width="*" />
@@ -205,50 +205,58 @@
               <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
 
-            <!-- This PC is the AI PC -->
+            <!-- This PC is an AI PC -->
             <StackPanel>
-              <TextBlock Text="On the AI PC" Style="{StaticResource SectionLabel}" />
-              <ui:ToggleSwitch x:Name="ShareAiToggle" Content="Share this PC's AI on my home network" Click="ShareAi_Click"
-                               ToolTip="Lets maison on your other PCs use this PC's models. Opens port 11434 in Windows Firewall for your home network only (and Tailscale), never the internet. Windows asks for admin permission once." />
+              <TextBlock Text="Make this PC an AI PC" Style="{StaticResource SectionLabel}" />
+              <ui:ToggleSwitch x:Name="ShareAiToggle" Content="Share this PC's AI with my other PCs" Click="ShareAi_Click"
+                               ToolTip="Paired PCs at home can use this PC's models through maison (encrypted, with their own key). Ollama itself stays private. Windows asks for admin permission once to open maison's ports for your home network." />
               <TextBlock x:Name="ShareState" FontSize="12.5" TextWrapping="Wrap" Margin="0,8,0,0" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
-              <StackPanel x:Name="SharePanel" Margin="0,8,0,0" Visibility="Collapsed">
-                <TextBlock Text="On your other PC, enter one of these" FontSize="12" Foreground="{DynamicResource TextFillColorTertiaryBrush}" />
-                <ItemsControl x:Name="ShareAddresses">
+              <StackPanel x:Name="SharePanel" Margin="0,10,0,0" Visibility="Collapsed">
+                <TextBlock Text="Pairing code (enter it once on the other PC)" FontSize="12" Foreground="{DynamicResource TextFillColorTertiaryBrush}" />
+                <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
+                  <TextBlock x:Name="PairCode" FontFamily="Cascadia Mono, Consolas" FontSize="26" FontWeight="SemiBold" VerticalAlignment="Center"
+                             Foreground="{DynamicResource MaisonAccentTextBrush}" />
+                  <ui:Button Content="New code" Appearance="Transparent" Margin="12,0,0,0" Click="NewCode_Click"
+                             ToolTip="Make a new code. PCs already paired keep working." />
+                </StackPanel>
+                <TextBlock Text="Paired PCs" FontSize="12" Margin="0,10,0,2" Foreground="{DynamicResource TextFillColorTertiaryBrush}" />
+                <ItemsControl x:Name="PairedList">
                   <ItemsControl.ItemTemplate>
                     <DataTemplate>
-                      <StackPanel Orientation="Horizontal" Margin="0,2">
-                        <TextBlock Text="{Binding}" FontFamily="Cascadia Mono, Consolas" FontSize="14" VerticalAlignment="Center" Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
-                        <ui:Button Content="Copy" Appearance="Transparent" Margin="8,0,0,0" Padding="8,2" Tag="{Binding}" Click="CopyUrl_Click" ToolTip="Copy this address" />
-                      </StackPanel>
+                      <Grid Margin="0,2">
+                        <Grid.ColumnDefinitions>
+                          <ColumnDefinition Width="*" />
+                          <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock VerticalAlignment="Center" Foreground="{DynamicResource TextFillColorPrimaryBrush}">
+                          <Run Text="{Binding Name, Mode=OneWay}" /><Run Text=" · last used " Foreground="{DynamicResource TextFillColorTertiaryBrush}" /><Run Text="{Binding LastSeen, Mode=OneWay, StringFormat='g'}" Foreground="{DynamicResource TextFillColorTertiaryBrush}" />
+                        </TextBlock>
+                        <ui:Button Grid.Column="1" Content="Remove" Appearance="Transparent" Padding="8,2" Tag="{Binding}" Click="Unpair_Click"
+                                   ToolTip="This PC stops accepting it; it would need the code again" />
+                      </Grid>
                     </DataTemplate>
                   </ItemsControl.ItemTemplate>
                 </ItemsControl>
-                <TextBlock FontSize="12" TextWrapping="Wrap" Margin="0,6,0,0" Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                           Text="Anyone on your home network can use this PC's AI while sharing is on (Ollama has no password). Your home network must be set to Private in Windows." />
+                <TextBlock x:Name="NoPaired" Text="None yet." FontSize="12.5" Foreground="{DynamicResource TextFillColorTertiaryBrush}" />
+                <TextBlock FontSize="12" TextWrapping="Wrap" Margin="0,8,0,0" Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                           Text="Keep maison running on this PC (minimised is fine) so the pool can use it. Your home network must be set to Private in Windows." />
               </StackPanel>
             </StackPanel>
 
-            <!-- This PC uses another PC's AI -->
+            <!-- This PC uses the pool -->
             <StackPanel Grid.Column="2">
-              <TextBlock Text="On your other PCs" Style="{StaticResource SectionLabel}" />
-              <ui:ToggleSwitch x:Name="UseRemoteToggle" Content="Use the AI from another PC" Click="UseRemote_Click"
-                               ToolTip="Claude Code, Qwen Code, the Models page and setup use the AI PC's Ollama instead of this PC's. Nothing big needs installing here." />
-              <Grid Margin="0,10,0,0">
-                <Grid.ColumnDefinitions>
-                  <ColumnDefinition Width="*" />
-                  <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-                <ui:TextBox x:Name="RemoteAddress" PlaceholderText="AI PC's name or IP, e.g. gpu-pc" Icon="{ui:SymbolIcon Desktop24}" KeyUp="RemoteAddress_KeyUp"
-                            ToolTip="The name or address shown on the AI PC under Share this PC's AI (port 11434 unless you add :port)" />
-                <ui:Button Grid.Column="1" x:Name="BtnConnect" Content="Connect" Appearance="Primary" Margin="8,0,0,0" Click="Connect_Click"
-                           ToolTip="Check the AI PC answers, then use it" />
-              </Grid>
+              <TextBlock Text="Use AI PCs from this PC" Style="{StaticResource SectionLabel}" />
+              <ui:ToggleSwitch x:Name="UseRemoteToggle" Content="Use the AI pool" Click="UseRemote_Click"
+                               ToolTip="Claude Code, Qwen Code and Chat use the AI PCs you've added (and this PC, if included), picking a free one for each request." />
+              <ui:ToggleSwitch x:Name="IncludeThisToggle" Content="Include this PC's own AI in the pool" Margin="0,10,0,0" Click="IncludeThis_Click"
+                               ToolTip="This PC's Ollama takes work too when it's free" />
               <TextBlock x:Name="RemoteState" FontSize="12.5" TextWrapping="Wrap" Margin="0,8,0,0" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+              <ui:Button Content="Open the AI pool" Icon="{ui:SymbolIcon Server24}" Margin="0,10,0,0" Click="OpenPool_Click"
+                         ToolTip="Find AI PCs at home, add them, see what they're doing and manage their models" />
             </StackPanel>
           </Grid>
         </StackPanel>
       </ui:Card>
-
       <!-- Web portal -->
       <ui:Card Margin="0,0,0,12">
         <StackPanel>
