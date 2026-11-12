@@ -10,6 +10,9 @@
 
 ![Dashboard](docs/screenshot-dashboard.png)
 
+Just want to use it? See [Install](#install). Want to build it yourself, or have an AI agent work on it? See
+[Build from source](#build-from-source).
+
 ## Install
 
 ### What you need
@@ -68,14 +71,42 @@ Your settings and models are kept.
 3. Models live in Ollama's folder (`%USERPROFILE%\.ollama\models` unless you moved it in Settings). Uninstalling Ollama
    doesn't always delete them, so remove that folder to get the disk space back.
 
-### Build from source
-You'll need the [.NET 10 SDK](https://dotnet.microsoft.com/download) on Windows.
+## Build from source
+
+### What you need
+- Windows 10 or 11 (64-bit).
+- The [.NET 10 SDK](https://dotnet.microsoft.com/download): `winget install Microsoft.DotNet.SDK.10`
+- [Git](https://git-scm.com/) to get the code: `winget install Git.Git`
+
+### Build
 ```powershell
 git clone https://github.com/GreggsNBacon/qwen-maison.git
-cd qwen-maison\src
-dotnet publish -c Release -o ..\dist
-..\dist\maison-0.0.5.exe   # publish names the exe after <Version> in Maison.csproj
+cd qwen-maison
+.\build.ps1
 ```
+This makes **`dist\maison-<version>.exe`** (e.g. `dist\maison-0.0.5.exe`), one self-contained file you can copy anywhere.
+The script prints `BUILD OK` with the file's path, size and SHA-256, or `BUILD FAILED` with the reason. The first build
+downloads packages and takes a few minutes; later ones take about a minute.
+
+- If PowerShell says running scripts is disabled: `powershell -ExecutionPolicy Bypass -File .\build.ps1`
+- The version is `<Version>` in `src\Maison.csproj`; the exe is named after it.
+- Without the script: `dotnet publish src -c Release -o dist` does the same build.
+
+### Test
+`.\build.ps1 -Test` builds and then runs the app's self-test (see [Self-test](#self-test)) with a throwaway settings
+folder. A window opens for about a minute, screenshots of every page land in `dist\selftest\`, and the script prints
+`SELF-TEST OK`. Your own settings aren't touched.
+
+### With an AI agent (Qwen Code, Claude Code, …)
+The repository has instructions for coding agents in [`AGENTS.md`](AGENTS.md): how to build and test, and the
+project's rules. Qwen Code reads it automatically, and Claude Code reads it through `CLAUDE.md`. Open the cloned folder
+as the working folder (in maison: **Change folder** in the simple view, or **Working folder** on the Dashboard) and ask,
+for example:
+
+> Build maison and run the self-test.
+
+The agent runs `.\build.ps1 -Test` and tells you where the exe is. Building takes a couple of minutes, so let it run.
+
 Settings live in `%APPDATA%\Maison\config.json`. Settings from the older "Qwen Local Launcher" build are migrated automatically.
 
 ## Pages
@@ -205,6 +236,8 @@ pick a smaller context (32K) on the Dashboard. maison shows a warning when this 
 ## Project layout
 | Path | |
 |---|---|
+| `build.ps1` | Builds `dist\maison-<version>.exe`; `-Test` also runs the self-test |
+| `AGENTS.md`, `CLAUDE.md` | Build/test instructions and project rules for AI coding agents |
 | `src/Services/OllamaClient.cs` | Ollama REST API (version, tags, ps, create, pull with progress, generate, delete) |
 | `src/Services/SystemProbe.cs` | Install/runtime checks, nvidia-smi, fresh PATH lookup, start/stop/repair |
 | `src/Services/Installer.cs` | Fresh-PC installers (Ollama, Claude Code, Node.js, Qwen Code) |
@@ -231,13 +264,16 @@ pick a smaller context (32K) on the Dashboard. maison shows a warning when this 
 - Gradient: `#E8825F` → `#C76AD8` → `#7C5CFF`.
 
 ## Self-test
-`maison.exe --selftest <dir> [--pull <model>] [--term <folder>] [--portal <password>]` screenshots every page, writes `selftest.txt` and exits.
+`maison-<version>.exe --selftest <dir> [--pull <model>] [--term <folder>] [--simple] [--accent] [--toast] [--launchopts] [--portal <password>]`
+screenshots every page, writes `selftest.txt` and exits. `.\build.ps1 -Test` runs the basic version for you.
 - `--pull` installs a model through the Models page and then removes it.
 - `--term` opens Claude Code, Qwen Code and PowerShell tabs, then checks:
   - typing through xterm.js reaches the shell;
   - a pop-out mirror shows the same history and its input reaches the shell;
   - Ctrl+V pastes exactly once;
   - Claude Code starts without the auto-mode warning.
+- `--simple` checks the simple view and the Advanced switch, `--accent` that accent changes recolour controls live,
+  `--toast` that messages show above a terminal, and `--launchopts` that Settings → Start commands reach the real launch.
 - `--portal` runs the web portal over real HTTPS and checks login, cookies, lockout, origin checks, state, launching and the
   mirrored terminal WebSocket. Set `MAISON_CONFIG_DIR` to a scratch folder so your real settings aren't touched.
 

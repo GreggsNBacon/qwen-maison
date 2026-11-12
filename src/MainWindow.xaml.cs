@@ -1023,8 +1023,8 @@ public partial class MainWindow : FluentWindow, IShell
             sp.LQwenPct.Value = 70;
             await Task.Delay(400);
             var qwenPreview = sp.LPreview.Text;
-            var spec = await BuildSpecAsync("claude");
-            var qspec = await BuildSpecAsync("qwen");
+            var spec = (await BuildSpecAsync("claude"))!;
+            var qspec = (await BuildSpecAsync("qwen"))!;
             var qsettings = qspec.Env?.TryGetValue("QWEN_CODE_SYSTEM_SETTINGS_PATH", out var qp) == true && File.Exists(qp) ? File.ReadAllText(qp) : "";
             sp.LTabs.SelectedIndex = 0;
             sp.LPreview.BringIntoView();
