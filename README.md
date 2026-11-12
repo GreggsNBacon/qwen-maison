@@ -86,7 +86,9 @@ Settings live in `%APPDATA%\Maison\config.json`. Settings from the older "Qwen L
 - Health checks: Ollama install, runtime files (`llama-server.exe`, which catches a broken auto-update), server, loaded
   models with CPU-spill warnings, installed models, and the `claude`/`qwen` CLIs. Refreshes every 10 s.
 - Actions: Start, Restart, Speed test, Unload, Repair Ollama (bundled script), and Remove old aliases.
-- Machine gauges: GPU temperature, load, power, VRAM, plus CPU and RAM. A warning appears when another app (an overlay, a
+- Machine gauges: GPU temperature, load, power, VRAM, plus CPU and RAM. While a model is loaded, the bright part of each
+  gauge is what the AI (Ollama and its model runner) is using and the dim part is everything else; AI power is estimated
+  from its share of the GPU's work. A warning appears when another app (an overlay, a
   browser, a game) holds GPU memory the model needs. Without that room, Windows quietly moves part of the model to system RAM and
   generation drops from about 35 tokens/s to almost nothing.
 - Launch **Claude Code**, **Qwen Code** or **Chat**. **Open in** chooses where: this app (a tab), Windows Terminal, or a PowerShell window.
@@ -97,6 +99,10 @@ Settings live in `%APPDATA%\Maison\config.json`. Settings from the older "Qwen L
   (`claude --permission-mode …`, `qwen --approval-mode …`). Claude Code's *auto* mode isn't offered because its safety
   check runs on Anthropic's servers, which aren't reachable through Ollama ("Auto mode can't check actions in this session").
 - Context-window picker. The default is 64K, set by creating a settings-only `<model>-ctx64k` variant.
+- **No surprise token limits.** Claude Code and Qwen Code assume a 200K window for models they don't know, so on a 32K/64K
+  local model they used to run until Ollama's window overflowed and the request failed. maison tells each agent the real
+  window (`CLAUDE_CODE_MAX_CONTEXT_TOKENS`; for Qwen Code a per-session settings file via `QWEN_CODE_SYSTEM_SETTINGS_PATH`,
+  so `~/.qwen/settings.json` is untouched) and caps replies at a quarter of it, so they compact the conversation in time.
 - Copyable start commands for the current selection.
 
 **Terminals**: Claude Code, Qwen Code, Chat and plain PowerShell sessions in tabs inside the app.
@@ -104,7 +110,8 @@ Settings live in `%APPDATA%\Maison\config.json`. Settings from the older "Qwen L
 ![Qwen Code running inside maison](docs/screenshot-terminal.png)
 
 - Each tab is a real Windows pseudo console (ConPTY) shown by xterm.js (WebGL renderer) in WebView2. Full-screen TUIs
-  work as they do in Windows Terminal. Output is sent in whole frames, so Claude Code and Qwen Code redraws don't jitter.
+  work as they do in Windows Terminal. Output is sent in whole frames (held while a redraw is unfinished: a synchronized-output
+  block, a screen clear and reprint, or a repaint with the cursor hidden), so Claude Code and Qwen Code redraws don't jitter.
 - A strip above the tabs shows live GPU, temperature, VRAM, CPU, RAM and Ollama usage.
 - **Ctrl+V** (or Shift+Insert, or right-click with nothing selected) pastes once. Select text, then right-click or press Ctrl+Shift+C, to copy.
 - **Idle indicator**: once an agent you gave a task stops producing output, its tab gets a dot and you're told. A Windows
@@ -145,6 +152,10 @@ automatically), Gemini CLI extensions, npm packages and git repos.
 - Accent colour (purple by default, to match the logo) and terminal colour themes: maison, Campbell, One Half Dark,
   Solarized Dark, Midnight Violet and Light. Also the terminal font size.
 - Idle notifications: on or off, the number of seconds, and the sound.
+- **Start commands**: everything that goes into the Claude Code, Qwen Code and Chat commands as toggles and fields, with a
+  live preview of the exact command: telling the agent the real context window, max reply length, when to compact,
+  `--continue`, thinking on/off, Qwen Code's request timeout, telemetry and caching switches, plus extra arguments and
+  environment variables. **Reset to defaults** puts it all back.
 - Stale threshold.
 - **Model storage folder**: moves the whole Ollama model store to another drive and points `OLLAMA_MODELS` at it. Ollama
   keeps all models in one folder, so the location is per PC, not per model.

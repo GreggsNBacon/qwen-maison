@@ -13,7 +13,7 @@ public sealed record StatsSnapshot(
     GpuInfo? Gpu,
     double CpuPercent, string CpuName, int Cores, int Threads, int? CpuMhz,
     double RamUsedGb, double RamTotalGb,
-    double OllamaCpuPercent, double OllamaRamGb, double OllamaVramGb,
+    double OllamaCpuPercent, double OllamaRamGb, double OllamaVramGb, double? OllamaGpuPercent,
     IReadOnlyList<ProcUsage> VramUsers,
     IReadOnlyList<ProcUsage> TopCpu,
     IReadOnlyList<ProcUsage> TopRam,
@@ -71,6 +71,7 @@ public static class StatsService
         var cpu = CpuPercent();
         var (used, total) = Memory();
         var vram = ReadVramByPid();
+        var engines = ReadGpuEngineByPid();
 
         // Ollama's own processes (CPU use rises when a model doesn't fit on the GPU).
         double oCpu = 0, oRam = 0, oVram = 0;
@@ -109,10 +110,20 @@ public static class StatsService
         }
         foreach (var gone in PrevProc.Keys.Where(k => !seen.Contains(k)).ToList()) PrevProc.Remove(gone);
 
+        // The AI's share of GPU load: the busiest engine type (3D, Compute, Copy…) summed over Ollama's processes,
+        // the same way Task Manager shows per-process GPU use.
+        double? oGpu = null;
+        if (engines is not null)
+        {
+            var ollamaPids = procs.Where(p => IsOllama(p.Name) || p.Name.StartsWith("Ollama", StringComparison.OrdinalIgnoreCase)).Select(p => p.Pid).ToHashSet();
+            oGpu = Math.Clamp(engines.Where(e => ollamaPids.Contains(e.Key.Pid)).GroupBy(e => e.Key.Engine)
+                .Select(g => g.Sum(x => x.Value)).DefaultIfEmpty(0).Max(), 0, 100);
+        }
+
         var gpu = await gpuTask;
         return new StatsSnapshot(DateTime.Now, gpu,
             cpu, CpuNameValue, PhysicalCores, Environment.ProcessorCount, CpuMhzValue,
-            used, total, Math.Max(0, oCpu), oRam, oVram,
+            used, total, Math.Max(0, oCpu), oRam, oVram, oGpu,
             procs.Where(p => p.VramGb >= 0.05).OrderByDescending(p => p.VramGb).Take(8).ToList(),
             Detailed ? procs.OrderByDescending(p => p.CpuPercent).Take(8).ToList() : [],
             Detailed ? procs.OrderByDescending(p => p.RamGb).Take(8).ToList() : [],
@@ -154,6 +165,36 @@ public static class StatsService
         }
         catch { /* counters unavailable */ }
         return result;
+    }
+
+    private static Dictionary<string, CounterSample> _prevEngine = [];
+
+    /// <summary>GPU utilisation % per (pid, engine type) from the Windows "GPU Engine" counters; null if unavailable.</summary>
+    private static Dictionary<(int Pid, string Engine), double>? ReadGpuEngineByPid()
+    {
+        try
+        {
+            var data = new PerformanceCounterCategory("GPU Engine").ReadCategory();
+            if (!data.Contains("Utilization Percentage")) return null;
+            var result = new Dictionary<(int, string), double>();
+            var next = new Dictionary<string, CounterSample>();
+            foreach (InstanceData inst in data["Utilization Percentage"]!.Values)
+            {
+                // instance: pid_1234_luid_0x…_phys_0_eng_3_engtype_Compute
+                var name = inst.InstanceName;
+                next[name] = inst.Sample;
+                if (!_prevEngine.TryGetValue(name, out var prev)) continue;
+                var parts = name.Split('_');
+                if (parts.Length < 2 || parts[0] != "pid" || !int.TryParse(parts[1], out var pid)) continue;
+                var i = name.IndexOf("engtype_", StringComparison.Ordinal);
+                var engine = i >= 0 ? name[(i + 8)..] : "?";
+                var pct = CounterSample.Calculate(prev, inst.Sample);
+                if (pct > 0) result[(pid, engine)] = result.GetValueOrDefault((pid, engine)) + pct;
+            }
+            _prevEngine = next;
+            return result;
+        }
+        catch { return null; }
     }
 
     // ------------------------------------------------------------------ CPU / RAM

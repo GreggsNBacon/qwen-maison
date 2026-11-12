@@ -107,9 +107,13 @@ public sealed class TermSession : IDisposable
     }
 
     /// <summary>
-    /// Sends output in whole frames: waits for a short pause in the stream (or a cap), and holds back while a
-    /// synchronized-output block (CSI ?2026h … ?2026l) is open. Splitting a TUI redraw across two paints is what
-    /// makes Claude Code / Qwen Code jitter.
+    /// Sends output in whole frames, so a TUI redraw is never painted half done (the Claude Code / Qwen Code jitter).
+    /// Output is held until the stream pauses, longer while a redraw is clearly unfinished:
+    ///  · a synchronized-output block (CSI ?2026h … ?2026l) is open;
+    ///  · the screen was just cleared (Qwen Code clears and reprints everything once its output outgrows the
+    ///    window; through ConPTY that arrives as clear → banner → content over ~100 ms, which flashed);
+    ///  · the cursor is hidden mid-repaint (ConPTY hides it while painting and shows it at the end; only trusted for
+    ///    apps that do show their cursor, Claude Code keeps it hidden all the time).
     /// </summary>
     private void Pump()
     {
@@ -120,25 +124,34 @@ public sealed class TermSession : IDisposable
             while (!_disposed)
             {
                 var waited = (DateTime.UtcNow - first).TotalMilliseconds;
-                bool inSync;
-                lock (_pending) inSync = OpenSyncBlock(_pending);
-                var cap = inSync ? 200 : 40;
+                var (quiet, cap) = HoldFor();
                 if (waited >= cap) break;
-                if (!_dataArrived.WaitOne(inSync ? 10 : 6)) { if (!inSync) break; }
+                if (!_dataArrived.WaitOne(quiet)) break;   // quiet long enough: the frame is complete
             }
             Flush();
         }
     }
 
-    private static bool OpenSyncBlock(StringBuilder sb)
-    {
-        if (sb.Length == 0) return false;
-        var s = sb.ToString();
-        int open = s.LastIndexOf("\x1b[?2026h", StringComparison.Ordinal);
-        int close = s.LastIndexOf("\x1b[?2026l", StringComparison.Ordinal);
-        return open >= 0 && open > close;
-    }
+    private DateTime _cursorShownAt = DateTime.MinValue;
 
+    /// <summary>(how long the stream must be quiet, the most we'll hold) for what's pending, in ms.</summary>
+    private (int Quiet, int Cap) HoldFor()
+    {
+        string s;
+        lock (_pending)
+        {
+            if (_pending.Length == 0) return (12, 50);
+            s = _pending.ToString();
+        }
+        if (s.Contains("\x1b[2J", StringComparison.Ordinal)) return (100, 250);
+        int open = s.LastIndexOf("\x1b[?2026h", StringComparison.Ordinal);
+        if (open >= 0 && open > s.LastIndexOf("\x1b[?2026l", StringComparison.Ordinal)) return (30, 200);
+        int show = s.LastIndexOf("\x1b[?25h", StringComparison.Ordinal);
+        if (show >= 0) _cursorShownAt = DateTime.UtcNow;
+        int hide = s.LastIndexOf("\x1b[?25l", StringComparison.Ordinal);
+        if (hide > show && (DateTime.UtcNow - _cursorShownAt).TotalSeconds < 3) return (30, 100);
+        return (12, 50);
+    }
     private void Flush()
     {
         string text;

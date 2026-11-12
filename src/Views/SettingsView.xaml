@@ -59,6 +59,103 @@
         </StackPanel>
       </ui:Card>
 
+      <!-- Start commands -->
+      <ui:Card Margin="0,0,0,12">
+        <StackPanel>
+          <Grid>
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="*" />
+              <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <StackPanel>
+              <TextBlock Text="Start commands" Style="{StaticResource H}" />
+              <TextBlock Text="What maison runs when you start Claude Code, Qwen Code or Chat. Model, context window, folder and permissions come from the Dashboard; everything else is here. The preview shows the exact command."
+                         Style="{StaticResource Sub}" />
+            </StackPanel>
+            <ui:Button Grid.Column="1" Content="Reset to defaults" Icon="{ui:SymbolIcon ArrowReset24}" VerticalAlignment="Top" Click="ResetLaunch_Click"
+                       ToolTip="Put every start-command option back to maison's defaults" />
+          </Grid>
+
+          <ui:ToggleSwitch x:Name="LTellCtx" Content="Tell the agent the real context window" Click="Launch_Changed"
+                           ToolTip="Recommended. Claude Code and Qwen Code otherwise assume a 200K window for local models, so they keep going until Ollama's much smaller window overflows and the request fails. With this on, they compact the conversation in time." />
+          <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+            <TextBlock Text="Max reply length" VerticalAlignment="Center" Margin="0,0,10,0" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+            <ui:NumberBox x:Name="LMaxOut" Minimum="0" Maximum="131072" SmallChange="1024" LargeChange="4096" Width="170" ValueChanged="Launch_Changed" SpinButtonPlacementMode="Inline"
+                          ToolTip="Most tokens one reply may use. 0 = automatic: a quarter of the context window (4K–32K), so the prompt and the reply both fit." />
+            <TextBlock x:Name="LMaxOutHint" Text="tokens (0 = automatic)" VerticalAlignment="Center" Margin="10,0,0,0" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+          </StackPanel>
+
+          <TabControl x:Name="LTabs" Margin="0,16,0,0" SelectionChanged="LTabs_Changed">
+            <TabItem Header="Claude Code" Tag="claude">
+              <StackPanel Margin="4,12,4,4">
+                <ui:ToggleSwitch x:Name="LClaudeContinue" Content="Continue the last conversation in this folder (--continue)" Click="Launch_Changed"
+                                 ToolTip="Pick up where the previous Claude Code session in the working folder left off" />
+                <ui:ToggleSwitch x:Name="LClaudeNoThink" Content="Turn off thinking (CLAUDE__CODE__DISABLE__THINKING)" Margin="0,10,0,0" Click="Launch_Changed"
+                                 ToolTip="Leave out the thinking parameter. Faster replies; also a fix if a model or server rejects it." />
+                <ui:ToggleSwitch x:Name="LClaudeNoTraffic" Content="No telemetry or update checks (CLAUDE__CODE__DISABLE__NONESSENTIAL__TRAFFIC)" Margin="0,10,0,0" Click="Launch_Changed"
+                                 ToolTip="Keeps the session fully local: no usage reporting, error reporting or update checks" />
+                <ui:ToggleSwitch x:Name="LClaudeNoCache" Content="No prompt caching (DISABLE__PROMPT__CACHING)" Margin="0,10,0,0" Click="Launch_Changed"
+                                 ToolTip="Ollama doesn't use Anthropic-style prompt caching, so the cache hints are only noise" />
+                <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                  <TextBlock Text="Compact at" VerticalAlignment="Center" Margin="0,0,10,0" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                  <ui:NumberBox x:Name="LClaudePct" Minimum="0" Maximum="100" SmallChange="5" Width="140" ValueChanged="Launch_Changed" SpinButtonPlacementMode="Inline"
+                                ToolTip="Summarise the conversation when it reaches this % of the window (CLAUDE_AUTOCOMPACT_PCT_OVERRIDE). 0 = Claude Code's default. It can only make compaction earlier." />
+                  <TextBlock Text="% of the window (0 = default)" VerticalAlignment="Center" Margin="10,0,0,0" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                </StackPanel>
+                <TextBlock Text="Extra arguments" Style="{StaticResource SectionLabel}" Margin="0,14,0,4" />
+                <ui:TextBox x:Name="LClaudeArgs" PlaceholderText="e.g. --verbose" FontFamily="Cascadia Mono, Consolas" TextChanged="Launch_Changed"
+                            ToolTip="Added to the end of the claude command, exactly as typed" />
+                <TextBlock Text="Extra environment variables (one KEY=value per line)" Style="{StaticResource SectionLabel}" Margin="0,12,0,4" />
+                <TextBox x:Name="LClaudeEnv" AcceptsReturn="True" Height="70" FontFamily="Cascadia Mono, Consolas" VerticalScrollBarVisibility="Auto" TextChanged="Launch_Changed"
+                         ToolTip="Set for this session only. Overrides maison's own values with the same name. Lines starting with # are ignored." />
+              </StackPanel>
+            </TabItem>
+            <TabItem Header="Qwen Code" Tag="qwen">
+              <StackPanel Margin="4,12,4,4">
+                <ui:ToggleSwitch x:Name="LQwenContinue" Content="Continue the last conversation in this folder (--continue)" Click="Launch_Changed"
+                                 ToolTip="Pick up where the previous Qwen Code session in the working folder left off" />
+                <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                  <TextBlock Text="Compact at" VerticalAlignment="Center" Margin="0,0,10,0" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                  <ui:NumberBox x:Name="LQwenPct" Minimum="30" Maximum="100" SmallChange="5" Width="140" ValueChanged="Launch_Changed" SpinButtonPlacementMode="Inline"
+                                ToolTip="Summarise the conversation when it reaches this % of the window (Qwen Code's context.autoCompactThreshold; its default is 85)" />
+                  <TextBlock Text="% of the window" VerticalAlignment="Center" Margin="10,0,0,0" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                  <TextBlock Text="Request timeout" VerticalAlignment="Center" Margin="0,0,10,0" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                  <ui:NumberBox x:Name="LQwenTimeout" Minimum="30" Maximum="7200" SmallChange="30" Width="140" ValueChanged="Launch_Changed" SpinButtonPlacementMode="Inline"
+                                ToolTip="How long Qwen Code waits for one reply. Local models on long prompts can take minutes; Qwen Code's own default is 2 minutes." />
+                  <TextBlock Text="seconds" VerticalAlignment="Center" Margin="10,0,0,0" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                </StackPanel>
+                <TextBlock Text="Extra arguments" Style="{StaticResource SectionLabel}" Margin="0,14,0,4" />
+                <ui:TextBox x:Name="LQwenArgs" PlaceholderText="e.g. --max-subagent-depth 3" FontFamily="Cascadia Mono, Consolas" TextChanged="Launch_Changed"
+                            ToolTip="Added to the end of the qwen command, exactly as typed" />
+                <TextBlock Text="Extra environment variables (one KEY=value per line)" Style="{StaticResource SectionLabel}" Margin="0,12,0,4" />
+                <TextBox x:Name="LQwenEnv" AcceptsReturn="True" Height="70" FontFamily="Cascadia Mono, Consolas" VerticalScrollBarVisibility="Auto" TextChanged="Launch_Changed"
+                         ToolTip="Set for this session only. Overrides maison's own values with the same name. Lines starting with # are ignored." />
+              </StackPanel>
+            </TabItem>
+            <TabItem Header="Chat" Tag="chat">
+              <StackPanel Margin="4,12,4,4">
+                <ui:ToggleSwitch x:Name="LChatVerbose" Content="Show speed after each reply (--verbose)" Click="Launch_Changed"
+                                 ToolTip="ollama run prints tokens/s and timings after every answer" />
+                <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                  <TextBlock Text="Thinking" VerticalAlignment="Center" Margin="0,0,10,0" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                  <ComboBox x:Name="LChatThink" Width="170" SelectionChanged="Launch_Changed"
+                            ToolTip="Model default, always think (--think=true), or answer straight away (--think=false)" />
+                </StackPanel>
+                <TextBlock Text="Extra arguments" Style="{StaticResource SectionLabel}" Margin="0,14,0,4" />
+                <ui:TextBox x:Name="LChatArgs" PlaceholderText="e.g. --hidethinking" FontFamily="Cascadia Mono, Consolas" TextChanged="Launch_Changed"
+                            ToolTip="Added to the end of the ollama run command, exactly as typed" />
+              </StackPanel>
+            </TabItem>
+          </TabControl>
+
+          <TextBlock Text="Preview" Style="{StaticResource SectionLabel}" Margin="0,14,0,4" />
+          <TextBox x:Name="LPreview" IsReadOnly="True" FontFamily="Cascadia Mono, Consolas" FontSize="12" TextWrapping="Wrap" MaxHeight="220"
+                   VerticalScrollBarVisibility="Auto" ToolTip="Exactly what maison runs in the new session's PowerShell, with the current Dashboard selection" />
+        </StackPanel>
+      </ui:Card>
+
       <!-- Models -->
       <ui:Card Margin="0,0,0,12">
         <StackPanel>

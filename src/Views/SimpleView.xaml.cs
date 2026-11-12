@@ -298,6 +298,12 @@ public partial class SimpleView : UserControl
         TVram.Text = g is null ? "—" : $"{g.UsedGb:0.0} / {g.TotalGb:0} GB";
         TCpu.Text = $"{s.CpuPercent:0}%";
         TRam.Text = $"{s.RamUsedGb:0.0} / {s.RamTotalGb:0} GB";
+        // Qwen's own share (Ollama runs the model), empty while nothing is loaded.
+        bool ai = s.OllamaRamGb >= 0.05;
+        TGpuAi.Text = ai && g is not null && s.OllamaGpuPercent is { } og ? $"Qwen {Math.Min(og, g.LoadPercent):0}%" : "";
+        TVramAi.Text = ai && g is not null ? $"Qwen {Math.Min(s.OllamaVramGb, g.UsedGb):0.0} GB" : "";
+        TCpuAi.Text = ai ? $"Qwen {Math.Min(s.OllamaCpuPercent, s.CpuPercent):0}%" : "";
+        TRamAi.Text = ai ? $"Qwen {s.OllamaRamGb:0.0} GB" : "";
         var hog = HealthAdvice.VramHog(s);
         WarnBox.Visibility = hog is null ? Visibility.Collapsed : Visibility.Visible;
         WarnText.Text = hog is { } h ? $"{h.Name} is using {h.Gb:0.0} GB of graphics memory, so Qwen may be very slow. Closing it should speed things up." : "";

@@ -67,6 +67,46 @@ public static class OllamaClient
             .ToList();
     }
 
+    /// <summary>
+    /// The context window Ollama will actually use for <paramref name="model"/> when no size is forced:
+    /// the loaded model's own size if it's running, else the server's VRAM-based default from its log, else 4096.
+    /// </summary>
+    public static async Task<int> EffectiveContextAsync(string model)
+    {
+        try
+        {
+            var loaded = await GetLoadedAsync();
+            if (loaded.FirstOrDefault(m => m.Name == model || m.Name == model + ":latest") is { Context: > 0 } m) return m.Context;
+        }
+        catch { /* server busy: fall back to the default */ }
+        return ServerDefaultContext();
+    }
+
+    /// <summary>Ollama's default num_ctx (it logs "default_num_ctx=32768" at start, sized to the GPU).</summary>
+    public static int ServerDefaultContext()
+    {
+        foreach (var t in new[] { EnvironmentVariableTarget.Process, EnvironmentVariableTarget.User, EnvironmentVariableTarget.Machine })
+            if (int.TryParse(Environment.GetEnvironmentVariable("OLLAMA_CONTEXT_LENGTH", t), out var env) && env > 0) return env;
+        try
+        {
+            var log = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Ollama", "server.log");
+            using var fs = new FileStream(log, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            using var sr = new StreamReader(fs);
+            int found = 0;
+            string? line;
+            while ((line = sr.ReadLine()) is not null)
+            {
+                var i = line.IndexOf("default_num_ctx=", StringComparison.Ordinal);
+                if (i < 0) continue;
+                var digits = new string(line.Skip(i + 16).TakeWhile(char.IsDigit).ToArray());
+                if (int.TryParse(digits, out var n) && n > 0) found = n;   // keep the newest
+            }
+            if (found > 0) return found;
+        }
+        catch { /* no log yet */ }
+        return 4096;
+    }
+
     /// <summary>Creates a settings-only model variant (no weight copy) with a fixed context window.</summary>
     public static async Task CreateVariantAsync(string name, string from, int numCtx)
     {

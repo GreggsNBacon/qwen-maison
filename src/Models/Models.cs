@@ -114,8 +114,47 @@ public sealed class PortalDevice
     public DateTime LastSeen { get; set; }
 }
 
+/// <summary>
+/// Everything that goes into the Claude Code / Qwen Code / Chat start commands, editable on Settings → Start commands.
+/// Defaults are what maison used before, plus telling each agent the real context window.
+/// </summary>
+public sealed class LaunchOptions
+{
+    // Shared
+    /// <summary>Tell the agent how big Ollama's context window really is, so it compacts before it fills (instead of erroring).</summary>
+    public bool TellContextWindow { get; set; } = true;
+    /// <summary>Max tokens per reply. 0 = automatic: a quarter of the context window, 4K–32K.</summary>
+    public int MaxOutputTokens { get; set; }
+
+    // Claude Code
+    /// <summary>Compact at this % of the window. 0 = Claude Code's default.</summary>
+    public int ClaudeCompactPercent { get; set; }
+    public bool ClaudeDisableThinking { get; set; }
+    public bool ClaudeNoNonessentialTraffic { get; set; } = true;
+    public bool ClaudeNoPromptCaching { get; set; } = true;
+    public bool ClaudeContinue { get; set; }
+    public string ClaudeExtraArgs { get; set; } = "";
+    public string ClaudeExtraEnv { get; set; } = "";
+
+    // Qwen Code
+    /// <summary>Compact at this fraction of the window (Qwen Code's context.autoCompactThreshold, default 0.85).</summary>
+    public double QwenCompactThreshold { get; set; } = 0.85;
+    /// <summary>Per-request timeout. Local models on long prompts can take minutes (Qwen Code's default is 2 min).</summary>
+    public int QwenTimeoutSeconds { get; set; } = 600;
+    public bool QwenContinue { get; set; }
+    public string QwenExtraArgs { get; set; } = "";
+    public string QwenExtraEnv { get; set; } = "";
+
+    // Chat (ollama run)
+    public bool ChatVerbose { get; set; }
+    /// <summary>"default", "on" or "off" (ollama run --think).</summary>
+    public string ChatThink { get; set; } = "default";
+    public string ChatExtraArgs { get; set; } = "";
+}
+
 public sealed class AppConfig
 {
+    public LaunchOptions Launch { get; set; } = new();
     public string MainModel { get; set; } = "";
     public string FastModel { get; set; } = "";
     public string Context { get; set; } = "64K";

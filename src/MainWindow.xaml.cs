@@ -23,6 +23,7 @@ public partial class MainWindow : FluentWindow, IShell
     private readonly ObservableCollection<StatusItem> _status = [];
     private readonly AppConfig _config = AppConfig.Current;
     private readonly SnackbarService _snackbar = new();
+    private readonly ToastWindow _toasts;
     private readonly DispatcherTimer _autoRefresh = new() { Interval = TimeSpan.FromSeconds(10) };
     private List<ModelInfo> _models = [];
     private List<LoadedModel> _loaded = [];
@@ -39,7 +40,9 @@ public partial class MainWindow : FluentWindow, IShell
         Instance = this;
         InitializeComponent();
         StatusList.ItemsSource = _status;
-        _snackbar.SetSnackbarPresenter(Snackbar);
+        // Messages live in their own owned window so they show above the terminals (WebView2 draws over WPF content).
+        _toasts = new ToastWindow(this);
+        _snackbar.SetSnackbarPresenter(_toasts.Presenter);
         ModelsPage.Shell = this;
         SetupPage.Shell = this;
         SystemPage.Shell = this;
@@ -47,6 +50,7 @@ public partial class MainWindow : FluentWindow, IShell
         ExtensionsPage.Shell = this;
         SettingsPage.Shell = this;
         VersionText.Text = "v" + AppInfo.Version;
+        TitleVersion.Text = "v" + AppInfo.Version;
         Theming.ApplyAccent(_config.Accent);
 
         foreach (var k in Launcher.ContextSizes.Keys) Context.Items.Add(k);
@@ -219,13 +223,64 @@ public partial class MainWindow : FluentWindow, IShell
         _config.Save();
     }
 
-    private void UpdateCommands()
+    /// <summary>The context window sessions will really get: the chosen size, or what Ollama uses by default.</summary>
+    private int RealContext => ContextSize > 0 ? ContextSize
+        : _loaded.FirstOrDefault(m => m.Name == BaseMain || m.Name == BaseMain + ":latest") is { Context: > 0 } l ? l.Context
+        : _ollamaDefaultCtx;
+    private readonly int _ollamaDefaultCtx = OllamaClient.ServerDefaultContext();
+
+    private Launcher.Plan PlanFor(string main, string fast, int ctx) =>
+        new(main, fast, ctx, PermMode, _config.Launch,
+            _models.Where(m => !m.Name.StartsWith("claude-")).Select(m => m.Name).ToList());
+
+    public void UpdateCommands()
     {
         if (_initializing) return;
         var baseMain = BaseMain.Length > 0 ? BaseMain : "<model>";
         var main = Launcher.EffectiveModel(baseMain, ContextSize);
         var fast = Launcher.EffectiveModel(BaseFast.Length > 0 ? BaseFast : baseMain, ContextSize);
-        Commands.Text = Launcher.CommandsText(baseMain, main, fast, ContextSize, PermMode);
+        var plan = PlanFor(main, fast, RealContext);
+        Commands.Text = Launcher.CommandsText(plan, baseMain);
+        ContextHint.Text = (ContextSize == 0 ? $"Ollama is giving this model {RealContext / 1024}K. " : "") +
+            $"Agents are told the window is {RealContext / 1024}K and replies are capped at {plan.OutputTokens / 1024}K, so they compact instead of overflowing." +
+            (RealContext < 49152 ? " Claude Code's own instructions and tools take ~20–25K, so 64K or more works much better for it." : "");
+    }
+
+    public string StartCommandPreview(string kind)
+    {
+        var baseMain = BaseMain.Length > 0 ? BaseMain : "<model>";
+        var p = PlanFor(Launcher.EffectiveModel(baseMain, ContextSize),
+                        Launcher.EffectiveModel(BaseFast.Length > 0 ? BaseFast : baseMain, ContextSize), RealContext);
+        var sb = new System.Text.StringBuilder();
+        void Env(IDictionary<string, string> env) { foreach (var (k, v) in env) sb.AppendLine($"$env:{k} = {Launcher.Q(v)}"); }
+        sb.AppendLine($"# {p.Main} · context {p.Ctx:N0} tokens · replies up to {p.OutputTokens:N0} · permissions: {Launcher.Mode(PermMode).Label}");
+        switch (kind)
+        {
+            case "claude":
+                Env(Launcher.ClaudeEnv(p));
+                sb.AppendLine("Remove-Item Env:ANTHROPIC_API_KEY -ErrorAction SilentlyContinue");
+                sb.Append(Launcher.ClaudeCommand(p));
+                break;
+            case "qwen":
+                Env(Launcher.QwenEnv(p, p.O.TellContextWindow ? System.IO.Path.Combine(AppConfig.Folder, "qwen", "settings-….json") : null));
+                sb.Append(Launcher.QwenCommand(p));
+                if (p.O.TellContextWindow)
+                    sb.Append($"\n# maison's settings file tells Qwen Code: contextWindowSize {p.Ctx}, max_tokens {p.OutputTokens}, autoCompactThreshold {p.O.QwenCompactThreshold:0.##}. Your ~/.qwen/settings.json isn't changed.");
+                break;
+            default:
+                sb.Append(Launcher.ChatCommand(p));
+                break;
+        }
+        return sb.ToString();
+    }
+
+    /// <summary>The launch plan for a real session (context variant created, real window detected).</summary>
+    private async Task<Launcher.Plan> PlanAsync()
+    {
+        var main = await ResolveAsync(BaseMain);
+        var fast = BaseFast == BaseMain ? main : await ResolveAsync(BaseFast);
+        var ctx = ContextSize > 0 ? ContextSize : await OllamaClient.EffectiveContextAsync(main);
+        return PlanFor(main, fast, ctx);
     }
 
     /// <summary>Returns the model to launch, creating the context variant when needed.</summary>
@@ -358,6 +413,7 @@ public partial class MainWindow : FluentWindow, IShell
         var top = _loaded.FirstOrDefault();
         MLoaded.Text = top?.Name ?? "None";
         MLoadedSub.Text = top is null ? "loads on first request" : $"{top.GpuPercent}% GPU · ctx {top.Context:N0}";
+        UpdateCommands();   // the real window may have changed with what's loaded
     }
 
     private void ShowStats(StatsSnapshot s)
@@ -374,6 +430,11 @@ public partial class MainWindow : FluentWindow, IShell
         GRam.Value = s.RamUsedGb;
         GRam.Display = $"{s.RamUsedGb:0.0} GB";
         GRam.Caption = $"RAM of {s.RamTotalGb:0} GB";
+        // The AI's part of each reading (Ollama and its model runner), drawn bright inside the dim total.
+        bool ai = s.OllamaRamGb >= 0.05;
+        AiShare(GCpu, ai, Math.Min(s.OllamaCpuPercent, s.CpuPercent), $"AI {s.OllamaCpuPercent:0}%");
+        AiShare(GRam, ai, s.OllamaRamGb, $"AI {s.OllamaRamGb:0.0} GB");
+        AiLegend.Visibility = ai ? Visibility.Visible : Visibility.Collapsed;
 
         var warn = HealthAdvice.VramWarning(s);
         VramWarnBox.Visibility = warn is null ? Visibility.Collapsed : Visibility.Visible;
@@ -385,7 +446,7 @@ public partial class MainWindow : FluentWindow, IShell
             {
                 GpuTitle.Text = "Machine · no NVIDIA GPU detected (nvidia-smi unavailable)";
                 GpuExtra.Text = s.CpuName;
-                foreach (var gauge in new[] { GTemp, GLoad, GPower, GVram }) { gauge.Value = 0; gauge.Display = "—"; }
+                foreach (var gauge in new[] { GTemp, GLoad, GPower, GVram }) { gauge.Value = 0; gauge.Display = "—"; AiShare(gauge, false, 0, ""); }
                 return;
             }
             GpuTitle.Text = "Machine · " + g.Name.Replace("NVIDIA GeForce ", "").Replace("NVIDIA ", "") + " · " + ShortCpu(s.CpuName);
@@ -416,8 +477,17 @@ public partial class MainWindow : FluentWindow, IShell
             GVram.Value = g.UsedGb;
             GVram.Display = $"{g.UsedGb:0.0} GB";
             GVram.Caption = $"VRAM of {g.TotalGb:0} GB";
+
+            AiShare(GVram, ai, Math.Min(s.OllamaVramGb, g.UsedGb), $"AI {s.OllamaVramGb:0.0} GB");
+            var aiLoad = Math.Min(s.OllamaGpuPercent ?? 0, g.LoadPercent);
+            AiShare(GLoad, ai && s.OllamaGpuPercent is not null, aiLoad, $"AI {aiLoad:0}%");
+            // Power isn't measured per app: estimate the AI's part from its share of the GPU's work.
+            var aiPower = g.LoadPercent > 0 && g.PowerW is { } pw ? pw * aiLoad / g.LoadPercent : 0;
+            AiShare(GPower, ai && s.OllamaGpuPercent is not null && g.PowerW is not null, aiPower, $"AI ≈{aiPower:0} W");
         }
     }
+
+    private static void AiShare(Controls.ArcGauge gauge, bool show, double value, string text) => gauge.SetAi(show, value, text);
 
     private static string ShortCpu(string name) =>
         System.Text.RegularExpressions.Regex.Replace(name, @"\(R\)|\(TM\)|CPU|Processor|\d+-Core|@.*$", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase)
@@ -491,15 +561,16 @@ public partial class MainWindow : FluentWindow, IShell
         if (!await EnsureReadyAsync()) return null;
         if (kind == "claude" && SystemProbe.FindOnPath("claude") is null) { Toast("Claude Code is not installed", "Install it from the Setup page.", ControlAppearance.Caution, SymbolRegular.Warning24); return null; }
         if (kind == "qwen" && SystemProbe.FindOnPath("qwen") is null) { Toast("Qwen Code is not installed", "Install it from the Setup page.", ControlAppearance.Caution, SymbolRegular.Warning24); return null; }
-        var main = await ResolveAsync(BaseMain);
+        var p = await PlanAsync();
+        var main = p.Main;
         var folder = WorkingFolder;
+        Log($"{kind}: context {p.Ctx:N0} tokens, replies up to {p.OutputTokens:N0}");
         return kind switch
         {
-            "claude" => new($"Claude Code · {main}", folder,
-                Launcher.ClaudeEnv(main, BaseFast == BaseMain ? main : await ResolveAsync(BaseFast)),
-                ["Remove-Item Env:ANTHROPIC_API_KEY -ErrorAction SilentlyContinue"], Launcher.ClaudeCommand(PermMode)),
-            "qwen" => new($"Qwen Code · {main}", folder, Launcher.QwenEnv(main), null, Launcher.QwenCommand(main, PermMode)),
-            _ => new($"Chat · {main}", folder, null, null, Launcher.ChatCommand(main)),
+            "claude" => new($"Claude Code · {main}", folder, Launcher.ClaudeEnv(p),
+                ["Remove-Item Env:ANTHROPIC_API_KEY -ErrorAction SilentlyContinue"], Launcher.ClaudeCommand(p)),
+            "qwen" => new($"Qwen Code · {main}", folder, Launcher.QwenEnv(p, Launcher.WriteQwenSettings(p)), null, Launcher.QwenCommand(p)),
+            _ => new($"Chat · {main}", folder, null, null, Launcher.ChatCommand(p)),
         };
     }
 
@@ -776,15 +847,16 @@ public partial class MainWindow : FluentWindow, IShell
         var termResult = "";
         if (ti >= 0 && ti + 1 < args.Length && BaseMain.Length > 0)
         {
-            var main = await ResolveAsync(BaseMain);
+            var tp = (await PlanAsync()) with { Perm = "ask" };
+            var main = tp.Main;
             var folder = args[ti + 1];
-            var claude = await LaunchAsync(new Launcher.Session($"Claude Code · {main}", folder, Launcher.ClaudeEnv(main, main),
-                ["Remove-Item Env:ANTHROPIC_API_KEY -ErrorAction SilentlyContinue"], Launcher.ClaudeCommand("ask")), "claude", "Claude Code", main, Launcher.TargetApp);
+            var claude = await LaunchAsync(new Launcher.Session($"Claude Code · {main}", folder, Launcher.ClaudeEnv(tp),
+                ["Remove-Item Env:ANTHROPIC_API_KEY -ErrorAction SilentlyContinue"], Launcher.ClaudeCommand(tp)), "claude", "Claude Code", main, Launcher.TargetApp);
             await Task.Delay(15000);
             string claudeScreen = "";
             if (claude is not null) { await claude.CaptureAsync(Path.Combine(dir, "term-claude.png")); claudeScreen = await claude.ReadScreenAsync(); }
             Snap(Path.Combine(dir, "terminals.png"));
-            var qwen = await LaunchAsync(new Launcher.Session($"Qwen Code · {main}", folder, Launcher.QwenEnv(main), null, Launcher.QwenCommand(main, "ask")),
+            var qwen = await LaunchAsync(new Launcher.Session($"Qwen Code · {main}", folder, Launcher.QwenEnv(tp, Launcher.WriteQwenSettings(tp)), null, Launcher.QwenCommand(tp)),
                 "qwen", "Qwen Code", main, Launcher.TargetApp);
             await Task.Delay(15000);
             if (qwen is not null) await qwen.CaptureAsync(Path.Combine(dir, "term-qwen.png"));
@@ -898,6 +970,136 @@ public partial class MainWindow : FluentWindow, IShell
             await SetupPage.RefreshAsync();
         }
 
+        // Optional: --jitter <workdir> records every frame Qwen Code sends while it streams a long answer.
+        var jitterResult = "";
+        var ji = Array.IndexOf(args, "--jitter");
+        if (ji >= 0 && ji + 1 < args.Length && BaseMain.Length > 0)
+        {
+            var jp = (await PlanAsync()) with { Perm = "ask" };
+            var v = await LaunchAsync(new Launcher.Session($"Qwen Code · {jp.Main}", args[ji + 1], Launcher.QwenEnv(jp, Launcher.WriteQwenSettings(jp)), null, Launcher.QwenCommand(jp)),
+                "qwen", "Qwen Code", jp.Main, Launcher.TargetApp);
+            if (v is not null)
+            {
+                await Task.Delay(20000);
+                var frames = new System.Text.StringBuilder();
+                var sw = Stopwatch.StartNew();
+                void Rec(TermSession _, string t)
+                {
+                    lock (frames) frames.Append($"{sw.ElapsedMilliseconds,7} {t.Length,6} ").Append(t.Replace("\x1b", "\\e").Replace("\r", "\\r").Replace("\n", "\\n")).Append('\n');
+                }
+                v.Session.Output += Rec;
+                await v.TypeAsync("Write a numbered list of 60 different fruits, one per line, each with a short description. No tools.");
+                await Task.Delay(500);
+                await v.TypeAsync("\r");
+                var scroll = new System.Text.StringBuilder();
+                for (int i = 0; i < 300; i++)   // 60 s
+                {
+                    scroll.Append(sw.ElapsedMilliseconds).Append(' ').Append(await v.EvalAsync("term.buffer.active.viewportY + ',' + term.buffer.active.baseY + ',' + term.buffer.active.cursorY")).Append('\n');
+                    await Task.Delay(200);
+                }
+                v.Session.Output -= Rec;
+                File.WriteAllText(Path.Combine(dir, "jitter-frames.txt"), frames.ToString());
+                File.WriteAllText(Path.Combine(dir, "jitter-scroll.txt"), scroll.ToString());
+                await v.CaptureAsync(Path.Combine(dir, "jitter-end.png"));
+                jitterResult = "JITTER: recorded";
+            }
+        }
+
+        // Optional: --launchopts edits Settings → Start commands through its controls and checks preview + launch spec.
+        var launchResult = "";
+        if (args.Contains("--launchopts"))
+        {
+            Navigate("settings");
+            await Task.Delay(800);
+            var sp = SettingsPage;
+            sp.LClaudeContinue.IsChecked = true;
+            sp.LClaudeContinue.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+            sp.LClaudeArgs.Text = "--verbose";
+            sp.LClaudeEnv.Text = "# comment\nMY_TEST_VAR=hello\nbad name=x";
+            sp.LMaxOut.Value = 12288;
+            await Task.Delay(400);
+            var claudePreview = sp.LPreview.Text;
+            sp.LTabs.SelectedIndex = 1;
+            sp.LQwenPct.Value = 70;
+            await Task.Delay(400);
+            var qwenPreview = sp.LPreview.Text;
+            var spec = await BuildSpecAsync("claude");
+            var qspec = await BuildSpecAsync("qwen");
+            var qsettings = qspec.Env?.TryGetValue("QWEN_CODE_SYSTEM_SETTINGS_PATH", out var qp) == true && File.Exists(qp) ? File.ReadAllText(qp) : "";
+            sp.LTabs.SelectedIndex = 0;
+            sp.LPreview.BringIntoView();
+            await Task.Delay(500);
+            Snap(Path.Combine(dir, "launchopts.png"));
+            launchResult = "LAUNCHOPTS: " +
+                $"previewContinue={claudePreview.Contains("--continue")} previewArgs={claudePreview.Contains("--verbose")} " +
+                $"previewEnv={claudePreview.Contains("MY_TEST_VAR = 'hello'")} badEnvSkipped={!claudePreview.Contains("bad name")} " +
+                $"previewMaxOut={claudePreview.Contains("CLAUDE_CODE_MAX_OUTPUT_TOKENS = '12288'")} " +
+                $"specCmd=[{spec.Command}] specEnv={(spec.Env is { } se && se.TryGetValue("MY_TEST_VAR", out var mv) ? mv : "")} " +
+                $"qwenPreviewThreshold={qwenPreview.Contains("autoCompactThreshold 0.7")} qwenSettingsThreshold={qsettings.Contains("\"autoCompactThreshold\": 0.7")} " +
+                $"qwenSettingsMaxTokens={qsettings.Contains("\"max_tokens\": 12288")} saved={_config.Launch.ClaudeContinue && _config.Launch.MaxOutputTokens == 12288} " +
+                $"dashboardCommands={Commands.Text.Contains("--continue")}";
+            sp.GetType().GetMethod("ResetLaunch_Click", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(sp, [null, new RoutedEventArgs()]);
+            await Task.Delay(300);
+            launchResult += $" resetOk={!_config.Launch.ClaudeContinue && _config.Launch.MaxOutputTokens == 0 && !Commands.Text.Contains("--continue")}";
+            Navigate("dashboard");
+        }
+
+        // Optional: --toast opens a terminal tab, shows a message and checks Windows really puts it above the terminal.
+        var toastResult = "";
+        if (args.Contains("--toast"))
+        {
+            Navigate("terminals");
+            await TerminalsPage.OpenAsync(new Launcher.Session("Toast test", Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), null, null, "Get-ChildItem $env:WINDIR | Select-Object -First 40"), "shell");
+            await Task.Delay(4000);
+            Activate();
+            Toast("Toast test", "This message should float above the terminal.", ControlAppearance.Success, SymbolRegular.Alert24);
+            await Task.Delay(1200);
+            var bar = FindDescendant<Snackbar>(_toasts.Presenter);
+            var toastHwnd = new System.Windows.Interop.WindowInteropHelper(_toasts).Handle;
+            var mainHwnd = new System.Windows.Interop.WindowInteropHelper(this).Handle;
+            string Owner(Point screen)
+            {
+                var h = GetAncestor(WindowFromPoint(new PT { X = (int)screen.X, Y = (int)screen.Y }), 2);
+                return h == toastHwnd ? "toast" : h == mainHwnd ? "main" : "other";
+            }
+            var onToast = bar is { ActualWidth: > 0 } ? Owner(bar.PointToScreen(new Point(bar.ActualWidth / 2, bar.ActualHeight / 2))) : "no-snackbar";
+            var viewer = FindViewers(Root).FirstOrDefault(v => v.IsVisible);
+            var onTerminalTop = viewer is not null ? Owner(viewer.PointToScreen(new Point(viewer.ActualWidth / 2, 20))) : "no-terminal";
+            var topLeft = PointToScreen(new Point(0, 0));
+            var size = PointToScreen(new Point(ActualWidth, ActualHeight));
+            using (var shot = new System.Drawing.Bitmap((int)(size.X - topLeft.X), (int)(size.Y - topLeft.Y)))
+            {
+                using (var g = System.Drawing.Graphics.FromImage(shot)) g.CopyFromScreen((int)topLeft.X, (int)topLeft.Y, 0, 0, shot.Size);
+                shot.Save(Path.Combine(dir, "toast-screen.png"), System.Drawing.Imaging.ImageFormat.Png);
+            }
+            toastResult = $"TOAST: underToast={onToast} terminalTop={onTerminalTop} foreground={GetForegroundWindow() == mainHwnd}";
+            Navigate("dashboard");
+        }
+
+        // Optional: --accent switches accent colours live and reads the colour the switches are actually drawn in.
+        var accentResult = "";
+        if (args.Contains("--accent"))
+        {
+            var before = _config.Accent;
+            Navigate("settings");
+            await Task.Delay(800);
+            var parts = new List<string>();
+            foreach (var name in new[] { "Coral", "Blue", "Green" })
+            {
+                Theming.ApplyAccent(name);
+                await Task.Delay(700);
+                var want = (Color)ColorConverter.ConvertFromString(Theming.Accents.First(a => a.Name == name).Hex);
+                var toggle = DominantColour(ModeToggle);
+                var idle = DominantColour(SettingsPage.IdleNotify);
+                parts.Add($"{name}: want={want.R},{want.G},{want.B} titleToggle={toggle} settingsToggle={idle} " +
+                          $"match={(Near(toggle, want) && Near(idle, want))}");
+                Snap(Path.Combine(dir, $"accent-{name.ToLowerInvariant()}.png"));
+            }
+            Theming.ApplyAccent(before);
+            Navigate("dashboard");
+            accentResult = "ACCENT: " + string.Join(" | ", parts);
+        }
+
         // Optional: --portal <password> starts the web portal and exercises it over real HTTPS (use with MAISON_CONFIG_DIR).
         var po = Array.IndexOf(args, "--portal");
         var portalResult = "";
@@ -907,9 +1109,9 @@ public partial class MainWindow : FluentWindow, IShell
             catch (Exception ex) { portalResult = "PORTAL: exception " + ex; }
         }
 
-        var lines = new List<string> { "STATUS:", pullResult, termResult, simpleResult, portalResult };
+        var lines = new List<string> { "STATUS:", pullResult, termResult, simpleResult, accentResult, toastResult, jitterResult, launchResult, portalResult };
         lines.AddRange(_status.Select(s => $"[{s.Level}] {s.Title} | {s.Detail}"));
-        lines.Add($"GAUGES: temp={GTemp.Display} load={GLoad.Display} power={GPower.Display} vram={GVram.Display} cpu={GCpu.Display} ram={GRam.Display} | {GpuTitle.Text} | {GpuExtra.Text}");
+        lines.Add($"GAUGES: temp={GTemp.Display} load={GLoad.Display} power={GPower.Display} vram={GVram.Display} cpu={GCpu.Display} ram={GRam.Display} | ai: load={GLoad.AiDisplay} power={GPower.AiDisplay} vram={GVram.AiDisplay} cpu={GCpu.AiDisplay} ram={GRam.AiDisplay} | {GpuTitle.Text} | {GpuExtra.Text}");
         if (_stats is { } st)
             lines.Add("VRAM USERS: " + string.Join(", ", st.VramUsers.Select(p => $"{p.Name} {p.VramGb:0.0}GB")) + $" | warning: {HealthAdvice.VramWarning(st) ?? "none"}");
         lines.Add($"VERSION: {AppInfo.Version} | PERMS: {_config.Permissions} | ACCENT: {_config.Accent} | UIMODE: {_config.UiMode}");
@@ -944,6 +1146,20 @@ public partial class MainWindow : FluentWindow, IShell
     }
 
     [System.Runtime.InteropServices.DllImport("user32.dll")] private static extern bool SetCursorPos(int x, int y);
+    private struct PT { public int X, Y; }
+    [System.Runtime.InteropServices.DllImport("user32.dll")] private static extern IntPtr WindowFromPoint(PT p);
+    [System.Runtime.InteropServices.DllImport("user32.dll")] private static extern IntPtr GetAncestor(IntPtr h, uint flags);
+
+    private static T? FindDescendant<T>(DependencyObject root) where T : DependencyObject
+    {
+        for (int i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
+        {
+            var c = VisualTreeHelper.GetChild(root, i);
+            if (c is T t) return t;
+            if (FindDescendant<T>(c) is { } d) return d;
+        }
+        return null;
+    }
     [System.Runtime.InteropServices.DllImport("user32.dll")] private static extern void mouse_event(uint flags, uint dx, uint dy, uint data, UIntPtr extra);
 
     /// <summary>Self-test: a genuine left click in the middle of an element (not a synthetic Click event).</summary>
@@ -958,6 +1174,31 @@ public partial class MainWindow : FluentWindow, IShell
         await Task.Delay(60);
         mouse_event(0x0004, 0, 0, 0, UIntPtr.Zero);   // left up
     }
+
+    /// <summary>Self-test: the most saturated colour an element is drawn with (e.g. a switch's "on" fill).</summary>
+    private static Color? DominantColour(FrameworkElement? el)
+    {
+        if (el is null || el.ActualWidth < 1) return null;
+        var bmp = new RenderTargetBitmap((int)el.ActualWidth, (int)el.ActualHeight, 96, 96, PixelFormats.Pbgra32);
+        // Through a brush: Render(el) would apply el's offset in its parent and miss it.
+        var dv = new DrawingVisual();
+        using (var dc = dv.RenderOpen()) dc.DrawRectangle(new VisualBrush(el), null, new Rect(0, 0, el.ActualWidth, el.ActualHeight));
+        bmp.Render(dv);
+        var px = new byte[bmp.PixelWidth * bmp.PixelHeight * 4];
+        bmp.CopyPixels(px, bmp.PixelWidth * 4, 0);
+        Color? best = null; int bestSat = 40;
+        for (int i = 0; i < px.Length; i += 4)
+        {
+            if (px[i + 3] < 200) continue;
+            int b = px[i], g = px[i + 1], r = px[i + 2];
+            int sat = Math.Max(r, Math.Max(g, b)) - Math.Min(r, Math.Min(g, b));
+            if (sat > bestSat) { bestSat = sat; best = Color.FromRgb((byte)r, (byte)g, (byte)b); }
+        }
+        return best;
+    }
+
+    private static bool Near(Color? a, Color b) =>
+        a is { } x && Math.Abs(x.R - b.R) + Math.Abs(x.G - b.G) + Math.Abs(x.B - b.B) < 60;
 
     private static IEnumerable<Controls.TerminalViewer> FindViewers(DependencyObject root)
     {

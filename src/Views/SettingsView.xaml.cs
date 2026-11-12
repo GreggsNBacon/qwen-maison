@@ -39,9 +39,88 @@ public partial class SettingsView : UserControl
         ModelsDir.Text = ModelStorage.Current;
         var disk = StatsService.Disk(ModelStorage.Current);
         ModelsDirSub.Text = disk is { } d ? $"{d.FreeGb:N0} GB free of {d.TotalGb:N0} GB on {d.Drive}" : "";
+        LoadLaunch();
         _loading = false;
+        UpdatePreview();
         BuildSwatches();
         RefreshPortal();
+    }
+
+    // ------------------------------------------------------------------ start commands
+
+    private static readonly (string Key, string Label)[] ThinkChoices = [("default", "Model default"), ("on", "Always think"), ("off", "Answer straight away")];
+
+    private void LoadLaunch()
+    {
+        var o = _c.Launch;
+        LTellCtx.IsChecked = o.TellContextWindow;
+        LMaxOut.Value = o.MaxOutputTokens;
+        LClaudeContinue.IsChecked = o.ClaudeContinue;
+        LClaudeNoThink.IsChecked = o.ClaudeDisableThinking;
+        LClaudeNoTraffic.IsChecked = o.ClaudeNoNonessentialTraffic;
+        LClaudeNoCache.IsChecked = o.ClaudeNoPromptCaching;
+        LClaudePct.Value = o.ClaudeCompactPercent;
+        LClaudeArgs.Text = o.ClaudeExtraArgs;
+        LClaudeEnv.Text = o.ClaudeExtraEnv;
+        LQwenContinue.IsChecked = o.QwenContinue;
+        LQwenPct.Value = Math.Round(o.QwenCompactThreshold * 100);
+        LQwenTimeout.Value = o.QwenTimeoutSeconds;
+        LQwenArgs.Text = o.QwenExtraArgs;
+        LQwenEnv.Text = o.QwenExtraEnv;
+        LChatVerbose.IsChecked = o.ChatVerbose;
+        if (LChatThink.Items.Count == 0) foreach (var (_, label) in ThinkChoices) LChatThink.Items.Add(label);
+        LChatThink.SelectedIndex = Math.Max(0, Array.FindIndex(ThinkChoices, t => t.Key == o.ChatThink));
+        LChatArgs.Text = o.ChatExtraArgs;
+    }
+
+    private void Launch_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_loading || !IsLoaded) return;
+        var o = _c.Launch;
+        o.TellContextWindow = LTellCtx.IsChecked == true;
+        o.MaxOutputTokens = (int)(LMaxOut.Value ?? 0);
+        o.ClaudeContinue = LClaudeContinue.IsChecked == true;
+        o.ClaudeDisableThinking = LClaudeNoThink.IsChecked == true;
+        o.ClaudeNoNonessentialTraffic = LClaudeNoTraffic.IsChecked == true;
+        o.ClaudeNoPromptCaching = LClaudeNoCache.IsChecked == true;
+        o.ClaudeCompactPercent = (int)(LClaudePct.Value ?? 0);
+        o.ClaudeExtraArgs = LClaudeArgs.Text.Trim();
+        o.ClaudeExtraEnv = LClaudeEnv.Text;
+        o.QwenContinue = LQwenContinue.IsChecked == true;
+        o.QwenCompactThreshold = Math.Clamp((LQwenPct.Value ?? 85) / 100.0, 0.3, 1.0);
+        o.QwenTimeoutSeconds = (int)(LQwenTimeout.Value ?? 600);
+        o.QwenExtraArgs = LQwenArgs.Text.Trim();
+        o.QwenExtraEnv = LQwenEnv.Text;
+        o.ChatVerbose = LChatVerbose.IsChecked == true;
+        o.ChatThink = ThinkChoices[Math.Max(0, LChatThink.SelectedIndex)].Key;
+        o.ChatExtraArgs = LChatArgs.Text.Trim();
+        _c.Save();
+        UpdatePreview();
+        Shell.UpdateCommands();
+    }
+
+    private void LTabs_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        if (e.Source == LTabs) UpdatePreview();
+    }
+
+    private void UpdatePreview()
+    {
+        if (Shell is null) return;
+        var kind = (LTabs.SelectedItem as TabItem)?.Tag as string ?? "claude";
+        LPreview.Text = Shell.StartCommandPreview(kind);
+    }
+
+    private void ResetLaunch_Click(object sender, RoutedEventArgs e)
+    {
+        _c.Launch = new LaunchOptions();
+        _c.Save();
+        _loading = true;
+        LoadLaunch();
+        _loading = false;
+        UpdatePreview();
+        Shell.UpdateCommands();
+        Shell.Toast("Start commands reset", "Every option is back to maison's defaults.", ControlAppearance.Success, SymbolRegular.ArrowReset24);
     }
 
     // ------------------------------------------------------------------ appearance

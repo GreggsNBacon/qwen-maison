@@ -16,4 +16,8 @@ public interface IShell
     Task RunInTerminalAsync(string title, string command);
     /// <summary>Model name → when it was last used (launched or loaded).</summary>
     IReadOnlyDictionary<string, DateTime> ModelLastUsed { get; }
+    /// <summary>Refreshes the Dashboard's copyable commands after a start-command option changed.</summary>
+    void UpdateCommands();
+    /// <summary>The PowerShell maison would run for "claude", "qwen" or "chat" with the current selection and options.</summary>
+    string StartCommandPreview(string kind);
 }

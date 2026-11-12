@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.IO;
 using System.Text;
+using Maison.Models;
 
 namespace Maison.Services;
 
@@ -26,18 +27,37 @@ public static class Launcher
 
     public static bool IsVariant(string name) => System.Text.RegularExpressions.Regex.IsMatch(name, @"-ctx\d+k$");
 
-    public static Dictionary<string, string> ClaudeEnv(string main, string fast) => new()
+    /// <summary>Everything one launch needs: models, the real context window, permissions and the Start-command options.</summary>
+    public sealed record Plan(string Main, string Fast, int Ctx, string Perm, LaunchOptions O, IReadOnlyList<string> Models)
     {
-        ["ANTHROPIC_BASE_URL"] = OllamaClient.BaseUrl,
-        ["ANTHROPIC_AUTH_TOKEN"] = "ollama",
-        ["ANTHROPIC_MODEL"] = main,
-        ["ANTHROPIC_DEFAULT_OPUS_MODEL"] = main,
-        ["ANTHROPIC_DEFAULT_SONNET_MODEL"] = main,
-        ["ANTHROPIC_DEFAULT_HAIKU_MODEL"] = fast,
-        ["CLAUDE_CODE_SUBAGENT_MODEL"] = main,
-        ["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"] = "1",
-        ["DISABLE_PROMPT_CACHING"] = "1",
-    };
+        /// <summary>Max tokens per reply: the user's number, or a quarter of the window (4K–32K) so prompt + reply fit.</summary>
+        public int OutputTokens => O.MaxOutputTokens > 0 ? O.MaxOutputTokens : Math.Clamp(Ctx / 4, 4096, 32768);
+    }
+
+    public static Dictionary<string, string> ClaudeEnv(Plan p)
+    {
+        var o = p.O;
+        var env = new Dictionary<string, string>
+        {
+            ["ANTHROPIC_BASE_URL"] = OllamaClient.BaseUrl,
+            ["ANTHROPIC_AUTH_TOKEN"] = "ollama",
+            ["ANTHROPIC_MODEL"] = p.Main,
+            ["ANTHROPIC_DEFAULT_OPUS_MODEL"] = p.Main,
+            ["ANTHROPIC_DEFAULT_SONNET_MODEL"] = p.Main,
+            ["ANTHROPIC_DEFAULT_HAIKU_MODEL"] = p.Fast,
+            ["CLAUDE_CODE_SUBAGENT_MODEL"] = p.Main,
+            // Claude Code assumes a 200K window for models it doesn't know, so without this it never compacts
+            // before Ollama's (much smaller) window is full and the session fails.
+            ["CLAUDE_CODE_MAX_OUTPUT_TOKENS"] = p.OutputTokens.ToString(),
+        };
+        if (o.TellContextWindow && p.Ctx > 0) env["CLAUDE_CODE_MAX_CONTEXT_TOKENS"] = p.Ctx.ToString();
+        if (o.ClaudeCompactPercent is > 0 and <= 100) env["CLAUDE_AUTOCOMPACT_PCT_OVERRIDE"] = o.ClaudeCompactPercent.ToString();
+        if (o.ClaudeDisableThinking) env["CLAUDE_CODE_DISABLE_THINKING"] = "1";
+        if (o.ClaudeNoNonessentialTraffic) env["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"] = "1";
+        if (o.ClaudeNoPromptCaching) env["DISABLE_PROMPT_CACHING"] = "1";
+        foreach (var (k, v) in ParseEnv(o.ClaudeExtraEnv)) env[k] = v;
+        return env;
+    }
 
     /// <summary>maison permission choices → (label, Claude Code --permission-mode, Qwen Code --approval-mode, tooltip).</summary>
     public static readonly (string Key, string Label, string Claude, string Qwen, string Tip)[] PermissionModes =
@@ -55,46 +75,122 @@ public static class Launcher
     /// Always passes an explicit mode: Claude Code's "auto" mode relies on a safety classifier on Anthropic's servers,
     /// which can't be reached when requests go to Ollama ("Auto mode can't check actions in this session").
     /// </summary>
-    public static string ClaudeCommand(string mode) => $"claude --permission-mode {Mode(mode).Claude}";
+    public static string ClaudeCommand(Plan p) =>
+        Join("claude", $"--permission-mode {Mode(p.Perm).Claude}", p.O.ClaudeContinue ? "--continue" : "", p.O.ClaudeExtraArgs);
 
-    public static Dictionary<string, string> QwenEnv(string model) => new()
+    public static Dictionary<string, string> QwenEnv(Plan p, string? settingsPath)
     {
-        ["OPENAI_BASE_URL"] = OllamaClient.BaseUrl + "/v1",
-        ["OPENAI_API_KEY"] = "ollama",
-        ["OPENAI_MODEL"] = model,
-    };
+        var env = new Dictionary<string, string>
+        {
+            ["OPENAI_BASE_URL"] = OllamaClient.BaseUrl + "/v1",
+            ["OPENAI_API_KEY"] = "ollama",
+            ["OPENAI_MODEL"] = p.Main,
+            // Unset, Qwen Code asks for the model's full output limit (64K+), which alone overflows a 32K/64K window.
+            ["QWEN_CODE_MAX_OUTPUT_TOKENS"] = p.OutputTokens.ToString(),
+            ["QWEN_CODE_API_TIMEOUT_MS"] = (Math.Max(30, p.O.QwenTimeoutSeconds) * 1000).ToString(),
+        };
+        if (settingsPath is not null) env["QWEN_CODE_SYSTEM_SETTINGS_PATH"] = settingsPath;
+        foreach (var (k, v) in ParseEnv(p.O.QwenExtraEnv)) env[k] = v;
+        return env;
+    }
 
-    public static string QwenCommand(string model, string mode) =>
-        $"qwen --auth-type openai --openai-base-url {Q(OllamaClient.BaseUrl + "/v1")} --openai-api-key ollama -m {Q(model)} --approval-mode {Mode(mode).Qwen}";
+    /// <summary>
+    /// Qwen Code only learns the window size from settings, not flags. maison writes its own settings file and points
+    /// QWEN_CODE_SYSTEM_SETTINGS_PATH at it for the session, so ~/.qwen/settings.json is never touched. Every installed
+    /// model is listed (a provider list replaces the user's for the session, and /model can still switch).
+    /// </summary>
+    public static string? WriteQwenSettings(Plan p)
+    {
+        if (!p.O.TellContextWindow || p.Ctx <= 0) return null;
+        var timeoutMs = Math.Max(30, p.O.QwenTimeoutSeconds) * 1000;
+        object Gen() => new Dictionary<string, object>
+        {
+            ["contextWindowSize"] = p.Ctx,
+            ["timeout"] = timeoutMs,
+            ["streamIdleTimeoutMs"] = Math.Max(timeoutMs, 240000),
+            ["samplingParams"] = new Dictionary<string, object> { ["max_tokens"] = p.OutputTokens },
+        };
+        var ids = new List<string> { p.Main };
+        ids.AddRange(p.Models.Where(m => m != p.Main));
+        var settings = new Dictionary<string, object>
+        {
+            ["$version"] = 4,
+            ["model"] = new Dictionary<string, object> { ["generationConfig"] = Gen() },
+            ["context"] = new Dictionary<string, object> { ["autoCompactThreshold"] = Math.Clamp(p.O.QwenCompactThreshold, 0.3, 1.0) },
+            ["modelProviders"] = new Dictionary<string, object>
+            {
+                ["openai"] = ids.Select(id => new Dictionary<string, object>
+                {
+                    ["id"] = id,
+                    ["name"] = $"{id} (Ollama via maison)",
+                    ["baseUrl"] = OllamaClient.BaseUrl + "/v1",
+                    ["envKey"] = "OPENAI_API_KEY",
+                    ["generationConfig"] = Gen(),
+                }).ToList(),
+            },
+        };
+        var json = System.Text.Json.JsonSerializer.Serialize(settings, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+        var dir = Path.Combine(AppConfig.Folder, "qwen");
+        Directory.CreateDirectory(dir);
+        var hash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(json)))[..12];
+        var file = Path.Combine(dir, $"settings-{hash}.json");
+        if (!File.Exists(file)) File.WriteAllText(file, json);
+        return file;
+    }
 
-    public static string ChatCommand(string model) => $"& {Q(SystemProbe.OllamaExe)} run {Q(model)}";
+    public static string QwenCommand(Plan p) =>
+        Join($"qwen --auth-type openai --openai-base-url {Q(OllamaClient.BaseUrl + "/v1")} --openai-api-key ollama -m {Q(p.Main)}",
+             $"--approval-mode {Mode(p.Perm).Qwen}", p.O.QwenContinue ? "--continue" : "", p.O.QwenExtraArgs);
+
+    public static string ChatCommand(Plan p) =>
+        Join($"& {Q(SystemProbe.OllamaExe)} run {Q(p.Main)}", p.O.ChatVerbose ? "--verbose" : "",
+             p.O.ChatThink switch { "on" => "--think=true", "off" => "--think=false", _ => "" }, p.O.ChatExtraArgs);
+
+    private static string Join(params string[] parts) => string.Join(' ', parts.Select(x => x.Trim()).Where(x => x.Length > 0));
+
+    /// <summary>KEY=VALUE lines (blank lines and # comments ignored; invalid names skipped).</summary>
+    public static IEnumerable<(string Key, string Value)> ParseEnv(string text)
+    {
+        foreach (var raw in (text ?? "").Split('\n'))
+        {
+            var line = raw.Trim();
+            if (line.Length == 0 || line.StartsWith('#')) continue;
+            var eq = line.IndexOf('=');
+            if (eq <= 0) continue;
+            var key = line[..eq].Trim();
+            if (!System.Text.RegularExpressions.Regex.IsMatch(key, "^[A-Za-z_][A-Za-z0-9_]*$")) continue;
+            yield return (key, line[(eq + 1)..].Trim());
+        }
+    }
 
     /// <summary>PowerShell single-quoted literal.</summary>
     public static string Q(string s) => "'" + s.Replace("'", "''") + "'";
 
-    /// <summary>The copy-pasteable commands panel.</summary>
-    public static string CommandsText(string baseMain, string main, string fast, int ctx, string skip)
+    /// <summary>The copy-pasteable commands panel (what maison runs, with the current options).</summary>
+    public static string CommandsText(Plan p, string baseMain)
     {
         var sb = new StringBuilder();
-        sb.AppendLine("# Claude Code -> local Qwen via Ollama (only affects this PowerShell window)");
-        foreach (var (k, v) in ClaudeEnv(main, fast)) sb.AppendLine($"$env:{k} = {Q(v)}");
+        sb.AppendLine($"# Context window: {p.Ctx:N0} tokens · replies up to {p.OutputTokens:N0} tokens");
+        sb.AppendLine();
+        sb.AppendLine("# Claude Code -> local model via Ollama (only affects this PowerShell window)");
+        foreach (var (k, v) in ClaudeEnv(p)) sb.AppendLine($"$env:{k} = {Q(v)}");
         sb.AppendLine("Remove-Item Env:ANTHROPIC_API_KEY -ErrorAction SilentlyContinue");
-        sb.AppendLine(ClaudeCommand(skip));
+        sb.AppendLine(ClaudeCommand(p));
         sb.AppendLine();
         sb.AppendLine("# Qwen Code -> Ollama (OpenAI-compatible endpoint)");
-        sb.AppendLine(QwenCommand(main, skip));
+        foreach (var (k, v) in QwenEnv(p, p.O.TellContextWindow ? "<maison writes this settings file at launch>" : null)) sb.AppendLine($"$env:{k} = {Q(v)}");
+        sb.AppendLine(QwenCommand(p));
         sb.AppendLine();
         sb.AppendLine("# Plain chat");
-        sb.AppendLine($"ollama run {main}");
-        if (ctx > 0)
+        sb.AppendLine(ChatCommand(p));
+        if (p.Main != baseMain)
         {
             sb.AppendLine();
-            sb.AppendLine("# One-time: create the larger-context variant used above (settings only, no download)");
-            sb.AppendLine($"@{{model={Q(main)}; from={Q(baseMain)}; parameters=@{{num_ctx={ctx}}}; stream=$false}} | ConvertTo-Json | Invoke-RestMethod {OllamaClient.BaseUrl}/api/create -Method Post -ContentType application/json");
+            sb.AppendLine("# One-time: create the context variant used above (settings only, no download)");
+            sb.AppendLine($"@{{model={Q(p.Main)}; from={Q(baseMain)}; parameters=@{{num_ctx={p.Ctx}}}; stream=$false}} | ConvertTo-Json | Invoke-RestMethod {OllamaClient.BaseUrl}/api/create -Method Post -ContentType application/json");
         }
         return sb.ToString().TrimEnd();
     }
-
     public const string TargetApp = "This app", TargetTerminal = "Windows Terminal", TargetPowerShell = "PowerShell window";
     public static readonly string[] Targets = [TargetApp, TargetTerminal, TargetPowerShell];
 
