@@ -85,8 +85,8 @@ public static class PoolRelay
             }).ToList(),
         }));
         app.MapPost("/api/create", CreateEverywhereAsync);
-        app.MapPost("/api/pull", () => Results.Json(new { error = "In the AI pool, install models on a particular PC from the AI pool page." }, statusCode: 400));
-        app.MapDelete("/api/delete", () => Results.Json(new { error = "In the AI pool, remove models on a particular PC from the AI pool page." }, statusCode: 400));
+        app.MapPost("/api/pull", () => Results.Json(new { error = "In the AI pool, install models on a particular PC from the Pool page." }, statusCode: 400));
+        app.MapDelete("/api/delete", () => Results.Json(new { error = "In the AI pool, remove models on a particular PC from the Pool page." }, statusCode: 400));
         app.MapFallback("{**path}", ctx =>
         {
             var path = ctx.Request.Path.Value ?? "/";
@@ -157,7 +157,7 @@ public static class PoolRelay
             await ctx.Response.WriteAsJsonAsync(new
             {
                 error = model.Length > 0
-                    ? $"No AI PC in your pool that's online has {model}. Install it on one from the AI pool page."
+                    ? $"No AI PC in your pool that's online has {model}. Install it on one from the Pool page."
                     : "No AI PC in your pool is online.",
             });
             return;

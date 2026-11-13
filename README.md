@@ -86,7 +86,8 @@ you want it.
 ## Using maison
 
 **Simple view.** One terminal, four plain stats (graphics card, AI memory, processor, memory) and a warning if
-something is slowing Qwen down. Sessions keep running when you switch views.
+something is slowing Qwen down. Sessions keep running when you switch views. The **Settings** button at the top opens
+all of maison's settings in their own window, so you don't need the advanced view to change them.
 
 **Advanced view:**
 - **Dashboard**: health checks with one-click fixes (Start, Restart, Repair Ollama), live gauges, and launch buttons for
@@ -122,10 +123,15 @@ the cloud, except the "cloud" is your own PCs. With more than one AI PC, a busy 
 1. **On each AI PC:** in **Settings → AI pool**, turn on **Share this PC's AI with my other PCs**. Windows asks for
    permission once. maison shows a 6-digit pairing code. Keep maison running there: **Settings → Start with Windows**
    (with **Start minimised**) does that for you.
-2. **On your other PC:** open the **AI pool** page (or, in the simple view, click **Use its AI instead**). AI PCs at home
-   show up by themselves, with no addresses to type. Enter each one's code and press **Add to pool**, then turn on **Use the AI pool**.
+2. **On your other PC:** open the **Pool** page (or, in the simple view, click **Use its AI instead**). AI PCs at home
+   show up by themselves, with no addresses to type. Enter each one's code and press **Add to pool**, then turn on **Pool**
+   in the title bar (the same switch is on the Dashboard, the Pool page and in Settings).
 
-The AI pool page shows each AI PC's graphics card and whether it's free or busy, which agents are using it (from which
+**Include this PC** (on the Dashboard and the Pool page) decides whether the PC you're at also takes work while the pool
+is on. Your own models are always listed on the Models page and in the Dashboard's model list, and with the pool on each
+model says which PC has it (e.g. "on GPU-PC, this PC"). Hover over any switch or button for what it does.
+
+The Pool page shows each AI PC's graphics card and whether it's free or busy, which agents are using it (from which
 PC), and its models. You can install or remove models on it, or set the whole PC up (Ollama and a model sized for its
 GPU) from where you sit.
 
@@ -143,7 +149,7 @@ the Dashboard.
 
 **An AI PC doesn't show up, or shows Offline.** Check that PC is on and awake, that maison is running there with sharing
 turned on, and that both PCs are on the same network. Windows must treat that network as Private; maison offers to set
-this when you turn sharing on. On another network (e.g. Tailscale), add it by name under **Not listed?** on the AI pool page.
+this when you turn sharing on. On another network (e.g. Tailscale), add it by name under **Not listed?** on the Pool page.
 
 **Something isn't installed or won't start.** The Dashboard's health checks say what's wrong. **Repair Ollama** fixes a
 broken Ollama update, and **Setup** can reinstall any part.

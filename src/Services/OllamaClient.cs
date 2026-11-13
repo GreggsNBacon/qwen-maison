@@ -20,6 +20,9 @@ public static class OllamaClient
     public static string Where => IsRemote ? "your AI pool" : "this PC";
 
     private static HttpClient Http = NewClient(LocalUrl);
+    /// <summary>Always this PC's own Ollama: the Models page lists, installs and removes models here, pool or not.</summary>
+    private static readonly HttpClient LocalHttp = NewClient(LocalUrl);
+    private static HttpClient Pick(bool local) => local ? LocalHttp : Http;
     private static HttpClient NewClient(string url) => new() { BaseAddress = new Uri(url), Timeout = Timeout.InfiniteTimeSpan };
 
     private static CancellationTokenSource After(double seconds) => new(TimeSpan.FromSeconds(seconds));
@@ -57,10 +60,11 @@ public static class OllamaClient
         catch { return null; }
     }
 
-    public static async Task<List<ModelInfo>> GetModelsAsync()
+    /// <param name="local">This PC's own Ollama, even when the AI pool is in use.</param>
+    public static async Task<List<ModelInfo>> GetModelsAsync(bool local = false)
     {
         using var cts = After(5);
-        var doc = await Http.GetFromJsonAsync<JsonElement>("/api/tags", cts.Token);
+        var doc = await Pick(local).GetFromJsonAsync<JsonElement>("/api/tags", cts.Token);
         var list = new List<ModelInfo>();
         foreach (var m in doc.GetProperty("models").EnumerateArray())
         {
@@ -168,10 +172,10 @@ public static class OllamaClient
     /// Downloads a model, reporting combined progress across all layers. Cancelling stops the download;
     /// Ollama keeps the partial layers and resumes next time.
     /// </summary>
-    public static async Task PullAsync(string model, IProgress<PullProgress> progress, CancellationToken ct)
+    public static async Task PullAsync(string model, IProgress<PullProgress> progress, CancellationToken ct, bool local = false)
     {
         using var req = new HttpRequestMessage(HttpMethod.Post, "/api/pull") { Content = JsonContent.Create(new { model, stream = true }) };
-        using var resp = await Http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct);
+        using var resp = await Pick(local).SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct);
         if (!resp.IsSuccessStatusCode)
             throw new InvalidOperationException(await ErrorText(resp));
 
@@ -225,11 +229,11 @@ public static class OllamaClient
         resp.EnsureSuccessStatusCode();
     }
 
-    public static async Task DeleteAsync(string model)
+    public static async Task DeleteAsync(string model, bool local = false)
     {
         using var cts = After(30);
         using var req = new HttpRequestMessage(HttpMethod.Delete, "/api/delete") { Content = JsonContent.Create(new { model }) };
-        using var resp = await Http.SendAsync(req, cts.Token);
+        using var resp = await Pick(local).SendAsync(req, cts.Token);
         if (!resp.IsSuccessStatusCode) throw new InvalidOperationException(await ErrorText(resp));
     }
 

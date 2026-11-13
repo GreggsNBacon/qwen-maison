@@ -209,7 +209,7 @@
             <StackPanel>
               <TextBlock Text="Make this PC an AI PC" Style="{StaticResource SectionLabel}" />
               <ui:ToggleSwitch x:Name="ShareAiToggle" Content="Share this PC's AI with my other PCs" Click="ShareAi_Click"
-                               ToolTip="Paired PCs at home can use this PC's models through maison (encrypted, with their own key). Ollama itself stays private. Windows asks for admin permission once to open maison's ports for your home network." />
+                               ToolTip="Turn this on on the PC with the good graphics card. Paired PCs at home can then use this PC's models through maison (encrypted, with their own key). This doesn't change what this PC itself uses: that's the Pool switch. Ollama itself stays private. Windows asks for admin permission once to open maison's ports for your home network." />
               <TextBlock x:Name="ShareState" FontSize="12.5" TextWrapping="Wrap" Margin="0,8,0,0" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
               <StackPanel x:Name="SharePanel" Margin="0,10,0,0" Visibility="Collapsed">
                 <TextBlock Text="Pairing code (enter it once on the other PC)" FontSize="12" Foreground="{DynamicResource TextFillColorTertiaryBrush}" />
@@ -246,12 +246,12 @@
             <!-- This PC uses the pool -->
             <StackPanel Grid.Column="2">
               <TextBlock Text="Use AI PCs from this PC" Style="{StaticResource SectionLabel}" />
-              <ui:ToggleSwitch x:Name="UseRemoteToggle" Content="Use the AI pool" Click="UseRemote_Click"
-                               ToolTip="Claude Code, Qwen Code and Chat use the AI PCs you've added (and this PC, if included), picking a free one for each request." />
-              <ui:ToggleSwitch x:Name="IncludeThisToggle" Content="Include this PC's own AI in the pool" Margin="0,10,0,0" Click="IncludeThis_Click"
-                               ToolTip="This PC's Ollama takes work too when it's free" />
+              <ui:ToggleSwitch x:Name="UseRemoteToggle" Content="Use the pool" Click="UseRemote_Click"
+                               ToolTip="On: Claude Code, Qwen Code and Chat on this PC use the AI PCs you've added (and this PC, if included), picking a free one for each request. Off: they use only this PC's own AI. Same switch as &quot;Pool&quot; in the title bar." />
+              <ui:ToggleSwitch x:Name="IncludeThisToggle" Content="Include this PC" Margin="0,10,0,0" Click="IncludeThis_Click"
+                               ToolTip="Only matters while the pool is on. On: this PC's own Ollama is one of the pool's PCs and takes work when it's free, so its models stay usable. Off: everything runs on the other PCs." />
               <TextBlock x:Name="RemoteState" FontSize="12.5" TextWrapping="Wrap" Margin="0,8,0,0" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
-              <ui:Button Content="Open the AI pool" Icon="{ui:SymbolIcon Server24}" Margin="0,10,0,0" Click="OpenPool_Click"
+              <ui:Button Content="Open the Pool page" Icon="{ui:SymbolIcon Server24}" Margin="0,10,0,0" Click="OpenPool_Click"
                          ToolTip="Find AI PCs at home, add them, see what they're doing and manage their models" />
             </StackPanel>
           </Grid>

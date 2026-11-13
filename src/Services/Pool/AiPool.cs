@@ -70,6 +70,22 @@ public static class AiPool
         }
     }
 
+    /// <summary>True once every member has been asked for its status at least once (so its model list is known).</summary>
+    public static bool AllChecked => Members.All(m => m.Checked != default);
+
+    /// <summary>The other PCs in the pool (in use and online) that have <paramref name="model"/>, by name.</summary>
+    public static List<string> OtherPcsWith(string model) =>
+        Members.Where(m => !m.IsThisPc && m.Member.Enabled && m.Online && m.Has(model)).Select(m => m.Member.Name).ToList();
+
+    /// <summary>Every model on the other PCs in the pool (in use and online), with the PCs that have it.</summary>
+    public static List<(string Model, double SizeGb, List<string> Pcs)> OtherPcsModels() =>
+        Members.Where(m => !m.IsThisPc && m.Member.Enabled && m.Online && m.Info is not null)
+            .SelectMany(m => m.Info!.Models.Select(x => (x.Name, x.SizeGb, Pc: m.Member.Name)))
+            .Where(x => !System.Text.RegularExpressions.Regex.IsMatch(x.Name, @"-ctx\d+k(:latest)?$"))
+            .GroupBy(x => x.Name, StringComparer.OrdinalIgnoreCase)
+            .Select(g => (g.Key, g.First().SizeGb, g.Select(x => x.Pc).Distinct().ToList()))
+            .OrderBy(x => x.Key, StringComparer.OrdinalIgnoreCase).ToList();
+
     // ------------------------------------------------------------------ HTTP to an AI PC
 
     /// <summary>HTTPS client for an address. With a thumbprint, only that certificate is accepted (pinned at pairing).</summary>

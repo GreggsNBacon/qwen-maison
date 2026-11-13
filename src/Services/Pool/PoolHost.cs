@@ -228,7 +228,7 @@ public static class PoolHost
     }
 
     private static IResult Unauthorized() =>
-        Results.Json(new { error = "maison: this PC isn't paired with this AI PC (or was removed). Add it again on the AI pool page." }, statusCode: 401);
+        Results.Json(new { error = "maison: this PC isn't paired with this AI PC (or was removed). Add it again on the Pool page." }, statusCode: 401);
 
     // ------------------------------------------------------------------ the Ollama proxy
 
@@ -243,7 +243,7 @@ public static class PoolHost
         if (client is null)
         {
             ctx.Response.StatusCode = 401;
-            await ctx.Response.WriteAsJsonAsync(new { error = "maison: this PC isn't paired with this AI PC. Add it on the AI pool page." });
+            await ctx.Response.WriteAsJsonAsync(new { error = "maison: this PC isn't paired with this AI PC. Add it on the Pool page." });
             return;
         }
 

@@ -84,7 +84,7 @@ public partial class SettingsView : UserControl
         var n = _c.PoolMembers.Count(m => m.Enabled);
         RemoteState.Text = !_c.UseRemoteAi
             ? "Off: this PC runs its own AI."
-            : n == 0 && !_c.PoolIncludeThisPc ? "On, but no AI PCs are added yet. Open the AI pool to find them."
+            : n == 0 && !_c.PoolIncludeThisPc ? "On, but no AI PCs are added yet. Open the Pool page to find them."
             : $"On: using {n} AI PC{(n == 1 ? "" : "s")}{(_c.PoolIncludeThisPc && SystemProbe.OllamaInstalled ? " and this PC" : "")}.";
     }
 
@@ -153,14 +153,7 @@ public partial class SettingsView : UserControl
 
     private async void UseRemote_Click(object sender, RoutedEventArgs e) => await Shell.SetUsePoolAsync(UseRemoteToggle.IsChecked == true);
 
-    private async void IncludeThis_Click(object sender, RoutedEventArgs e)
-    {
-        _c.PoolIncludeThisPc = IncludeThisToggle.IsChecked == true;
-        _c.Save();
-        RefreshSharing();
-        await Services.Pool.AiPool.RefreshAsync();
-        if (_c.UseRemoteAi) await Shell.OnModelsChangedAsync();
-    }
+    private async void IncludeThis_Click(object sender, RoutedEventArgs e) => await Shell.SetIncludeThisPcAsync(IncludeThisToggle.IsChecked == true);
 
     private void OpenPool_Click(object sender, RoutedEventArgs e) => Shell.ShowPool();
 

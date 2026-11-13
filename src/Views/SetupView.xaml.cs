@@ -87,7 +87,7 @@ public partial class SetupView : UserControl
         {
             _model.Title = $"Qwen model · {_recommended.Tag}";
             _model.Description = remote
-                ? "Install models on your AI PCs from the AI pool page."
+                ? "Install models on your AI PCs from the Pool page."
                 : $"{_recommended.Description} Chosen for {(vram > 0 ? $"{vram:N0} GB of GPU memory" : "a CPU-only PC")}; pick others on the Models page.";
             var have = models.Any(m => m.Name.Equals(_recommended.Tag, StringComparison.OrdinalIgnoreCase));
             var other = models.FirstOrDefault(m => !m.Name.StartsWith("claude-") && !Launcher.IsVariant(m.Name));
@@ -159,7 +159,7 @@ public partial class SetupView : UserControl
                 Out("Connecting to your AI pool…");
                 await Maison.Services.Pool.AiPool.RefreshAsync();
                 var v = await OllamaClient.GetVersionAsync(4);
-                if (v is null) throw new InvalidOperationException("No AI PC in your pool is reachable. Check they're on and maison is running there, or add one on the AI pool page.");
+                if (v is null) throw new InvalidOperationException("No AI PC in your pool is reachable. Check they're on and maison is running there, or add one on the Pool page.");
                 Out($"Connected to your AI pool (Ollama v{v}).");
             }
             else if (step == _server)
@@ -174,7 +174,7 @@ public partial class SetupView : UserControl
                 await Maison.Services.Pool.AiPool.RefreshAsync();
                 var target = Maison.Services.Pool.AiPool.Members.Where(m => m.Online && m.Info is { OllamaRunning: true })
                     .OrderByDescending(m => m.Info!.Gpu?.TotalGb ?? 0).FirstOrDefault()
-                    ?? throw new InvalidOperationException("No AI PC in your pool is ready. Set one up from the AI pool page.");
+                    ?? throw new InvalidOperationException("No AI PC in your pool is ready. Set one up from the Pool page.");
                 var tag = target.Info!.RecommendedModel;
                 Out($"Downloading {tag} onto {target.Member.Name}…");
                 var (ok, msg) = await Maison.Services.Pool.AiPool.InstallModelAsync(target.Member, tag);

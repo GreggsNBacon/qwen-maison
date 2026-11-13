@@ -28,7 +28,7 @@ public sealed record PoolAgent(string Client, string Kind, string Model, DateTim
 /// <summary>A job the AI PC is doing for the pool (installing Ollama, downloading a model).</summary>
 public sealed record PoolTask(string Title, string Status, double Percent, bool Running, string? Error);
 
-/// <summary>GET /maison/info: everything the AI pool page shows about an AI PC.</summary>
+/// <summary>GET /maison/info: everything the Pool page shows about an AI PC.</summary>
 public sealed record PoolInfo(
     string Id, string Name, string Version,
     PoolGpu? Gpu, double RamGb,

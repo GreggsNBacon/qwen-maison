@@ -12,6 +12,14 @@
                  WindowBackdropType="Mica"
                  WindowCornerPreference="Round">
   <Grid x:Name="Root">
+    <Grid.Resources>
+      <!-- A model in the Dashboard pickers: its name, then where it is (with the pool on) -->
+      <DataTemplate x:Key="ModelChoiceTemplate">
+        <TextBlock>
+          <Run Text="{Binding Name, Mode=OneWay}" Foreground="{DynamicResource TextFillColorPrimaryBrush}" /><Run Text="{Binding WhereText, Mode=OneWay}" FontSize="11.5" Foreground="{DynamicResource TextFillColorTertiaryBrush}" />
+        </TextBlock>
+      </DataTemplate>
+    </Grid.Resources>
     <Grid.RowDefinitions>
       <RowDefinition Height="Auto" />
       <RowDefinition Height="*" />
@@ -31,10 +39,15 @@
         <ui:ImageIcon Source="pack://application:,,,/Assets/brand/maison-32.png" Width="16" Height="16" />
       </ui:TitleBar.Icon>
       <ui:TitleBar.TrailingContent>
-        <!-- One switch for both views, always in the same place -->
-        <ui:ToggleSwitch x:Name="ModeToggle" Content="Advanced" IsChecked="True" VerticalAlignment="Center" Margin="0,0,14,0" Click="ModeToggle_Click"
-                         WindowChrome.IsHitTestVisibleInChrome="True"
-                         ToolTip="On: the full app (models, terminals in tabs, system details, extensions, settings, phone portal). Off: the simple view with one Start button and a Qwen terminal. Nothing stops running when you switch." />
+        <!-- Switches for both views, always in the same place -->
+        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+          <ui:ToggleSwitch x:Name="PoolToggle" Content="Pool" VerticalAlignment="Center" Margin="0,0,18,0" Click="PoolToggle_Click"
+                           WindowChrome.IsHitTestVisibleInChrome="True"
+                           ToolTip="On: Claude Code, Qwen Code and Chat on this PC use the AI on the other PCs in your pool (and this PC too, if &quot;Include this PC&quot; is on), picking a free one for each request. Off: they use only this PC's own AI. Add PCs on the Pool page." />
+          <ui:ToggleSwitch x:Name="ModeToggle" Content="Advanced" IsChecked="True" VerticalAlignment="Center" Margin="0,0,14,0" Click="ModeToggle_Click"
+                           WindowChrome.IsHitTestVisibleInChrome="True"
+                           ToolTip="On: the full app (models, terminals in tabs, system details, extensions, settings, phone portal). Off: the simple view with one Start button and a Qwen terminal. Nothing stops running when you switch." />
+        </StackPanel>
       </ui:TitleBar.TrailingContent>
     </ui:TitleBar>
 
@@ -82,9 +95,9 @@
           <ui:Button x:Name="NavSystem" Content="System" Icon="{ui:SymbolIcon Board24}" Tag="system" Click="Nav_Click"
                      HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Padding="12,9" Margin="0,0,0,4" BorderThickness="0"
                      ToolTip="What this PC is and what it's doing: CPU, memory, GPU, which apps use GPU memory, busiest processes" />
-          <ui:Button x:Name="NavPool" Content="AI pool" Icon="{ui:SymbolIcon Server24}" Tag="pool" Click="Nav_Click"
+          <ui:Button x:Name="NavPool" Content="Pool" Icon="{ui:SymbolIcon Server24}" Tag="pool" Click="Nav_Click"
                      HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Padding="12,9" Margin="0,0,0,4" BorderThickness="0"
-                     ToolTip="Other PCs at home that run the AI for this one: find and add them, see what they're doing, manage their models" />
+                     ToolTip="Your AI pool: other PCs at home that can run the AI for this one. Find and add them, see what they're doing, manage their models" />
           <ui:Button x:Name="NavExtensions" Content="Extensions" Icon="{ui:SymbolIcon PuzzlePiece24}" Tag="extensions" Click="Nav_Click"
                      HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Padding="12,9" Margin="0,0,0,4" BorderThickness="0"
                      ToolTip="Qwen Code extensions, skills and plugins from marketplaces" />
@@ -263,6 +276,14 @@
               <StackPanel>
                 <TextBlock Text="Launch" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,10" Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
 
+                <!-- Where the AI runs (same switches as the title bar and the Pool page) -->
+                <WrapPanel Margin="0,0,0,10">
+                  <ui:ToggleSwitch x:Name="DashPoolToggle" Content="Use the pool" Margin="0,0,20,4" Click="DashPoolToggle_Click"
+                                   ToolTip="On: sessions you start here use the AI on the other PCs in your pool, picking a free one for each request. Off: only this PC's own AI. Same switch as &quot;Pool&quot; in the title bar." />
+                  <ui:ToggleSwitch x:Name="DashIncludeToggle" Content="Include this PC" Margin="0,0,0,4" Click="DashIncludeToggle_Click"
+                                   ToolTip="Only matters while the pool is on. On: this PC's own Ollama is one of the pool's PCs and takes work when it's free, so its models stay usable. Off: everything runs on the other PCs, and models only on this PC can't be used." />
+                </WrapPanel>
+
                 <Grid>
                   <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
@@ -272,7 +293,8 @@
                   <StackPanel Grid.Column="0">
                     <TextBlock Text="Model" Style="{StaticResource SectionLabel}" />
                     <ComboBox x:Name="MainModel" IsEditable="True" SelectionChanged="Selection_Changed" KeyUp="Selection_KeyUp"
-                              ToolTip="The model Claude Code, Qwen Code and Chat will use. Install more on the Models page." />
+                              TextSearch.TextPath="Name" ItemTemplate="{StaticResource ModelChoiceTemplate}"
+                              ToolTip="The model Claude Code, Qwen Code and Chat will use. With the pool on, each model shows which PC has it. Install more on the Models page." />
                   </StackPanel>
                   <StackPanel Grid.Column="2">
                     <TextBlock Text="Context window" Style="{StaticResource SectionLabel}" />
@@ -285,6 +307,7 @@
 
                 <TextBlock Text="Fast model — Claude Code's haiku slot (blank = same as main, fastest on one GPU)" Style="{StaticResource SectionLabel}" Margin="0,12,0,4" />
                 <ComboBox x:Name="FastModel" IsEditable="True" SelectionChanged="Selection_Changed" KeyUp="Selection_KeyUp"
+                          TextSearch.TextPath="Name" ItemTemplate="{StaticResource ModelChoiceTemplate}"
                           ToolTip="Claude Code uses a small model for quick side tasks. Leave blank to reuse the main model: switching models on one GPU is slower than reusing one." />
 
                 <TextBlock Text="Working folder" Style="{StaticResource SectionLabel}" Margin="0,12,0,4" />
