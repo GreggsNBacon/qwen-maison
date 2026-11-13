@@ -58,6 +58,9 @@ settings aren't touched.
   (and a wrong code), routing through the relay, two sessions spreading over two PCs, moving off a PC another client keeps
   busy, the agents list, a bad key (401) and a remote install. Progress goes to `pool-progress.txt` as it runs.- `--update` asks GitHub's releases API for real, as this version and as 0.0.1, checks the title-bar button appears and
   hides again, and the version comparison rules (`MAISON_UPDATE_URL` points the check at another URL).
+- `--autostart` flips Settings → Start with Windows through its switches and reads the Run key, including repointing an
+  entry whose exe was deleted. Set `MAISON_RUN_NAME` (e.g. `maison-selftest`) so it uses a test entry, not the real one.
+  `--minimized` (what the start-up entry passes) reports the window state as `WINDOW:`.
 - `--jitter` records every frame Qwen Code sends while it streams a long answer (`jitter-frames.txt`).
 - `--portal` runs the web portal over real HTTPS and checks login, cookies, lockout, origin checks, state, launching and
   the mirrored terminal WebSocket.
@@ -139,6 +142,7 @@ an accent shade when the accent changes.
 | `src/Services/TermLink.cs`, `TerminalPage.cs` | One viewer ↔ session protocol; the xterm.js page (app and portal) |
 | `src/Services/StatsService.cs`, `HealthAdvice.cs` | CPU/RAM/GPU and per-app VRAM/GPU polling; the VRAM-crowding warning |
 | `src/Services/AppServices.cs` | Version, accent theming, idle notifications |
+| `src/Services/AutoStart.cs` | Start with Windows: the `HKCU\…\Run` entry, repointed if its exe was deleted |
 | `src/Services/UpdateCheck.cs` | Compares this version with the latest GitHub release (title-bar button, Settings → Updates) |
 | `src/Services/AiSharing.cs` | Making this PC an AI PC: firewall rules, starting/stopping the pool service |
 | `src/Services/Pool/` | AI pool: `PoolHost` (AI PC service), `AiPool` (discovery, pairing, status), `PoolRelay` (routing), `PoolProtocol` |

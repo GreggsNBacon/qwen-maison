@@ -99,7 +99,7 @@ something is slowing Qwen down. Sessions keep running when you switch views.
 - **System**: detailed CPU, memory and GPU information, and which apps are using graphics memory.
 - **Extensions**: add skills and plugins to Qwen Code, including Claude Code plugin marketplaces.
 - **Settings**: accent colour, terminal colours and font size, notifications, start-command options, where models are
-  stored, and phone access.
+  stored, the AI pool, starting with Windows (optionally minimised), update checks, and phone access.
 
 Every button has a tooltip explaining what it does.
 
@@ -120,7 +120,8 @@ Run the model on the PCs with good graphics cards, and use them from any PC at h
 the cloud, except the "cloud" is your own PCs. With more than one AI PC, a busy one hands work to a free one.
 
 1. **On each AI PC:** in **Settings → AI pool**, turn on **Share this PC's AI with my other PCs**. Windows asks for
-   permission once. maison shows a 6-digit pairing code. Keep maison running there (minimised is fine).
+   permission once. maison shows a 6-digit pairing code. Keep maison running there: **Settings → Start with Windows**
+   (with **Start minimised**) does that for you.
 2. **On your other PC:** open the **AI pool** page (or, in the simple view, click **Use its AI instead**). AI PCs at home
    show up by themselves, with no addresses to type. Enter each one's code and press **Add to pool**, then turn on **Use the AI pool**.
 

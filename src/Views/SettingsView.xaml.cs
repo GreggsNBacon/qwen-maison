@@ -41,6 +41,7 @@ public partial class SettingsView : UserControl
         ModelsDirSub.Text = disk is { } d ? $"{d.FreeGb:N0} GB free of {d.TotalGb:N0} GB on {d.Drive}" : "";
         LoadLaunch();
         AutoUpdateCheck.IsChecked = _c.CheckForUpdates;
+        RefreshAutoStart();
         if (UpdateState.Text.Length == 0) UpdateState.Text = $"This is maison {AppInfo.Version}.";
         _loading = false;
         RefreshSharing();
@@ -165,6 +166,24 @@ public partial class SettingsView : UserControl
 
     /// <summary>Called by the shell after the pool is switched on or off elsewhere.</summary>
     public void RefreshPool() => RefreshSharing();
+    // ------------------------------------------------------------------ start with Windows
+
+    private void RefreshAutoStart()
+    {
+        var on = AutoStart.IsOn;
+        StartWithWindows.IsChecked = on;
+        StartMinimized.IsChecked = AutoStart.StartsMinimized;
+        StartMinimized.IsEnabled = on;
+        AutoStartState.Text = on ? "On: starts " + (AutoStart.StartsMinimized ? "minimised " : "") + "from " + AutoStart.Command : "";
+    }
+
+    internal void AutoStart_Click(object sender, RoutedEventArgs e)
+    {
+        try { AutoStart.Set(StartWithWindows.IsChecked == true, StartMinimized.IsChecked == true); }
+        catch (Exception ex) { Shell.Toast("Couldn't change start-up", ex.Message, ControlAppearance.Danger, SymbolRegular.ErrorCircle24); }
+        RefreshAutoStart();
+    }
+
     // ------------------------------------------------------------------ updates
 
     private void AutoUpdate_Click(object sender, RoutedEventArgs e)
@@ -253,6 +272,7 @@ public partial class SettingsView : UserControl
         _loading = true;
         LoadLaunch();
         AutoUpdateCheck.IsChecked = _c.CheckForUpdates;
+        RefreshAutoStart();
         if (UpdateState.Text.Length == 0) UpdateState.Text = $"This is maison {AppInfo.Version}.";
         _loading = false;
         RefreshSharing();

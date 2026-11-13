@@ -56,7 +56,11 @@ public partial class MainWindow : FluentWindow, IShell
         PoolPage.Shell = this;
         VersionText.Text = "v" + AppInfo.Version;
         TitleVersion.Text = "v" + AppInfo.Version;
-        if (Environment.GetCommandLineArgs().All(a => a != "--selftest")) _ = UpdateLoopAsync();
+        if (Environment.GetCommandLineArgs().All(a => a != "--selftest"))
+        {
+            _ = UpdateLoopAsync();
+            AutoStart.Refresh();
+        }
         Theming.ApplyAccent(_config.Accent);
 
         foreach (var k in Launcher.ContextSizes.Keys) Context.Items.Add(k);
@@ -1306,6 +1310,37 @@ public partial class MainWindow : FluentWindow, IShell
             updateResult = "UPDATE: " + string.Join(" ", ur);
         }
 
+        // Optional: --autostart flips Settings → Start with Windows through its switches and reads the Run key
+        // (set MAISON_RUN_NAME so a test entry is used, not the real one). Also: a stale entry is repointed here.
+        var autoResult = "";
+        if (args.Contains("--autostart"))
+        {
+            var ar = new List<string>();
+            try
+            {
+                if (Environment.GetEnvironmentVariable("MAISON_RUN_NAME") is not { Length: > 0 }) throw new InvalidOperationException("set MAISON_RUN_NAME");
+                Navigate("settings");
+                await Task.Delay(500);
+                var sp = SettingsPage;
+                ar.Add($"startOff={!AutoStart.IsOn}");
+                sp.StartWithWindows.IsChecked = true; sp.AutoStart_Click(sp, new RoutedEventArgs());
+                ar.Add($"on={AutoStart.IsOn} pointsHere={AutoStart.Command?.Contains(Environment.ProcessPath!) == true} min={AutoStart.StartsMinimized} minEnabled={sp.StartMinimized.IsEnabled}");
+                sp.StartMinimized.IsChecked = true; sp.AutoStart_Click(sp, new RoutedEventArgs());
+                ar.Add($"cmd={AutoStart.Command}");
+                // stale entry (exe deleted after an update) is repointed at this exe, keeping "minimised"
+                using (var k = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run", true)!)
+                    k.SetValue(Environment.GetEnvironmentVariable("MAISON_RUN_NAME")!, "\"C:\\nowhere\\maison-0.0.1.exe\" --minimized");
+                AutoStart.Refresh();
+                ar.Add($"repointed={AutoStart.Command?.Contains(Environment.ProcessPath!) == true && AutoStart.StartsMinimized}");
+                Snap(Path.Combine(dir, "autostart.png"));
+                sp.StartWithWindows.IsChecked = false; sp.AutoStart_Click(sp, new RoutedEventArgs());
+                ar.Add($"offAgain={!AutoStart.IsOn}");
+            }
+            catch (Exception ex) { ar.Add($"error={ex.Message}"); }
+            autoResult = "AUTOSTART: " + string.Join(" ", ar);
+        }
+        var windowResult = args.Contains(AutoStart.MinimizedArg) ? $"WINDOW: {WindowState}" : "";
+
         // Optional: --toast opens a terminal tab, shows a message and checks Windows really puts it above the terminal.
         var toastResult = "";
         if (args.Contains("--toast"))
@@ -1391,7 +1426,7 @@ public partial class MainWindow : FluentWindow, IShell
             catch (Exception ex) { portalResult = "PORTAL: exception " + ex; }
         }
 
-        var lines = new List<string> { "STATUS:", pullResult, termResult, simpleResult, accentResult, toastResult, jitterResult, launchResult, poolResult, updateResult, portalResult };
+        var lines = new List<string> { "STATUS:", pullResult, termResult, simpleResult, accentResult, toastResult, jitterResult, launchResult, poolResult, updateResult, autoResult, windowResult, portalResult };
         lines.AddRange(_status.Select(s => $"[{s.Level}] {s.Title} | {s.Detail}"));
         lines.Add($"GAUGES: temp={GTemp.Display} load={GLoad.Display} power={GPower.Display} vram={GVram.Display} cpu={GCpu.Display} ram={GRam.Display} | ai: load={GLoad.AiDisplay} power={GPower.AiDisplay} vram={GVram.AiDisplay} cpu={GCpu.AiDisplay} ram={GRam.AiDisplay} | {GpuTitle.Text} | {GpuExtra.Text}");
         if (_stats is { } st)

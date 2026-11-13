@@ -25,7 +25,9 @@ public partial class App : Application
             return;
         }
         base.OnStartup(e);
-        new MainWindow().Show();
+        var main = new MainWindow();
+        main.Show();
+        if (e.Args.Contains(Services.AutoStart.MinimizedArg)) main.WindowState = WindowState.Minimized;   // started with Windows
     }
 }
 

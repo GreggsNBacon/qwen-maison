@@ -257,6 +257,20 @@
           </Grid>
         </StackPanel>
       </ui:Card>
+      <!-- Start with Windows -->
+      <ui:Card Margin="0,0,0,12">
+        <StackPanel>
+          <TextBlock Text="Start with Windows" Style="{StaticResource H}" />
+          <TextBlock Style="{StaticResource Sub}"
+                     Text="Open maison when you sign in to Windows. Useful on an AI PC, so the AI pool can always use it." />
+          <ui:ToggleSwitch x:Name="StartWithWindows" x:FieldModifier="internal" Content="Start maison when I sign in" Click="AutoStart_Click"
+                           ToolTip="Adds maison to your Windows start-up apps (just for you; no admin needed). You can also turn it off in Windows Settings → Apps → Startup." />
+          <ui:ToggleSwitch x:Name="StartMinimized" x:FieldModifier="internal" Content="Start minimised" Margin="0,10,0,0" Click="AutoStart_Click"
+                           ToolTip="Open maison minimised to the taskbar instead of in front" />
+          <TextBlock x:Name="AutoStartState" FontSize="12.5" Margin="0,8,0,0" TextWrapping="Wrap" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+        </StackPanel>
+      </ui:Card>
+
       <!-- Updates -->
       <ui:Card Margin="0,0,0,12">
         <StackPanel>
