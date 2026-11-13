@@ -12,7 +12,7 @@ using TextBox = Wpf.Ui.Controls.TextBox;
 namespace Maison.Views;
 
 /// <summary>
-/// The AI pool page: finds AI PCs, pairs with them, and shows each one's status, the agents using it and its models,
+/// The Pool page: finds AI PCs, pairs with them, and shows each one's status, the agents using it and its models,
 /// with remote install / remove / set up.
 /// </summary>
 public partial class PoolView : UserControl
@@ -139,7 +139,8 @@ public partial class PoolView : UserControl
             name.Inlines.Add(new System.Windows.Documents.Run($"  ·  {pc.Address}  ·  maison {pc.Version}") { Foreground = Brush("TextFillColorTertiaryBrush") });
             name.SetResourceReference(TextBlock.ForegroundProperty, "TextFillColorPrimaryBrush");
             var code = new TextBox { PlaceholderText = "Pairing code", Width = 140, MaxLength = 7, ToolTip = $"The 6-digit code shown on {pc.Name} under Settings → AI pool" };
-            var add = new Button { Content = "Add to pool", Appearance = ControlAppearance.Primary, Margin = new Thickness(8, 0, 0, 0) };
+            var add = new Button { Content = "Add to pool", Appearance = ControlAppearance.Primary, Margin = new Thickness(8, 0, 0, 0),
+                ToolTip = $"Pair with {pc.Name} using its code. It then appears under \"In your pool\"; this PC only sends it work while the pool is on." };
             Grid.SetColumn(code, 1); Grid.SetColumn(add, 2);
             row.Children.Add(name); row.Children.Add(code); row.Children.Add(add);
             async Task Pair()
@@ -157,7 +158,7 @@ public partial class PoolView : UserControl
                     _foundKey = "";
                     await AiPool.RefreshAsync();
                     if (AppConfig.Current.UseRemoteAi) await Shell.OnModelsChangedAsync();
-                    else if (await Shell.ConfirmAsync("Use the AI pool now?",
+                    else if (await Shell.ConfirmAsync("Use the pool now?",
                                  $"{pc.Name} is in your pool. Switch this PC's agents to the pool now?", "Use the pool", "Not yet"))
                         await Shell.SetUsePoolAsync(true);
                 }
@@ -172,13 +173,7 @@ public partial class PoolView : UserControl
 
     private async void UsePool_Click(object sender, RoutedEventArgs e) => await Shell.SetUsePoolAsync(UsePoolToggle.IsChecked == true);
 
-    private async void IncludeThis_Click(object sender, RoutedEventArgs e)
-    {
-        AppConfig.Current.PoolIncludeThisPc = IncludeThisToggle.IsChecked == true;
-        AppConfig.Current.Save();
-        await AiPool.RefreshAsync();
-        if (AppConfig.Current.UseRemoteAi) await Shell.OnModelsChangedAsync();
-    }
+    private async void IncludeThis_Click(object sender, RoutedEventArgs e) => await Shell.SetIncludeThisPcAsync(IncludeThisToggle.IsChecked == true);
 
     // ------------------------------------------------------------------ sessions
 
@@ -229,11 +224,14 @@ public partial class PoolView : UserControl
         private readonly TextBlock _task = new() { FontSize = 12.5, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 6, 0, 0) };
         private readonly ProgressBar _progress = new() { Height = 4, Margin = new Thickness(0, 4, 0, 0), Maximum = 100, Visibility = Visibility.Collapsed };
         private readonly ComboBox _install = new() { IsEditable = true, Width = 240, ToolTip = "Pick a model sized for this PC, or type any Ollama model name (e.g. qwen3.5:9b)" };
-        private readonly Button _btnInstall = new() { Content = "Install there", Margin = new Thickness(8, 0, 0, 0), Icon = new SymbolIcon(SymbolRegular.ArrowDownload24) };
+        private readonly Button _btnInstall = new() { Content = "Install there", Margin = new Thickness(8, 0, 0, 0), Icon = new SymbolIcon(SymbolRegular.ArrowDownload24),
+            ToolTip = "Download the model picked on the left onto that PC (not this one). Progress shows below." };
         private readonly Button _btnSetup = new() { Content = "Set it up", Appearance = ControlAppearance.Primary, Margin = new Thickness(0, 8, 0, 0), Icon = new SymbolIcon(SymbolRegular.Wrench24),
             ToolTip = "Installs Ollama there if needed, starts it, and downloads a model sized for its GPU" };
-        private readonly ToggleSwitch _enabled = new() { Content = "Use", ToolTip = "Send work to this PC. Turn off to keep it out of the pool for now." };
-        private readonly Button _btnRemove = new() { Content = "Remove", Appearance = ControlAppearance.Transparent, Margin = new Thickness(8, 0, 0, 0), ToolTip = "Unpair: take this PC out of the pool" };
+        private readonly ToggleSwitch _enabled = new() { Content = "Send work here",
+            ToolTip = "On: while the pool is on, this PC's agents can use this AI PC. Off: it stays paired but gets no work for now (handy while you're gaming on it)." };
+        private readonly Button _btnRemove = new() { Content = "Remove", Appearance = ControlAppearance.Transparent, Margin = new Thickness(8, 0, 0, 0),
+            ToolTip = "Unpair: take this PC out of the pool for good. To add it again you'll need its pairing code. Its models aren't touched." };
         private readonly StackPanel _installRow = new() { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 8, 0, 0) };
         private string _modelsKey = "";
 
@@ -273,7 +271,8 @@ public partial class PoolView : UserControl
             if (s.IsThisPc)
             {
                 _installRow.Children.Clear();
-                var open = new Button { Content = "Manage on the Models page", Icon = new SymbolIcon(SymbolRegular.Cube24) };
+                var open = new Button { Content = "Manage on the Models page", Icon = new SymbolIcon(SymbolRegular.Cube24),
+                    ToolTip = "This PC's own models are installed and removed on the Models page" };
                 open.Click += (_, _) => _page.ShellRef.Navigate("models");
                 _installRow.Children.Add(open);
             }

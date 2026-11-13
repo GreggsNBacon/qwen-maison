@@ -27,6 +27,8 @@ public partial class MainWindow : FluentWindow, IShell
     private readonly ToastWindow _toasts;
     private readonly DispatcherTimer _autoRefresh = new() { Interval = TimeSpan.FromSeconds(10) };
     private List<ModelInfo> _models = [];
+    /// <summary>This PC's own models (the same as <see cref="_models"/> unless the pool is in use).</summary>
+    private List<ModelInfo> _localModels = [];
     private List<LoadedModel> _loaded = [];
     private bool _refreshing;
     private StatsSnapshot? _stats;
@@ -81,6 +83,7 @@ public partial class MainWindow : FluentWindow, IShell
             NavTerminals.Content = n > 0 ? $"Terminals ({n})" : "Terminals";
         };
         _initializing = false;
+        SyncPoolToggles();
         UpdateCommands();
         Navigate("dashboard");
 
@@ -245,6 +248,7 @@ public partial class MainWindow : FluentWindow, IShell
         _config.UseRemoteAi = on;
         _config.Save();
         OllamaClient.UsePool(on);
+        SyncPoolToggles();
         SettingsPage.RefreshPool();
         await OnAiLocationChangedAsync();
         await PoolPage.RefreshAsync();
@@ -431,6 +435,10 @@ public partial class MainWindow : FluentWindow, IShell
         _refreshing = true;
         try
         {
+            // With the pool on, ask its PCs first: until they've answered once, the pool knows none of their models.
+            if (OllamaClient.IsRemote && !Services.Pool.AiPool.AllChecked)
+                try { await Services.Pool.AiPool.RefreshAsync(); } catch { /* shown as unreachable below */ }
+
             var version = await OllamaClient.GetVersionAsync();
             bool running = version is not null;
 
@@ -441,7 +449,17 @@ public partial class MainWindow : FluentWindow, IShell
             }
             else { _models = []; _loaded = []; }
 
+            // This PC's own models are always listed, pool or not.
+            if (!OllamaClient.IsRemote) _localModels = _models;
+            else
+            {
+                try { _localModels = await OllamaClient.GetLocalVersionAsync(2) is null ? [] : await OllamaClient.GetModelsAsync(local: true); }
+                catch { _localModels = []; }
+            }
+
             var real = _models.Where(m => !m.Name.StartsWith("claude-") && !Launcher.IsVariant(m.Name)).ToList();
+            var realLocal = _localModels.Where(m => !m.Name.StartsWith("claude-") && !Launcher.IsVariant(m.Name)).ToList();
+            var choices = ModelChoices(real, realLocal);
             if (running && BaseMain.Length == 0 && real.Count > 0)
             {
                 // First run / fresh config: pick the best installed model.
@@ -452,7 +470,7 @@ public partial class MainWindow : FluentWindow, IShell
 
             var items = new List<StatusItem>();
             if (OllamaClient.IsRemote)
-                items.Add(new() { Level = Health.Info, Title = "Using your AI pool", Detail = "Models run on the AI PCs in your pool. See and manage them on the AI pool page." });
+                items.Add(new() { Level = Health.Info, Title = "Using your AI pool", Detail = "Models run on the PCs in your pool" + (_config.PoolIncludeThisPc && SystemProbe.OllamaInstalled ? ", this one included" : " (not this one)") + ". See and manage them on the Pool page." });
             else if (SystemProbe.OllamaInstalled)
                 items.Add(new() { Level = Health.Ok, Title = "Ollama installed", Detail = SystemProbe.OllamaDir });
             else
@@ -469,7 +487,7 @@ public partial class MainWindow : FluentWindow, IShell
             items.Add(running
                 ? new() { Level = Health.Ok, Title = $"Server responding · v{version}", Detail = OllamaClient.BaseUrl }
                 : OllamaClient.IsRemote
-                    ? new() { Level = Health.Bad, Title = "No AI PC in your pool is reachable", Detail = "Check your AI PCs are on with maison running, and that both are on the same network. The AI pool page shows each one's status." }
+                    ? new() { Level = Health.Bad, Title = "No AI PC in your pool is reachable", Detail = "Check your AI PCs are on with maison running, and that both are on the same network. The Pool page shows each one's status." }
                     : new() { Level = Health.Bad, Title = "Server not responding", Detail = SystemProbe.OllamaInstalled ? "Click Start." : "Install Ollama from the Setup page." });
 
             foreach (var m in _loaded)
@@ -485,21 +503,35 @@ public partial class MainWindow : FluentWindow, IShell
             if (_stats is not null && HealthAdvice.VramWarning(_stats) is { } vw)
                 items.Add(new() { Level = Health.Warn, Title = "Another app is crowding the GPU", Detail = vw });
 
+            if (OllamaClient.IsRemote && choices.Count > 0)
+            {
+                items.Add(new() { Level = Health.Info, Title = $"{choices.Count} models in your pool and on this PC", Detail = string.Join(" · ", choices.Select(c => $"{c.Name} ({c.Where})")) });
+                // A model that's only here can't be used while this PC is out of the pool (or its Ollama is down).
+                if (BaseMain.Length > 0 && !_models.Any(m => m.Name == BaseMain) && realLocal.Any(m => m.Name == BaseMain))
+                    items.Add(new() { Level = Health.Warn, Title = $"'{BaseMain}' is only on this PC", Detail = _config.PoolIncludeThisPc
+                        ? "This PC is in the pool but its Ollama isn't answering yet. Start it, or pick a model another PC has."
+                        : "This PC isn't in the pool, so sessions can't use it. Turn on \"Include this PC\" on the Launch card, or pick a model another PC has." });
+            }
+            if (OllamaClient.IsRemote) UpdateModelLists(choices);
+
             if (running)
             {
-                items.Add(real.Count > 0
-                    ? new() { Level = Health.Info, Title = $"{real.Count} models installed", Detail = string.Join(" · ", real.Select(m => $"{m.Name} ({m.SizeGb} GB)")) }
-                    : new() { Level = Health.Warn, Title = "No models installed", Detail = "Install one on the Models page." });
+                if (!OllamaClient.IsRemote)
+                    items.Add(real.Count > 0
+                        ? new() { Level = Health.Info, Title = $"{real.Count} models installed", Detail = string.Join(" · ", real.Select(m => $"{m.Name} ({m.SizeGb} GB)")) }
+                        : new() { Level = Health.Warn, Title = "No models installed", Detail = "Install one on the Models page." });
+                else if (choices.Count == 0)
+                    items.Add(new() { Level = Health.Warn, Title = "No models in your pool", Detail = "Install one on a PC from the Pool page, or on this PC from the Models page." });
 
                 var legacy = _models.Where(m => m.Name.StartsWith("claude-")).Select(m => m.Name).ToList();
                 if (legacy.Count > 0)
                     items.Add(new() { Level = Health.Warn, Title = "Old claude-* alias models found", Detail = string.Join(", ", legacy) + " — not needed by this launcher." });
                 BtnAliases.Visibility = legacy.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
 
-                if (BaseMain.Length > 0 && !_models.Any(m => m.Name == BaseMain))
+                if (BaseMain.Length > 0 && !_models.Any(m => m.Name == BaseMain) && !realLocal.Any(m => m.Name == BaseMain))
                     items.Add(new() { Level = Health.Warn, Title = $"Model '{BaseMain}' is not installed", Detail = "Install it on the Models page or pick another." });
 
-                UpdateModelLists(real.Select(m => m.Name).ToList());
+                if (!OllamaClient.IsRemote) UpdateModelLists(choices);
             }
 
             var claude = SystemProbe.FindOnPath("claude");
@@ -542,7 +574,7 @@ public partial class MainWindow : FluentWindow, IShell
         {
             b.Tag ??= b.ToolTip;   // the normal tooltip, to put back
             b.IsEnabled = !remote;
-            b.ToolTip = remote ? "The AI runs on your AI pool: set up or fix its PCs on the AI pool page" : b.Tag;
+            b.ToolTip = remote ? "The AI runs on your AI pool: set up or fix its PCs on the Pool page" : b.Tag;
         }
         bool noChat = remote && !SystemProbe.OllamaInstalled;
         BtnChat.Tag ??= BtnChat.ToolTip;
@@ -632,14 +664,41 @@ public partial class MainWindow : FluentWindow, IShell
         System.Text.RegularExpressions.Regex.Replace(name, @"\(R\)|\(TM\)|CPU|Processor|\d+-Core|@.*$", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase)
             .Replace("  ", " ").Trim();
 
-    private void UpdateModelLists(List<string> names)
+    /// <summary>A model in the Dashboard pickers, with where it is when the pool is on ("" otherwise).</summary>
+    public sealed record ModelChoice(string Name, string Where)
+    {
+        public string WhereText => Where.Length > 0 ? "  ·  " + Where : "";
+        public override string ToString() => Name;
+    }
+
+    /// <summary>
+    /// The models to offer. Without the pool: this PC's. With it: the pool's plus this PC's own, each marked with the
+    /// PCs that have it.
+    /// </summary>
+    private List<ModelChoice> ModelChoices(List<ModelInfo> pool, List<ModelInfo> local)
+    {
+        if (!OllamaClient.IsRemote) return pool.Select(m => new ModelChoice(m.Name, "")).ToList();
+        return pool.Select(m => m.Name).Concat(local.Select(m => m.Name))
+            .Distinct(StringComparer.OrdinalIgnoreCase).Order(StringComparer.OrdinalIgnoreCase)
+            .Select(n => new ModelChoice(n, ModelWhere(n, local))).ToList();
+    }
+
+    private string ModelWhere(string model, List<ModelInfo> local)
+    {
+        var pcs = Services.Pool.AiPool.OtherPcsWith(model);
+        if (local.Any(m => Services.Pool.MemberState.Same(m.Name, model)))
+            pcs.Insert(0, _config.PoolIncludeThisPc ? "this PC" : "this PC, not in the pool");
+        return pcs.Count == 0 ? "not on any PC that's online" : "on " + string.Join(", ", pcs);
+    }
+
+    private void UpdateModelLists(List<ModelChoice> choices)
     {
         _initializing = true;
         foreach (var (cb, allowBlank) in new[] { (MainModel, false), (FastModel, true) })
         {
             var keep = cb.Text;
-            var current = cb.Items.Cast<object>().Select(o => o.ToString()).ToList();
-            var wanted = (allowBlank ? new List<string> { "" } : []).Concat(names).ToList();
+            var current = cb.Items.Cast<object>().ToList();
+            var wanted = (allowBlank ? new List<ModelChoice> { new("", "") } : []).Concat(choices).ToList();
             if (!current.SequenceEqual(wanted))
             {
                 cb.Items.Clear();
@@ -738,8 +797,36 @@ public partial class MainWindow : FluentWindow, IShell
     public async Task RefreshHealthAsync() => await RefreshAsync(quiet: true);
 
     /// <summary>Simple view ↔ full app.</summary>
+    private Views.SettingsWindow? _settingsWindow;
+
+    /// <summary>
+    /// Settings: the Settings page in the advanced view, or the same page in its own window from the simple view
+    /// (whose terminal would draw over anything shown inside this window).
+    /// </summary>
+    public void ShowSettings()
+    {
+        if (AdvancedRoot.Visibility == Visibility.Visible) { Navigate("settings"); return; }
+        if (_settingsWindow is { } open) { open.Activate(); return; }
+        var host = (Panel)SettingsPage.Parent;
+        var index = host.Children.IndexOf(SettingsPage);
+        host.Children.Remove(SettingsPage);
+        SettingsPage.Visibility = Visibility.Visible;
+        SettingsPage.Refresh();
+        var w = new Views.SettingsWindow(SettingsPage) { Owner = this };
+        w.Closed += (_, _) =>
+        {
+            w.Release();
+            host.Children.Insert(index, SettingsPage);
+            SettingsPage.Visibility = _page == "settings" && AdvancedRoot.Visibility == Visibility.Visible ? Visibility.Visible : Visibility.Collapsed;
+            _settingsWindow = null;
+        };
+        _settingsWindow = w;
+        w.Show();
+    }
+
     public void SetSimpleMode(bool simple)
     {
+        if (!simple) _settingsWindow?.Close();   // the page goes back to the advanced view
         _config.UiMode = simple ? "simple" : "advanced";
         _config.Save();
         ModeToggle.IsChecked = !simple;
@@ -870,25 +957,54 @@ public partial class MainWindow : FluentWindow, IShell
 
     private void ModeToggle_Click(object sender, RoutedEventArgs e) => SetSimpleMode(ModeToggle.IsChecked != true);
 
+    // The pool switches: title bar, Dashboard, Pool page and Settings all show the same two settings.
+    private async void PoolToggle_Click(object sender, RoutedEventArgs e) => await SetUsePoolAsync(PoolToggle.IsChecked == true);
+    private async void DashPoolToggle_Click(object sender, RoutedEventArgs e) => await SetUsePoolAsync(DashPoolToggle.IsChecked == true);
+    private async void DashIncludeToggle_Click(object sender, RoutedEventArgs e) => await SetIncludeThisPcAsync(DashIncludeToggle.IsChecked == true);
+
+    /// <summary>Puts every pool switch on this window in step with the settings.</summary>
+    private void SyncPoolToggles()
+    {
+        PoolToggle.IsChecked = _config.UseRemoteAi;
+        DashPoolToggle.IsChecked = _config.UseRemoteAi;
+        DashIncludeToggle.IsChecked = _config.PoolIncludeThisPc;
+        DashIncludeToggle.IsEnabled = SystemProbe.OllamaInstalled;
+        DashIncludeToggle.Visibility = _config.UseRemoteAi ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    public async Task SetIncludeThisPcAsync(bool on)
+    {
+        _config.PoolIncludeThisPc = on;
+        _config.Save();
+        SyncPoolToggles();
+        SettingsPage.RefreshPool();
+        await Services.Pool.AiPool.RefreshAsync();
+        if (_config.UseRemoteAi) await RefreshAsync(quiet: true);
+    }
+
     [System.Runtime.InteropServices.DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
     [System.Runtime.InteropServices.DllImport("user32.dll")] private static extern IntPtr SendMessage(IntPtr h, int msg, IntPtr w, IntPtr l);
 
     private IntPtr TitleBarHitTest(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
         const int WM_NCHITTEST = 0x0084, HTCLIENT = 1;
-        if (msg != WM_NCHITTEST || !ModeToggle.IsVisible) return IntPtr.Zero;
+        if (msg != WM_NCHITTEST) return IntPtr.Zero;
         long lp = lParam.ToInt64();
         var screen = new Point((short)(lp & 0xFFFF), (short)((lp >> 16) & 0xFFFF));
-        try
+        foreach (var t in new[] { ModeToggle, PoolToggle })
         {
-            var local = ModeToggle.PointFromScreen(screen);
-            if (local.X >= -4 && local.Y >= -4 && local.X <= ModeToggle.ActualWidth + 4 && local.Y <= ModeToggle.ActualHeight + 4)
+            if (!t.IsVisible) continue;
+            try
             {
-                handled = true;
-                return new IntPtr(HTCLIENT);
+                var local = t.PointFromScreen(screen);
+                if (local.X >= -4 && local.Y >= -4 && local.X <= t.ActualWidth + 4 && local.Y <= t.ActualHeight + 4)
+                {
+                    handled = true;
+                    return new IntPtr(HTCLIENT);
+                }
             }
+            catch (InvalidOperationException) { /* not connected to a presentation source yet */ }
         }
-        catch (InvalidOperationException) { /* not connected to a presentation source yet */ }
         return IntPtr.Zero;
     }
 
@@ -964,6 +1080,37 @@ public partial class MainWindow : FluentWindow, IShell
         }
         Navigate("dashboard");
 
+        // Settings from the simple view: their own window borrows the Settings page and gives it back on close.
+        var settingsWindowResult = "";
+        {
+            var modeBefore = _config.UiMode;
+            AdvancedRoot.Visibility = Visibility.Collapsed;   // as in the simple view, without starting its Qwen session
+            ShowSettings();
+            await Task.Delay(1500);
+            bool opened = _settingsWindow is { IsVisible: true } && SettingsPage.Parent is not null && SettingsPage.Parent != AdvancedRoot;
+            if (_settingsWindow is { } sw && sw.Content is FrameworkElement swRoot)
+            {
+                var dpi = VisualTreeHelper.GetDpi(sw);
+                var bmp = new RenderTargetBitmap((int)(swRoot.ActualWidth * dpi.DpiScaleX), (int)(swRoot.ActualHeight * dpi.DpiScaleY), dpi.PixelsPerInchX, dpi.PixelsPerInchY, PixelFormats.Pbgra32);
+                var visual = new DrawingVisual();
+                using (var dc = visual.RenderOpen())
+                {
+                    dc.DrawRectangle(new SolidColorBrush(Color.FromRgb(0x20, 0x20, 0x20)), null, new Rect(0, 0, swRoot.ActualWidth, swRoot.ActualHeight));
+                    dc.DrawRectangle(new VisualBrush(swRoot), null, new Rect(0, 0, swRoot.ActualWidth, swRoot.ActualHeight));
+                }
+                bmp.Render(visual);
+                var enc = new PngBitmapEncoder();
+                enc.Frames.Add(BitmapFrame.Create(bmp));
+                using (var f = File.Create(Path.Combine(dir, "simple-settings.png"))) enc.Save(f);
+            }
+            SetSimpleMode(false);   // switching to Advanced closes the window
+            await Task.Delay(500);
+            settingsWindowResult = $"SETTINGSWINDOW: opened={opened} returned={SettingsPage.Parent == AdvancedRoot && _settingsWindow is null}";
+            _config.UiMode = modeBefore;
+            _config.Save();
+            Navigate("dashboard");
+        }
+
         // Optional: --pull <model> exercises the real Models-page install path, then removes the model.
         var args = Environment.GetCommandLineArgs();
         var pi = Array.IndexOf(args, "--pull");
@@ -979,7 +1126,7 @@ public partial class MainWindow : FluentWindow, IShell
             var installed = (await OllamaClient.GetModelsAsync()).Any(m => m.Name == model);
             await Task.Delay(1000);
             Snap(Path.Combine(dir, "models-installed.png"));
-            if (installed) await OllamaClient.DeleteAsync(model);
+            if (installed) await OllamaClient.DeleteAsync(model, local: true);
             var gone = !(await OllamaClient.GetModelsAsync()).Any(m => m.Name == model);
             pullResult = $"PULL {model}: installed={installed} deletedAfter={gone}";
             Navigate("dashboard");
@@ -1426,7 +1573,7 @@ public partial class MainWindow : FluentWindow, IShell
             catch (Exception ex) { portalResult = "PORTAL: exception " + ex; }
         }
 
-        var lines = new List<string> { "STATUS:", pullResult, termResult, simpleResult, accentResult, toastResult, jitterResult, launchResult, poolResult, updateResult, autoResult, windowResult, portalResult };
+        var lines = new List<string> { "STATUS:", settingsWindowResult, pullResult,termResult, simpleResult, accentResult, toastResult, jitterResult, launchResult, poolResult, updateResult, autoResult, windowResult, portalResult };
         lines.AddRange(_status.Select(s => $"[{s.Level}] {s.Title} | {s.Detail}"));
         lines.Add($"GAUGES: temp={GTemp.Display} load={GLoad.Display} power={GPower.Display} vram={GVram.Display} cpu={GCpu.Display} ram={GRam.Display} | ai: load={GLoad.AiDisplay} power={GPower.AiDisplay} vram={GVram.AiDisplay} cpu={GCpu.AiDisplay} ram={GRam.AiDisplay} | {GpuTitle.Text} | {GpuExtra.Text}");
         if (_stats is { } st)

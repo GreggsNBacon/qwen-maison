@@ -99,6 +99,13 @@ There are no unit tests; the self-test is the test suite.
   least busy; a PC that fails to connect is skipped and the same request tried on the next. `/api/tags` and `/api/ps` are
   the union of the members; `/api/create` (context variants) runs on every member with the base model, and missing
   variants are created on the fly. In the pool "Ollama default" context means 32K so every PC gives the same window.
+- *This PC's models with the pool on*: the Models page always talks to the local Ollama (`OllamaClient` calls with
+  `local: true`) for listing, installing and deleting. The Dashboard's pickers are the relay's list plus the local one, as
+  `MainWindow.ModelChoice` items labelled from `AiPool.OtherPcsWith`. Before the first status poll the relay knows no
+  models, so the Dashboard and Models page wait for one `AiPool.RefreshAsync` when `AiPool.AllChecked` is false.
+- *Switches*: "use the pool" is `UseRemoteAi` (`IShell.SetUsePoolAsync`), "include this PC" is `PoolIncludeThisPc`
+  (`IShell.SetIncludeThisPcAsync`). Each is shown in several places (title bar, Dashboard, Pool page, Settings), and
+  `MainWindow.SyncPoolToggles` keeps the window's own copies in step.
 - *Sharing* (`AiSharing`): one elevated PowerShell script opens TCP 11435 and UDP 11436 for `LocalSubnet` and
   `100.64.0.0/10` on Private/Domain, disables Windows' broad "allow ollama.exe from anywhere" rules, and optionally marks
   Public networks Private.
@@ -146,7 +153,8 @@ an accent shade when the accent changes.
 | `src/Services/UpdateCheck.cs` | Compares this version with the latest GitHub release (title-bar button, Settings → Updates) |
 | `src/Services/AiSharing.cs` | Making this PC an AI PC: firewall rules, starting/stopping the pool service |
 | `src/Services/Pool/` | AI pool: `PoolHost` (AI PC service), `AiPool` (discovery, pairing, status), `PoolRelay` (routing), `PoolProtocol` |
-| `src/Views/PoolView.xaml(.cs)` | The AI pool page |
+| `src/Views/PoolView.xaml(.cs)` | The Pool page (the AI pool) |
+| `src/Views/SettingsWindow.cs` | Settings from the simple view: borrows the one `SettingsView` from the main window (WebView2 would cover it in-window) and hands it back on close or on switching to Advanced (`MainWindow.ShowSettings`) |
 | `src/Services/WebPortal.cs`, `PortalSecurity.cs` | Phone portal (Kestrel HTTPS + WebSockets), auth, cert |
 | `src/Services/QwenExtensions.cs`, `ModelStorage.cs` | Extension marketplaces; moving the model store |
 | `src/Controls/TerminalViewer.cs` | A WebView2 view onto a shared session (tabs and pop-outs) |

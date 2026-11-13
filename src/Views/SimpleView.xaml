@@ -51,6 +51,8 @@
           </TextBlock>
         </StackPanel>
       </StackPanel>
+      <ui:Button Grid.Column="1" Content="Settings" Icon="{ui:SymbolIcon Settings24}" VerticalAlignment="Center" Click="Settings_Click"
+                 ToolTip="maison's settings (colours, terminal, notifications, model folder, the AI pool, start with Windows, phone portal), in their own window. The same settings as in the Advanced view." />
     </Grid>
 
     <!-- ================= Not ready: Start / progress ================= -->

@@ -4,9 +4,9 @@
              xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml">
   <ScrollViewer VerticalScrollBarVisibility="Auto">
     <StackPanel Margin="20,4,28,28">
-      <TextBlock Text="AI pool" FontSize="28" FontWeight="SemiBold" Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+      <TextBlock Text="Pool" FontSize="28" FontWeight="SemiBold" Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
       <TextBlock FontSize="14" Margin="0,2,0,12" TextWrapping="Wrap" Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                 Text="The PCs at home that run the AI for this PC. Each request goes to a free one; a session stays on the same PC while it's free." />
+                 Text="The PCs at home that can run the AI for this PC. With the pool on, each request goes to a free one; a session stays on the same PC while it's free. To let other PCs use this one, turn on Settings → AI pool → Share this PC's AI." />
 
       <!-- Use the pool -->
       <ui:Card Margin="0,0,0,12">
@@ -16,12 +16,12 @@
             <ColumnDefinition Width="Auto" />
           </Grid.ColumnDefinitions>
           <StackPanel>
-            <ui:ToggleSwitch x:Name="UsePoolToggle" Content="Use the AI pool on this PC" Click="UsePool_Click"
-                             ToolTip="Claude Code, Qwen Code and Chat use the AI PCs below instead of only this PC" />
+            <ui:ToggleSwitch x:Name="UsePoolToggle" Content="Use the pool" Click="UsePool_Click"
+                             ToolTip="On: Claude Code, Qwen Code and Chat on this PC use the AI PCs below (and this PC, if &quot;Include this PC&quot; is on), picking a free one for each request. Off: they use only this PC's own AI; you can still add and manage AI PCs here. Same switch as &quot;Pool&quot; in the title bar." />
             <TextBlock x:Name="PoolState" FontSize="12.5" TextWrapping="Wrap" Margin="0,6,0,0" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
           </StackPanel>
           <ui:ToggleSwitch x:Name="IncludeThisToggle" Grid.Column="1" Content="Include this PC" VerticalAlignment="Top" Click="IncludeThis_Click"
-                           ToolTip="This PC's own Ollama takes work too when it's free" />
+                           ToolTip="Only matters while the pool is on. On: this PC's own Ollama is one of the pool's PCs and takes work when it's free, so its models stay usable. Off: everything runs on the other PCs, and models only on this PC can't be used." />
         </Grid>
       </ui:Card>
 
@@ -38,15 +38,16 @@
               <TextBlock x:Name="FindState" FontSize="12.5" TextWrapping="Wrap" Margin="0,2,0,0" Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                          Text="PCs running maison with &quot;Share this PC's AI&quot; turned on show up here." />
             </StackPanel>
-            <ui:Button x:Name="BtnFind" Grid.Column="1" Content="Look again" Icon="{ui:SymbolIcon ArrowSync24}" VerticalAlignment="Top" Click="Find_Click"
-                       ToolTip="Search your home network for AI PCs (takes a couple of seconds)" />
+            <ui:Button x:Name="BtnFind" Grid.Column="1" Content="Search again" Icon="{ui:SymbolIcon ArrowSync24}" VerticalAlignment="Top" Click="Find_Click"
+                       ToolTip="Search your home network again for PCs running maison with sharing on (takes a couple of seconds). Found PCs are listed here; add one with the pairing code shown on it." />
           </Grid>
           <StackPanel x:Name="FoundList" Margin="0,8,0,0" />
           <Expander Header="Not listed? Add one by its name or address" Margin="0,8,0,0">
             <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
               <ui:TextBox x:Name="ManualAddress" PlaceholderText="e.g. gpu-pc or 100.101.102.103" Width="260" KeyUp="ManualAddress_KeyUp"
-                          ToolTip="For AI PCs on another network, e.g. over Tailscale" />
-              <ui:Button Content="Look" Margin="8,0,0,0" Click="Manual_Click" />
+                          ToolTip="For AI PCs the search can't see, e.g. on another network or over Tailscale. Type its PC name or IP address." />
+              <ui:Button Content="Find" Margin="8,0,0,0" Click="Manual_Click"
+                         ToolTip="Ask that address whether it's a maison AI PC. If it is, it's listed above, ready to add with its pairing code." />
             </StackPanel>
           </Expander>
         </StackPanel>

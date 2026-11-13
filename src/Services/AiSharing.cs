@@ -87,7 +87,7 @@ public static class AiSharing
         var stillPublic = !makePrivate && survey.PublicNetworks.Count > 0;
         return (true, stillPublic
             ? $"Shared, but your network ({survey.PublicNetworks[0].Name}) is set to Public in Windows, so other PCs are still blocked. Set it to Private in Windows Settings → Network."
-            : "This PC is an AI PC in your pool. Other PCs find it on the AI pool page and pair with the code shown here.");
+            : "This PC is an AI PC in your pool. Other PCs find it on the Pool page and pair with the code shown here.");
     }
     /// <summary>Turns sharing off: the pool service stops and the firewall rules are removed. Paired PCs stay paired.</summary>
     public static async Task<(bool Ok, string Message)> DisableAsync(Action<string> log)

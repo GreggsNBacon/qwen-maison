@@ -39,8 +39,9 @@ public partial class ModelsView : UserControl
             _gpuQueried = true;
         }
 
-        bool running = await OllamaClient.GetVersionAsync(2) is not null;
-        try { _models = running ? await OllamaClient.GetModelsAsync() : []; }
+        // This PC's own models, always (with the pool on too): this page installs and removes them here.
+        bool running = await OllamaClient.GetLocalVersionAsync(2) is not null;
+        try { _models = running ? await OllamaClient.GetModelsAsync(local: true) : []; }
         catch (Exception ex) { _models = []; Shell.Log("Could not list models: " + ex.Message); }
 
         // Disk
@@ -53,13 +54,34 @@ public partial class ModelsView : UserControl
         }
         catch { DiskText.Text = OllamaClient.ModelsDir; }
 
-        // Installed
+        // With the pool on, ask its PCs first so we know what they have.
+        var cfg = AppConfig.Current;
+        if (cfg.UseRemoteAi && !Services.Pool.AiPool.AllChecked) await Services.Pool.AiPool.RefreshAsync();
+
+        // Installed on this PC (with the pool on, each also says which other PCs have it)
         var main = Shell.CurrentMainModel;
-        var rows = _models.Select(m => InstalledRow.From(m, main, Shell.ModelLastUsed)).ToList();
+        var rows = _models.Select(m => InstalledRow.From(m, main, Shell.ModelLastUsed,
+            cfg.UseRemoteAi ? Services.Pool.AiPool.OtherPcsWith(m.Name) : null)).ToList();
         InstalledList.ItemsSource = rows;
         var stale = rows.Count(r => r.IsStale);
-        InstalledHeader.Text = $"Installed ({rows.Count(r => !r.IsHelper)})" + (stale > 0 ? $"  ·  {stale} stale — unused for {AppConfig.Current.StaleDays}+ days, safe to uninstall if you don't need them" : "");
+        InstalledHeader.Text = (cfg.UseRemoteAi ? "On this PC" : "Installed") + $" ({rows.Count(r => !r.IsHelper)})"
+            + (cfg.UseRemoteAi && !cfg.PoolIncludeThisPc ? "  ·  not in the pool, so sessions can't use these until you turn on \"Include this PC\"" : "")
+            + (stale > 0 ? $"  ·  {stale} stale — unused for {cfg.StaleDays}+ days, safe to uninstall if you don't need them" : "");
+        InstalledEmpty.Text = running ? "No models on this PC yet — pick one below." : "This PC's Ollama isn't running, so its models can't be listed. Start it from the Dashboard.";
         InstalledEmpty.Visibility = rows.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+
+        // Models on the pool's other PCs, marked with which PCs have them
+        if (cfg.UseRemoteAi)
+        {
+            var pool = Services.Pool.AiPool.OtherPcsModels();
+            PoolList.ItemsSource = pool.Select(p => PoolRow.From(p.Model, p.SizeGb, p.Pcs, main, _models)).ToList();
+            PoolHeader.Text = $"On your pool's other PCs ({pool.Count})";
+            PoolHint.Text = pool.Count == 0
+                ? "None yet, or no other PC in your pool is online. Add PCs and install models on them from the Pool page."
+                : "Usable while the pool is on. Each shows which PC has it. Install or remove them on the Pool page.";
+            PoolCard.Visibility = Visibility.Visible;
+        }
+        else PoolCard.Visibility = Visibility.Collapsed;
 
         // Catalog
         var rec = ModelCatalog.Recommend(_vramGb, _ramGb);
@@ -78,9 +100,11 @@ public partial class ModelsView : UserControl
         model = model.Trim();
         if (model.Length == 0) return;
         if (IsDownloading(model)) { Shell.Toast("Already downloading", model); return; }
-        if (await OllamaClient.GetVersionAsync(2) is null)
+        if (await OllamaClient.GetLocalVersionAsync(2) is null)
         {
-            Shell.Toast("Ollama is not running", "Start it from the Dashboard or run Setup first.", ControlAppearance.Caution, SymbolRegular.Warning24);
+            Shell.Toast("This PC's Ollama is not running", OllamaClient.IsRemote
+                    ? "To install on another PC in your pool, use the Pool page. To install here, turn the pool off and start Ollama from the Dashboard."
+                    : "Start it from the Dashboard or run Setup first.", ControlAppearance.Caution, SymbolRegular.Warning24);
             return;
         }
 
@@ -130,7 +154,7 @@ public partial class ModelsView : UserControl
 
         try
         {
-            await OllamaClient.PullAsync(model, progress, item.Cancel.Token);
+            await OllamaClient.PullAsync(model, progress, item.Cancel.Token, local: true);
             Shell.Log($"Installed {model}");
             Shell.Toast("Model installed", model, ControlAppearance.Success, SymbolRegular.CheckmarkCircle24);
             if (string.IsNullOrWhiteSpace(Shell.CurrentMainModel)) Shell.UseModel(model);
@@ -180,8 +204,8 @@ public partial class ModelsView : UserControl
         if (!await Shell.ConfirmAsync("Delete model", text, "Delete")) return;
         try
         {
-            foreach (var v in variants) await OllamaClient.DeleteAsync(v);
-            await OllamaClient.DeleteAsync(name);
+            foreach (var v in variants) await OllamaClient.DeleteAsync(v, local: true);
+            await OllamaClient.DeleteAsync(name, local: true);
             Shell.Log($"Deleted {name}" + (variants.Count > 0 ? $" and {variants.Count} variant(s)" : ""));
             Shell.Toast("Model deleted", name, ControlAppearance.Success, SymbolRegular.Delete24);
         }
@@ -205,7 +229,7 @@ public partial class ModelsView : UserControl
         public bool IsStale { get; init; }
         public string? BadgeTip { get; init; }
 
-        public static InstalledRow From(ModelInfo m, string main, IReadOnlyDictionary<string, DateTime> lastUsed)
+        public static InstalledRow From(ModelInfo m, string main, IReadOnlyDictionary<string, DateTime> lastUsed, List<string>? alsoOn = null)
         {
             bool alias = m.Name.StartsWith("claude-");
             bool variant = Launcher.IsVariant(m.Name);
@@ -215,6 +239,7 @@ public partial class ModelsView : UserControl
             var caps = m.Capabilities.Where(c => c is "vision" or "tools" or "thinking").ToArray();
             if (caps.Length > 0) bits.Add(string.Join(", ", caps));
             if (m.Modified != default) bits.Add("added " + Ago(m.Modified));
+            if (alsoOn is { Count: > 0 }) bits.Add("also on " + string.Join(", ", alsoOn));
             if (variant && m.ParentModel.Length > 0) bits.Add("context variant of " + m.ParentModel + " (no extra disk)");
             else if (alias) bits.Add("alias from the old setup (no extra disk)");
 
@@ -273,6 +298,35 @@ public partial class ModelsView : UserControl
         public bool CanInstall => !installed && !downloading;
         public string ButtonText => installed ? "Installed" : downloading ? "Downloading" : "Install";
         public string ButtonTip => installed ? "Already installed — manage it in the list above"
-            : $"Download {m.Tag} ({m.SizeGb:0.#} GB). {ModelCatalog.FitText(fit)}.";
+            : $"Download {m.Tag} ({m.SizeGb:0.#} GB) onto this PC. {ModelCatalog.FitText(fit)}.";
     }
+
+    /// <summary>A model on one or more of the pool's other PCs.</summary>
+    private sealed class PoolRow
+    {
+        public required string Name { get; init; }
+        public required string Detail { get; init; }
+        public string Badge { get; init; } = "";
+        public Brush BadgeBrush { get; init; } = Palette.Grey;
+        public Brush IconBrush { get; init; } = Palette.Blue;
+        public bool HasBadge => Badge.Length > 0;
+        public bool CanUse { get; init; }
+
+        public static PoolRow From(string name, double sizeGb, List<string> pcs, string main, List<ModelInfo> local)
+        {
+            bool inUse = name.Equals(main, StringComparison.OrdinalIgnoreCase);
+            bool alsoHere = local.Any(m => Services.Pool.MemberState.Same(m.Name, name));
+            return new PoolRow
+            {
+                Name = name,
+                Detail = $"on {string.Join(", ", pcs)}  ·  {sizeGb:0.#} GB" + (alsoHere ? "  ·  also on this PC" : ""),
+                Badge = inUse ? "In use" : "",
+                BadgeBrush = inUse ? Palette.Green : Palette.Grey,
+                IconBrush = inUse ? Palette.Green : Palette.Blue,
+                CanUse = !inUse,
+            };
+        }
+    }
+
+    private void OpenPool_Click(object sender, RoutedEventArgs e) => Shell.ShowPool();
 }

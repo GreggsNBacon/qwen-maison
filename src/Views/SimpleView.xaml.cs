@@ -142,7 +142,7 @@ public partial class SimpleView : UserControl
             Headline.Text = "Can't reach the AI PC";
             Subline.Text = "maison is set to use your AI pool, but no AI PC in it answers. Check they're on with maison running, then press Try again.";
             StartButton.Content = "Try again";
-            RemoteLink.Content = "Open the AI pool";
+            RemoteLink.Content = "Open the Pool page";
             RemoteLink.Visibility = Visibility.Visible;
         }
     }
@@ -150,6 +150,7 @@ public partial class SimpleView : UserControl
     // ------------------------------------------------------------------ setup run
 
     private void RemoteLink_Click(object sender, RoutedEventArgs e) => Shell.ShowAiSettings();
+    private void Settings_Click(object sender, RoutedEventArgs e) => Shell.ShowSettings();
 
     private async void Start_Click(object sender, RoutedEventArgs e)
     {
