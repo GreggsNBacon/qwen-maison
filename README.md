@@ -164,7 +164,8 @@ git clone https://github.com/GreggsNBacon/qwen-maison.git
 cd qwen-maison
 .\build.ps1
 ```
-That makes `dist\maison-<version>.exe`. Or open the folder in maison and ask Qwen Code to *"build maison and run the
+That makes `dist\maison-<version>.exe`. If PowerShell says running scripts is disabled, use
+`powershell -ExecutionPolicy Bypass -File .\build.ps1` instead. Or open the folder in maison and ask Qwen Code to *"build maison and run the
 self-test"*: the repository includes instructions for AI agents. Details, testing and how it works:
 [docs/DEVELOPING.md](docs/DEVELOPING.md).
 
