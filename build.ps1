@@ -23,11 +23,14 @@
 [CmdletBinding()]
 param(
     [switch]$Test,
-    [string]$OutDir = (Join-Path $PSScriptRoot 'dist')
+    [string]$OutDir = ''
 )
 
 $ErrorActionPreference = 'Stop'
-$project = Join-Path $PSScriptRoot 'src\Maison.csproj'
+# $PSScriptRoot is empty in param defaults on Windows PowerShell 5.1, so work it out here.
+$root = if ($PSScriptRoot) { $PSScriptRoot } else { Split-Path -Parent $MyInvocation.MyCommand.Path }
+if (-not $OutDir) { $OutDir = Join-Path $root 'dist' }
+$project = Join-Path $root 'src\Maison.csproj'
 
 function Fail($message) {
     Write-Host "BUILD FAILED: $message" -ForegroundColor Red

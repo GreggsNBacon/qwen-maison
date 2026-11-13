@@ -155,7 +155,7 @@ public partial class MainWindow : FluentWindow, IShell
         _models = []; _loaded = [];
         await RefreshAsync(quiet: true);
         await SetupPage.RefreshAsync();
-        if (_config.UiMode == "simple") await SimplePage.ActivateAsync();
+        if (SimplePage.IsVisible) await SimplePage.ActivateAsync();
     }
 
     public void ShowAiSettings() => ShowPool();
@@ -1130,7 +1130,7 @@ public partial class MainWindow : FluentWindow, IShell
         {
             var spec = args[Array.IndexOf(args, "--pool") + 1].Split(',').Select(x => x.Split(':')).Select(x => (Port: int.Parse(x[0]), Code: x[1])).ToList();
             var pr = new List<string>();
-            void PAdd(string s) { pr.Add(s); try { File.AppendAllText(Path.Combine(dir, "pool-progress.txt"), s + Environment.NewLine); } catch { } }
+            void PAdd(string s) { pr.Add(s); try { File.AppendAllText(Path.Combine(dir, "pool-progress.txt"), s + Environment.NewLine); } catch { } }   // progress file: shows where it stopped if it hangs
             try
             {
                 _config.PoolIncludeThisPc = false;

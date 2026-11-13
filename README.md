@@ -28,8 +28,8 @@ maison sets up [Ollama](https://ollama.com) and a Qwen model sized for your grap
   If another app is hogging graphics memory and slowing the AI down, maison warns you and shows which app it is.
 - **Models made easy.** Browse models that fit your GPU, install them with a progress bar, and see which ones you
   haven't used in a while so you can free up disk space. You can even move all models to a bigger drive.
-- **One AI PC for the whole house.** Run the model on the PC with the best graphics card and use it from your laptop or
-  other PCs: the agent works on the PC you're at, only the thinking happens on the AI PC.
+- **An AI pool for the whole house.** Run models on the PCs with the best graphics cards and use them from your laptop or
+  other PCs. maison finds them on its own, sends work to whichever is free, and lets you manage their models from one page.
 - **Use it from your phone.** Check on a long task, or type to the agent, from your phone's browser on your home Wi-Fi.
   It's password-protected and encrypted.
 - **Simple or advanced.** New users get a calm view with one button and one terminal. Flip **Advanced** for the full
@@ -115,21 +115,24 @@ You see the same live sessions as on the PC (type on either), plus stats and a k
 Is it safe? Connections are encrypted, the password is stored only as a strong hash, repeated wrong guesses are locked
 out, and by default only devices on your home network (or a VPN like Tailscale) can connect at all.
 
-## Use the AI from another PC
-Run the model on the PC with the best graphics card, and use it from your other PCs at home: like Claude Code with a
-model in the cloud, except the "cloud" is your own PC.
+## The AI pool: use your other PCs' AI
+Run the model on the PCs with good graphics cards, and use them from any PC at home: like Claude Code with a model in
+the cloud, except the "cloud" is your own PCs. With more than one AI PC, a busy one hands work to a free one.
 
-1. **On the AI PC:** in **Settings → AI on another PC**, turn on **Share this PC's AI on my home network**. Windows asks
-   for permission once. maison then shows the names to use, e.g. `gpu-pc` or `192.168.1.20`.
-2. **On your other PC:** install maison, and in the simple view click **Use its AI instead** (or **Settings → AI on another
-   PC** in the advanced view). Enter the AI PC's name and press **Connect**.
+1. **On each AI PC:** in **Settings → AI pool**, turn on **Share this PC's AI with my other PCs**. Windows asks for
+   permission once. maison shows a 6-digit pairing code. Keep maison running there (minimised is fine).
+2. **On your other PC:** open the **AI pool** page (or, in the simple view, click **Use its AI instead**). AI PCs at home
+   show up by themselves, with no addresses to type. Enter each one's code and press **Add to pool**, then turn on **Use the AI pool**.
 
-That PC then skips the big download, and Qwen Code and Claude Code use the AI PC's models while working on the files of
-the PC you're at. Turn the switch off to go back to its own AI.
+The AI pool page shows each AI PC's graphics card and whether it's free or busy, which agents are using it (from which
+PC), and its models. You can install or remove models on it, or set the whole PC up (Ollama and a model sized for its
+GPU) from where you sit.
 
-While sharing is on, anyone on your home network can use the AI PC's models (Ollama has no password). maison only opens
-it to your home network and Tailscale, never the internet.
+Agents work on the files of the PC you're at; only the model's thinking happens on an AI PC. Each session stays on one
+AI PC while that PC is free, so replies start quickly, and moves to another if it gets busy or switched off.
 
+Is it safe? Only PCs you've paired with the code can use an AI PC, connections are encrypted, and maison only opens its
+ports to your home network (and Tailscale), never the internet. Ollama itself stays private to each PC.
 ## Troubleshooting
 
 **The AI is extremely slow or never finishes.** Usually another app is using graphics memory the model needs, so Windows
@@ -137,8 +140,9 @@ pushes part of the model into normal RAM and it slows to a crawl. maison shows a
 turn off its overlay or instant replay; the NVIDIA App's overlay is a common one), or pick a smaller context window on
 the Dashboard.
 
-**"Can't reach the AI PC".** Check that PC is on and awake, that sharing is turned on there, and that both PCs are on
-the same network. Windows must treat that network as Private; maison offers to set this when you turn sharing on.
+**An AI PC doesn't show up, or shows Offline.** Check that PC is on and awake, that maison is running there with sharing
+turned on, and that both PCs are on the same network. Windows must treat that network as Private; maison offers to set
+this when you turn sharing on. On another network (e.g. Tailscale), add it by name under **Not listed?** on the AI pool page.
 
 **Something isn't installed or won't start.** The Dashboard's health checks say what's wrong. **Repair Ollama** fixes a
 broken Ollama update, and **Setup** can reinstall any part.

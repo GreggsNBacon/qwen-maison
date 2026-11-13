@@ -19,6 +19,7 @@ public partial class App : Application
         {
             ShutdownMode = ShutdownMode.OnExplicitShutdown;
             base.OnStartup(e);
+            Services.StatsService.Start();   // GPU figures for the AI pool page on other PCs
             try { await Services.Pool.PoolHost.StartAsync(); }
             catch (Exception ex) { Console.Error.WriteLine(ex.Message); Shutdown(1); }
             return;

@@ -126,6 +126,7 @@ public partial class PoolView : UserControl
         var key = string.Join("|", list.Select(f => f.Id + f.Address));
         if (key == _foundKey) return;   // don't wipe a code being typed
         _foundKey = key;
+        if (list.Count == 0 && _found.Count > 0 && !_finding) FindState.Text = "Every AI PC found is already in your pool.";
         FoundList.Children.Clear();
         foreach (var pc in list)
         {
@@ -228,7 +229,7 @@ public partial class PoolView : UserControl
         private readonly TextBlock _task = new() { FontSize = 12.5, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 6, 0, 0) };
         private readonly ProgressBar _progress = new() { Height = 4, Margin = new Thickness(0, 4, 0, 0), Maximum = 100, Visibility = Visibility.Collapsed };
         private readonly ComboBox _install = new() { IsEditable = true, Width = 240, ToolTip = "Pick a model sized for this PC, or type any Ollama model name (e.g. qwen3.5:9b)" };
-        private readonly Button _btnInstall = new() { Content = "Install on this PC", Margin = new Thickness(8, 0, 0, 0), Icon = new SymbolIcon(SymbolRegular.ArrowDownload24) };
+        private readonly Button _btnInstall = new() { Content = "Install there", Margin = new Thickness(8, 0, 0, 0), Icon = new SymbolIcon(SymbolRegular.ArrowDownload24) };
         private readonly Button _btnSetup = new() { Content = "Set it up", Appearance = ControlAppearance.Primary, Margin = new Thickness(0, 8, 0, 0), Icon = new SymbolIcon(SymbolRegular.Wrench24),
             ToolTip = "Installs Ollama there if needed, starts it, and downloads a model sized for its GPU" };
         private readonly ToggleSwitch _enabled = new() { Content = "Use", ToolTip = "Send work to this PC. Turn off to keep it out of the pool for now." };
