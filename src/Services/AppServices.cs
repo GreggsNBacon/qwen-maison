@@ -95,6 +95,26 @@ public static class Theming
         res["MaisonAccentSoftBrush"] = Frozen(Color.FromArgb(0x38, c.R, c.G, c.B));
         res["MaisonAccentTextBrush"] = Frozen(Mix(c, Colors.White, 0.35));
         RetintThemeBrushes(CurrentShades());
+        RecolourWindowBorders(c);
+    }
+
+    [System.Runtime.InteropServices.DllImport("dwmapi.dll")]
+    private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attribute, ref uint value, int size);
+    private const int DWMWA_BORDER_COLOR = 34;
+
+    /// <summary>
+    /// The thin accent border Windows draws round the focused window. WPF-UI only recolours it when focus changes, so
+    /// after picking a new accent the focused window would keep the old colour until clicked away and back.
+    /// </summary>
+    private static void RecolourWindowBorders(Color c)
+    {
+        uint colorref = (uint)(c.R | c.G << 8 | c.B << 16);   // COLORREF is 0x00BBGGRR
+        foreach (System.Windows.Window w in System.Windows.Application.Current.Windows)
+        {
+            if (!w.IsActive) continue;   // inactive windows keep Windows' dimmed border
+            var hwnd = new System.Windows.Interop.WindowInteropHelper(w).Handle;
+            if (hwnd != IntPtr.Zero) try { DwmSetWindowAttribute(hwnd, DWMWA_BORDER_COLOR, ref colorref, sizeof(uint)); } catch { }
+        }
     }
 
     private static SolidColorBrush Frozen(Color c) { var b = new SolidColorBrush(c); b.Freeze(); return b; }

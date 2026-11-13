@@ -161,6 +161,10 @@ public partial class MainWindow : FluentWindow, IShell
 
     public void ShowAiSettings() => ShowPool();
 
+    [System.Runtime.InteropServices.DllImport("dwmapi.dll")]
+    private static extern int DwmGetWindowAttribute(IntPtr hwnd, int attribute, out DwmRect value, int size);
+    private struct DwmRect { public int Left, Top, Right, Bottom; }
+
     // ------------------------------------------------------------------ updates
 
     private UpdateInfo? _update;
@@ -1334,6 +1338,17 @@ public partial class MainWindow : FluentWindow, IShell
             Navigate("dashboard");
         }
 
+        // The colour actually on screen at the middle of the window's left edge (where Windows draws the border).
+        string DwmBorder()
+        {
+            var r = new DwmRect();
+            DwmGetWindowAttribute(new System.Windows.Interop.WindowInteropHelper(this).Handle, 9 /* DWMWA_EXTENDED_FRAME_BOUNDS */, out r, System.Runtime.InteropServices.Marshal.SizeOf<DwmRect>());
+            using var bmp = new System.Drawing.Bitmap(1, 1);
+            using (var g = System.Drawing.Graphics.FromImage(bmp)) g.CopyFromScreen(r.Left, (r.Top + r.Bottom) / 2, 0, 0, new System.Drawing.Size(1, 1));
+            var px = bmp.GetPixel(0, 0);
+            return $"{px.R},{px.G},{px.B}";
+        }
+
         // Optional: --accent switches accent colours live and reads the colour the switches are actually drawn in.
         var accentResult = "";
         if (args.Contains("--accent"))
@@ -1349,8 +1364,17 @@ public partial class MainWindow : FluentWindow, IShell
                 var want = (Color)ColorConverter.ConvertFromString(Theming.Accents.First(a => a.Name == name).Hex);
                 var toggle = DominantColour(ModeToggle);
                 var idle = DominantColour(SettingsPage.IdleNotify);
+                Activate();
+                await Task.Delay(300);
+                var borderNow = DwmBorder();
+                // focus away and back: what WPF-UI itself paints, which must match
+                using var other = new System.Windows.Forms.Form { Width = 200, Height = 100, ShowInTaskbar = false, StartPosition = System.Windows.Forms.FormStartPosition.CenterScreen };
+                other.Show(); other.Activate(); await Task.Delay(400);
+                var borderInactive = DwmBorder();
+                other.Close(); Activate(); await Task.Delay(400);
+                var borderRefocus = DwmBorder();
                 parts.Add($"{name}: want={want.R},{want.G},{want.B} titleToggle={toggle} settingsToggle={idle} " +
-                          $"match={(Near(toggle, want) && Near(idle, want))}");
+                          $"match={(Near(toggle, want) && Near(idle, want))} border={borderNow} inactive={borderInactive} refocus={borderRefocus} borderMatch={borderNow == borderRefocus}");
                 Snap(Path.Combine(dir, $"accent-{name.ToLowerInvariant()}.png"));
             }
             Theming.ApplyAccent(before);
