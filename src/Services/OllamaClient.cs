@@ -10,11 +10,41 @@ namespace Maison.Services;
 /// <summary>Thin client for the local Ollama REST API.</summary>
 public static class OllamaClient
 {
-    public const string BaseUrl = "http://127.0.0.1:11434";
+    public const string LocalUrl = "http://127.0.0.1:11434";
+    public const int DefaultPort = 11434;
 
-    private static readonly HttpClient Http = new() { BaseAddress = new Uri(BaseUrl), Timeout = Timeout.InfiniteTimeSpan };
+    /// <summary>Where Ollama requests go: this PC's Ollama, or the AI pool relay (which picks an AI PC per request).</summary>
+    public static string BaseUrl { get; private set; } = LocalUrl;
+    /// <summary>True when the AI pool is in use (models run on the pool's PCs; nothing to install or start here).</summary>
+    public static bool IsRemote { get; private set; }
+    public static string Where => IsRemote ? "your AI pool" : "this PC";
+
+    private static HttpClient Http = NewClient(LocalUrl);
+    private static HttpClient NewClient(string url) => new() { BaseAddress = new Uri(url), Timeout = Timeout.InfiniteTimeSpan };
 
     private static CancellationTokenSource After(double seconds) => new(TimeSpan.FromSeconds(seconds));
+
+    /// <summary>Points health, models and launches at the AI pool relay, or back at this PC.</summary>
+    public static void UsePool(bool pool)
+    {
+        var url = pool ? Pool.PoolRelay.Url : LocalUrl;
+        IsRemote = pool;
+        if (url == BaseUrl) return;
+        BaseUrl = url;
+        Http = NewClient(url);
+    }
+    /// <summary>This PC's own Ollama, whatever the pool setting.</summary>
+    public static async Task<string?> GetLocalVersionAsync(double timeoutSeconds = 3)
+    {
+        try
+        {
+            using var http = NewClient(LocalUrl);
+            using var cts = After(timeoutSeconds);
+            var doc = await http.GetFromJsonAsync<JsonElement>("/api/version", cts.Token);
+            return doc.GetProperty("version").GetString();
+        }
+        catch { return null; }
+    }
 
     public static async Task<string?> GetVersionAsync(double timeoutSeconds = 3)
     {
@@ -65,6 +95,64 @@ public static class OllamaClient
                 m.TryGetProperty("size_vram", out var v) ? v.GetInt64() : 0,
                 m.TryGetProperty("context_length", out var c) ? c.GetInt32() : 0))
             .ToList();
+    }
+
+    /// <summary>
+    /// The context window Ollama will actually use for <paramref name="model"/> when no size is forced:
+    /// the loaded model's own size if it's running, else the server's VRAM-based default from its log, else 4096.
+    /// On another PC there's no log to read, so the model is loaded first and Ollama asked directly.
+    /// </summary>
+    public static async Task<int> EffectiveContextAsync(string model)
+    {
+        if (await LoadedContextAsync(model) is { } c) return c;
+        if (IsRemote)
+        {
+            try
+            {
+                using var cts = After(300);   // loading a big model over there can take a while
+                using var resp = await Http.PostAsJsonAsync("/api/generate", new { model, prompt = "", keep_alive = "10m" }, cts.Token);
+            }
+            catch { /* fall through to the default */ }
+            if (await LoadedContextAsync(model) is { } c2) return c2;
+            return 32768;
+        }
+        return ServerDefaultContext();
+    }
+
+    private static async Task<int?> LoadedContextAsync(string model)
+    {
+        try
+        {
+            var loaded = await GetLoadedAsync();
+            if (loaded.FirstOrDefault(m => m.Name == model || m.Name == model + ":latest") is { Context: > 0 } m) return m.Context;
+        }
+        catch { /* server busy */ }
+        return null;
+    }
+
+    /// <summary>Ollama's default num_ctx (it logs "default_num_ctx=32768" at start, sized to the GPU).</summary>
+    public static int ServerDefaultContext()
+    {
+        foreach (var t in new[] { EnvironmentVariableTarget.Process, EnvironmentVariableTarget.User, EnvironmentVariableTarget.Machine })
+            if (int.TryParse(Environment.GetEnvironmentVariable("OLLAMA_CONTEXT_LENGTH", t), out var env) && env > 0) return env;
+        try
+        {
+            var log = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Ollama", "server.log");
+            using var fs = new FileStream(log, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            using var sr = new StreamReader(fs);
+            int found = 0;
+            string? line;
+            while ((line = sr.ReadLine()) is not null)
+            {
+                var i = line.IndexOf("default_num_ctx=", StringComparison.Ordinal);
+                if (i < 0) continue;
+                var digits = new string(line.Skip(i + 16).TakeWhile(char.IsDigit).ToArray());
+                if (int.TryParse(digits, out var n) && n > 0) found = n;   // keep the newest
+            }
+            if (found > 0) return found;
+        }
+        catch { /* no log yet */ }
+        return 4096;
     }
 
     /// <summary>Creates a settings-only model variant (no weight copy) with a fixed context window.</summary>

@@ -16,7 +16,7 @@
       <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
     </Style>
   </UserControl.Resources>
-  <ScrollViewer VerticalScrollBarVisibility="Auto">
+  <ScrollViewer x:Name="Scroller" VerticalScrollBarVisibility="Auto">
     <StackPanel Margin="28,4,28,28" MaxWidth="1100" HorizontalAlignment="Left">
       <TextBlock Text="Settings" FontSize="28" FontWeight="SemiBold" Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
       <TextBlock Text="Saved automatically." FontSize="14" Margin="0,2,0,18" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
@@ -59,6 +59,103 @@
         </StackPanel>
       </ui:Card>
 
+      <!-- Start commands -->
+      <ui:Card Margin="0,0,0,12">
+        <StackPanel>
+          <Grid>
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="*" />
+              <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <StackPanel>
+              <TextBlock Text="Start commands" Style="{StaticResource H}" />
+              <TextBlock Text="What maison runs when you start Claude Code, Qwen Code or Chat. Model, context window, folder and permissions come from the Dashboard; everything else is here. The preview shows the exact command."
+                         Style="{StaticResource Sub}" />
+            </StackPanel>
+            <ui:Button Grid.Column="1" Content="Reset to defaults" Icon="{ui:SymbolIcon ArrowReset24}" VerticalAlignment="Top" Click="ResetLaunch_Click"
+                       ToolTip="Put every start-command option back to maison's defaults" />
+          </Grid>
+
+          <ui:ToggleSwitch x:Name="LTellCtx" Content="Tell the agent the real context window" Click="Launch_Changed"
+                           ToolTip="Recommended. Claude Code and Qwen Code otherwise assume a 200K window for local models, so they keep going until Ollama's much smaller window overflows and the request fails. With this on, they compact the conversation in time." />
+          <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+            <TextBlock Text="Max reply length" VerticalAlignment="Center" Margin="0,0,10,0" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+            <ui:NumberBox x:Name="LMaxOut" Minimum="0" Maximum="131072" SmallChange="1024" LargeChange="4096" Width="170" ValueChanged="Launch_Changed" SpinButtonPlacementMode="Inline"
+                          ToolTip="Most tokens one reply may use. 0 = automatic: a quarter of the context window (4K–32K), so the prompt and the reply both fit." />
+            <TextBlock x:Name="LMaxOutHint" Text="tokens (0 = automatic)" VerticalAlignment="Center" Margin="10,0,0,0" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+          </StackPanel>
+
+          <TabControl x:Name="LTabs" Margin="0,16,0,0" SelectionChanged="LTabs_Changed">
+            <TabItem Header="Claude Code" Tag="claude">
+              <StackPanel Margin="4,12,4,4">
+                <ui:ToggleSwitch x:Name="LClaudeContinue" Content="Continue the last conversation in this folder (--continue)" Click="Launch_Changed"
+                                 ToolTip="Pick up where the previous Claude Code session in the working folder left off" />
+                <ui:ToggleSwitch x:Name="LClaudeNoThink" Content="Turn off thinking (CLAUDE__CODE__DISABLE__THINKING)" Margin="0,10,0,0" Click="Launch_Changed"
+                                 ToolTip="Leave out the thinking parameter. Faster replies; also a fix if a model or server rejects it." />
+                <ui:ToggleSwitch x:Name="LClaudeNoTraffic" Content="No telemetry or update checks (CLAUDE__CODE__DISABLE__NONESSENTIAL__TRAFFIC)" Margin="0,10,0,0" Click="Launch_Changed"
+                                 ToolTip="Keeps the session fully local: no usage reporting, error reporting or update checks" />
+                <ui:ToggleSwitch x:Name="LClaudeNoCache" Content="No prompt caching (DISABLE__PROMPT__CACHING)" Margin="0,10,0,0" Click="Launch_Changed"
+                                 ToolTip="Ollama doesn't use Anthropic-style prompt caching, so the cache hints are only noise" />
+                <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                  <TextBlock Text="Compact at" VerticalAlignment="Center" Margin="0,0,10,0" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                  <ui:NumberBox x:Name="LClaudePct" Minimum="0" Maximum="100" SmallChange="5" Width="140" ValueChanged="Launch_Changed" SpinButtonPlacementMode="Inline"
+                                ToolTip="Summarise the conversation when it reaches this % of the window (CLAUDE_AUTOCOMPACT_PCT_OVERRIDE). 0 = Claude Code's default. It can only make compaction earlier." />
+                  <TextBlock Text="% of the window (0 = default)" VerticalAlignment="Center" Margin="10,0,0,0" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                </StackPanel>
+                <TextBlock Text="Extra arguments" Style="{StaticResource SectionLabel}" Margin="0,14,0,4" />
+                <ui:TextBox x:Name="LClaudeArgs" PlaceholderText="e.g. --verbose" FontFamily="Cascadia Mono, Consolas" TextChanged="Launch_Changed"
+                            ToolTip="Added to the end of the claude command, exactly as typed" />
+                <TextBlock Text="Extra environment variables (one KEY=value per line)" Style="{StaticResource SectionLabel}" Margin="0,12,0,4" />
+                <TextBox x:Name="LClaudeEnv" AcceptsReturn="True" Height="70" FontFamily="Cascadia Mono, Consolas" VerticalScrollBarVisibility="Auto" TextChanged="Launch_Changed"
+                         ToolTip="Set for this session only. Overrides maison's own values with the same name. Lines starting with # are ignored." />
+              </StackPanel>
+            </TabItem>
+            <TabItem Header="Qwen Code" Tag="qwen">
+              <StackPanel Margin="4,12,4,4">
+                <ui:ToggleSwitch x:Name="LQwenContinue" Content="Continue the last conversation in this folder (--continue)" Click="Launch_Changed"
+                                 ToolTip="Pick up where the previous Qwen Code session in the working folder left off" />
+                <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                  <TextBlock Text="Compact at" VerticalAlignment="Center" Margin="0,0,10,0" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                  <ui:NumberBox x:Name="LQwenPct" Minimum="30" Maximum="100" SmallChange="5" Width="140" ValueChanged="Launch_Changed" SpinButtonPlacementMode="Inline"
+                                ToolTip="Summarise the conversation when it reaches this % of the window (Qwen Code's context.autoCompactThreshold; its default is 85)" />
+                  <TextBlock Text="% of the window" VerticalAlignment="Center" Margin="10,0,0,0" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                  <TextBlock Text="Request timeout" VerticalAlignment="Center" Margin="0,0,10,0" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                  <ui:NumberBox x:Name="LQwenTimeout" Minimum="30" Maximum="7200" SmallChange="30" Width="140" ValueChanged="Launch_Changed" SpinButtonPlacementMode="Inline"
+                                ToolTip="How long Qwen Code waits for one reply. Local models on long prompts can take minutes; Qwen Code's own default is 2 minutes." />
+                  <TextBlock Text="seconds" VerticalAlignment="Center" Margin="10,0,0,0" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                </StackPanel>
+                <TextBlock Text="Extra arguments" Style="{StaticResource SectionLabel}" Margin="0,14,0,4" />
+                <ui:TextBox x:Name="LQwenArgs" PlaceholderText="e.g. --max-subagent-depth 3" FontFamily="Cascadia Mono, Consolas" TextChanged="Launch_Changed"
+                            ToolTip="Added to the end of the qwen command, exactly as typed" />
+                <TextBlock Text="Extra environment variables (one KEY=value per line)" Style="{StaticResource SectionLabel}" Margin="0,12,0,4" />
+                <TextBox x:Name="LQwenEnv" AcceptsReturn="True" Height="70" FontFamily="Cascadia Mono, Consolas" VerticalScrollBarVisibility="Auto" TextChanged="Launch_Changed"
+                         ToolTip="Set for this session only. Overrides maison's own values with the same name. Lines starting with # are ignored." />
+              </StackPanel>
+            </TabItem>
+            <TabItem Header="Chat" Tag="chat">
+              <StackPanel Margin="4,12,4,4">
+                <ui:ToggleSwitch x:Name="LChatVerbose" Content="Show speed after each reply (--verbose)" Click="Launch_Changed"
+                                 ToolTip="ollama run prints tokens/s and timings after every answer" />
+                <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                  <TextBlock Text="Thinking" VerticalAlignment="Center" Margin="0,0,10,0" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                  <ComboBox x:Name="LChatThink" Width="170" SelectionChanged="Launch_Changed"
+                            ToolTip="Model default, always think (--think=true), or answer straight away (--think=false)" />
+                </StackPanel>
+                <TextBlock Text="Extra arguments" Style="{StaticResource SectionLabel}" Margin="0,14,0,4" />
+                <ui:TextBox x:Name="LChatArgs" PlaceholderText="e.g. --hidethinking" FontFamily="Cascadia Mono, Consolas" TextChanged="Launch_Changed"
+                            ToolTip="Added to the end of the ollama run command, exactly as typed" />
+              </StackPanel>
+            </TabItem>
+          </TabControl>
+
+          <TextBlock Text="Preview" Style="{StaticResource SectionLabel}" Margin="0,14,0,4" />
+          <TextBox x:Name="LPreview" IsReadOnly="True" FontFamily="Cascadia Mono, Consolas" FontSize="12" TextWrapping="Wrap" MaxHeight="220"
+                   VerticalScrollBarVisibility="Auto" ToolTip="Exactly what maison runs in the new session's PowerShell, with the current Dashboard selection" />
+        </StackPanel>
+      </ui:Card>
+
       <!-- Models -->
       <ui:Card Margin="0,0,0,12">
         <StackPanel>
@@ -92,6 +189,100 @@
           </Grid>
           <TextBox x:Name="MoveLog" Visibility="Collapsed" IsReadOnly="True" FontFamily="Cascadia Mono, Consolas" FontSize="12" Height="110" Margin="0,10,0,0"
                    TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" />
+        </StackPanel>
+      </ui:Card>
+
+      <!-- AI pool -->
+      <ui:Card x:Name="AiCard" Margin="0,0,0,12">
+        <StackPanel>
+          <TextBlock Text="AI pool" Style="{StaticResource H}" />
+          <TextBlock Style="{StaticResource Sub}"
+                     Text="Run the AI on the PCs with good graphics cards, and use them from any PC at home. The agent works on the PC you're sitting at, with its files; only the model's thinking happens on an AI PC. With several AI PCs, a busy one hands work to a free one." />
+          <Grid>
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="*" />
+              <ColumnDefinition Width="24" />
+              <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <!-- This PC is an AI PC -->
+            <StackPanel>
+              <TextBlock Text="Make this PC an AI PC" Style="{StaticResource SectionLabel}" />
+              <ui:ToggleSwitch x:Name="ShareAiToggle" Content="Share this PC's AI with my other PCs" Click="ShareAi_Click"
+                               ToolTip="Paired PCs at home can use this PC's models through maison (encrypted, with their own key). Ollama itself stays private. Windows asks for admin permission once to open maison's ports for your home network." />
+              <TextBlock x:Name="ShareState" FontSize="12.5" TextWrapping="Wrap" Margin="0,8,0,0" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+              <StackPanel x:Name="SharePanel" Margin="0,10,0,0" Visibility="Collapsed">
+                <TextBlock Text="Pairing code (enter it once on the other PC)" FontSize="12" Foreground="{DynamicResource TextFillColorTertiaryBrush}" />
+                <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
+                  <TextBlock x:Name="PairCode" FontFamily="Cascadia Mono, Consolas" FontSize="26" FontWeight="SemiBold" VerticalAlignment="Center"
+                             Foreground="{DynamicResource MaisonAccentTextBrush}" />
+                  <ui:Button Content="New code" Appearance="Transparent" Margin="12,0,0,0" Click="NewCode_Click"
+                             ToolTip="Make a new code. PCs already paired keep working." />
+                </StackPanel>
+                <TextBlock Text="Paired PCs" FontSize="12" Margin="0,10,0,2" Foreground="{DynamicResource TextFillColorTertiaryBrush}" />
+                <ItemsControl x:Name="PairedList">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                      <Grid Margin="0,2">
+                        <Grid.ColumnDefinitions>
+                          <ColumnDefinition Width="*" />
+                          <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock VerticalAlignment="Center" Foreground="{DynamicResource TextFillColorPrimaryBrush}">
+                          <Run Text="{Binding Name, Mode=OneWay}" /><Run Text=" · last used " Foreground="{DynamicResource TextFillColorTertiaryBrush}" /><Run Text="{Binding LastSeen, Mode=OneWay, StringFormat='g'}" Foreground="{DynamicResource TextFillColorTertiaryBrush}" />
+                        </TextBlock>
+                        <ui:Button Grid.Column="1" Content="Remove" Appearance="Transparent" Padding="8,2" Tag="{Binding}" Click="Unpair_Click"
+                                   ToolTip="This PC stops accepting it; it would need the code again" />
+                      </Grid>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+                <TextBlock x:Name="NoPaired" Text="None yet." FontSize="12.5" Foreground="{DynamicResource TextFillColorTertiaryBrush}" />
+                <TextBlock FontSize="12" TextWrapping="Wrap" Margin="0,8,0,0" Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                           Text="Keep maison running on this PC (minimised is fine) so the pool can use it. Your home network must be set to Private in Windows." />
+              </StackPanel>
+            </StackPanel>
+
+            <!-- This PC uses the pool -->
+            <StackPanel Grid.Column="2">
+              <TextBlock Text="Use AI PCs from this PC" Style="{StaticResource SectionLabel}" />
+              <ui:ToggleSwitch x:Name="UseRemoteToggle" Content="Use the AI pool" Click="UseRemote_Click"
+                               ToolTip="Claude Code, Qwen Code and Chat use the AI PCs you've added (and this PC, if included), picking a free one for each request." />
+              <ui:ToggleSwitch x:Name="IncludeThisToggle" Content="Include this PC's own AI in the pool" Margin="0,10,0,0" Click="IncludeThis_Click"
+                               ToolTip="This PC's Ollama takes work too when it's free" />
+              <TextBlock x:Name="RemoteState" FontSize="12.5" TextWrapping="Wrap" Margin="0,8,0,0" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+              <ui:Button Content="Open the AI pool" Icon="{ui:SymbolIcon Server24}" Margin="0,10,0,0" Click="OpenPool_Click"
+                         ToolTip="Find AI PCs at home, add them, see what they're doing and manage their models" />
+            </StackPanel>
+          </Grid>
+        </StackPanel>
+      </ui:Card>
+      <!-- Start with Windows -->
+      <ui:Card Margin="0,0,0,12">
+        <StackPanel>
+          <TextBlock Text="Start with Windows" Style="{StaticResource H}" />
+          <TextBlock Style="{StaticResource Sub}"
+                     Text="Open maison when you sign in to Windows. Useful on an AI PC, so the AI pool can always use it." />
+          <ui:ToggleSwitch x:Name="StartWithWindows" x:FieldModifier="internal" Content="Start maison when I sign in" Click="AutoStart_Click"
+                           ToolTip="Adds maison to your Windows start-up apps (just for you; no admin needed). You can also turn it off in Windows Settings → Apps → Startup." />
+          <ui:ToggleSwitch x:Name="StartMinimized" x:FieldModifier="internal" Content="Start minimised" Margin="0,10,0,0" Click="AutoStart_Click"
+                           ToolTip="Open maison minimised to the taskbar instead of in front" />
+          <TextBlock x:Name="AutoStartState" FontSize="12.5" Margin="0,8,0,0" TextWrapping="Wrap" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+        </StackPanel>
+      </ui:Card>
+
+      <!-- Updates -->
+      <ui:Card Margin="0,0,0,12">
+        <StackPanel>
+          <TextBlock Text="Updates" Style="{StaticResource H}" />
+          <TextBlock Style="{StaticResource Sub}"
+                     Text="maison looks for a newer version on GitHub when it starts and once a day. If there is one, a button in the title bar takes you to the download." />
+          <ui:ToggleSwitch x:Name="AutoUpdateCheck" Content="Check for updates automatically" Click="AutoUpdate_Click"
+                           ToolTip="Asks GitHub for the latest maison release. Nothing about you or this PC is sent." />
+          <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+            <ui:Button x:Name="BtnCheckUpdate" Content="Check now" Icon="{ui:SymbolIcon ArrowSync24}" Click="CheckUpdate_Click" />
+            <TextBlock x:Name="UpdateState" VerticalAlignment="Center" Margin="12,0,0,0" TextWrapping="Wrap" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+          </StackPanel>
         </StackPanel>
       </ui:Card>
 

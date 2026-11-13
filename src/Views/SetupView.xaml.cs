@@ -33,6 +33,7 @@ public partial class SetupView : UserControl
     /// <summary>True when the essentials (Ollama + at least one model) are missing — used to open Setup on first run.</summary>
     public static async Task<bool> NeedsSetupAsync()
     {
+        if (OllamaClient.IsRemote) return false;   // the models live on the other PC
         if (!SystemProbe.OllamaInstalled) return true;
         if (await OllamaClient.GetVersionAsync(2) is null) return false; // installed but stopped: Dashboard handles it
         try { return (await OllamaClient.GetModelsAsync()).Count(m => !m.Name.StartsWith("claude-")) == 0; }
@@ -63,13 +64,21 @@ public partial class SetupView : UserControl
         List<ModelInfo> models = [];
         if (running) { try { models = await OllamaClient.GetModelsAsync(); } catch { } }
 
-        if (!_ollama.Busy)
+        bool remote = OllamaClient.IsRemote;
+        if (remote && !_ollama.Busy)
+            _ollama.SetDone(installed ? "Installed (the AI runs on your AI pool)" : "Not needed: the AI runs on your AI pool");
+        else if (!_ollama.Busy)
         {
             if (installed && runtime) _ollama.SetDone("Installed");
             else if (installed) _ollama.SetMissing("Broken install — llama-server.exe missing", "Repair", "Reinstall Ollama and fix locked files (opens a PowerShell window)");
             else _ollama.SetMissing("Not installed", "Install", "Download and install Ollama (~1.6 GB download)");
         }
-        if (!_server.Busy)
+        if (remote && !_server.Busy)
+        {
+            if (running) _server.SetDone("Connected to your AI pool");
+            else _server.SetMissing("No AI PC in your pool is reachable", "Retry", "Try the AI pool again");
+        }
+        else if (!_server.Busy)
         {
             if (running) _server.SetDone("Running");
             else _server.SetMissing(installed ? "Not running" : "Needs Ollama", "Start", "Start the Ollama server", enabled: installed);
@@ -77,11 +86,14 @@ public partial class SetupView : UserControl
         if (!_model.Busy)
         {
             _model.Title = $"Qwen model · {_recommended.Tag}";
-            _model.Description = $"{_recommended.Description} Chosen for {(vram > 0 ? $"{vram:N0} GB of GPU memory" : "a CPU-only PC")}; pick others on the Models page.";
+            _model.Description = remote
+                ? "Install models on your AI PCs from the AI pool page."
+                : $"{_recommended.Description} Chosen for {(vram > 0 ? $"{vram:N0} GB of GPU memory" : "a CPU-only PC")}; pick others on the Models page.";
             var have = models.Any(m => m.Name.Equals(_recommended.Tag, StringComparison.OrdinalIgnoreCase));
             var other = models.FirstOrDefault(m => !m.Name.StartsWith("claude-") && !Launcher.IsVariant(m.Name));
             if (have) _model.SetDone("Installed");
             else if (other is not null) _model.SetDone($"Using {other.Name}", optionalButton: "Download", tip: $"Also download {_recommended.Tag} ({_recommended.SizeGb:0.#} GB)");
+            else if (remote) _model.SetMissing(running ? "None on your AI PCs yet" : "Needs your AI pool", "Download", "Download a model sized for your strongest AI PC onto it", enabled: running);
             else _model.SetMissing(running ? "Not downloaded" : "Needs the Ollama server", "Download", $"Download {_recommended.Tag} ({_recommended.SizeGb:0.#} GB)", enabled: running);
         }
         if (!_claude.Busy)
@@ -101,8 +113,8 @@ public partial class SetupView : UserControl
         }
 
         // Uninstall buttons, so any part can be removed and set up again.
-        if (installed) _ollama.OfferUninstall("Uninstall", "Remove Ollama (silent). Downloaded models are kept in " + OllamaClient.ModelsDir); else _ollama.NoUninstall();
-        if (running) _server.OfferUninstall("Stop", "Stop the Ollama server (unloads models)"); else _server.NoUninstall();
+        if (installed && !remote) _ollama.OfferUninstall("Uninstall", "Remove Ollama (silent). Downloaded models are kept in " + OllamaClient.ModelsDir); else _ollama.NoUninstall();
+        if (running && !remote) _server.OfferUninstall("Stop", "Stop the Ollama server (unloads models)"); else _server.NoUninstall();
         if (Installer.ClaudePath is not null) _claude.OfferUninstall("Uninstall", "Remove Claude Code's program files. Your ~/.claude settings and history are kept."); else _claude.NoUninstall();
         if (Installer.NpmPath is not null) _node.OfferUninstall("Uninstall", "Remove Node.js with winget (asks for admin). Qwen Code needs it."); else _node.NoUninstall();
         if (Installer.QwenPath is not null) _qwen.OfferUninstall("Uninstall", "Remove Qwen Code (npm). Your ~/.qwen settings are kept."); else _qwen.NoUninstall();
@@ -142,11 +154,42 @@ public partial class SetupView : UserControl
                 }
                 await Installer.InstallOllamaAsync(Out, new Progress<double>(p => step.Progress = p), CancellationToken.None);
             }
+            else if (step == _server && OllamaClient.IsRemote)
+            {
+                Out("Connecting to your AI pool…");
+                await Maison.Services.Pool.AiPool.RefreshAsync();
+                var v = await OllamaClient.GetVersionAsync(4);
+                if (v is null) throw new InvalidOperationException("No AI PC in your pool is reachable. Check they're on and maison is running there, or add one on the AI pool page.");
+                Out($"Connected to your AI pool (Ollama v{v}).");
+            }
             else if (step == _server)
             {
                 Out("Starting Ollama…");
                 if (!await SystemProbe.StartOllamaAsync()) throw new InvalidOperationException("Ollama did not start within 20 seconds.");
                 Out("Ollama is running.");
+            }
+            else if (step == _model && OllamaClient.IsRemote)
+            {
+                // Install on the strongest AI PC in the pool, sized for its GPU.
+                await Maison.Services.Pool.AiPool.RefreshAsync();
+                var target = Maison.Services.Pool.AiPool.Members.Where(m => m.Online && m.Info is { OllamaRunning: true })
+                    .OrderByDescending(m => m.Info!.Gpu?.TotalGb ?? 0).FirstOrDefault()
+                    ?? throw new InvalidOperationException("No AI PC in your pool is ready. Set one up from the AI pool page.");
+                var tag = target.Info!.RecommendedModel;
+                Out($"Downloading {tag} onto {target.Member.Name}…");
+                var (ok, msg) = await Maison.Services.Pool.AiPool.InstallModelAsync(target.Member, tag);
+                if (!ok) throw new InvalidOperationException(msg);
+                while (true)
+                {
+                    await Task.Delay(2000);
+                    await Maison.Services.Pool.AiPool.RefreshAsync();
+                    if (target.Info?.Task is not { } t) continue;
+                    step.Progress = t.Percent;
+                    step.StatusText = t.Status;
+                    if (!t.Running) { if (t.Error is { } err) throw new InvalidOperationException(err); break; }
+                }
+                Shell.UseModel(tag);
+                Out($"{tag} installed on {target.Member.Name} and selected as the main model.");
             }
             else if (step == _model)
             {

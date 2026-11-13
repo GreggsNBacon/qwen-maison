@@ -15,6 +15,11 @@
       <Setter Property="FontSize" Value="12" />
       <Setter Property="Foreground" Value="{DynamicResource MaisonAccentTextBrush}" />
     </Style>
+    <Style x:Key="TileAi" TargetType="TextBlock">
+      <Setter Property="FontSize" Value="11.5" />
+      <Setter Property="Margin" Value="0,1,0,0" />
+      <Setter Property="Foreground" Value="{DynamicResource MaisonAccentTextBrush}" />
+    </Style>
     <Style x:Key="TileValue" TargetType="TextBlock">
       <Setter Property="FontSize" Value="20" />
       <Setter Property="FontWeight" Value="SemiBold" />
@@ -65,6 +70,9 @@
         <ui:Button x:Name="StartButton" Content="Start" Appearance="Primary" HorizontalAlignment="Center" Margin="0,28,0,0"
                    FontSize="20" Padding="56,14" Click="Start_Click" Icon="{ui:SymbolIcon Play24}"
                    ToolTip="Install and start everything: the Ollama engine, a Qwen model sized for this PC, Qwen Code (and Claude Code)" />
+        <ui:Button x:Name="RemoteLink" Appearance="Transparent" HorizontalAlignment="Center" Margin="0,10,0,0" Padding="10,4" Click="RemoteLink_Click"
+                   Content="Got a PC with a better graphics card? Use its AI instead" Foreground="{DynamicResource MaisonAccentTextBrush}"
+                   ToolTip="Skip the big download: use the AI of another PC at home that has maison with sharing turned on" />
 
         <StackPanel x:Name="ProgressPanel" Visibility="Collapsed" Margin="0,26,0,0" Width="520">
           <ProgressBar x:Name="Overall" Height="8" Maximum="100" />
@@ -130,16 +138,16 @@
       <!-- Simplified stats -->
       <UniformGrid Grid.Row="1" Columns="4" Margin="0,0,-10,10">
         <Border Style="{StaticResource Tile}" ToolTip="How hard the graphics card is working, and how hot it is">
-          <StackPanel><TextBlock Text="Graphics card" Style="{StaticResource TileLabel}" /><TextBlock x:Name="TGpu" Text="—" Style="{StaticResource TileValue}" /></StackPanel>
+          <StackPanel><TextBlock Text="Graphics card" Style="{StaticResource TileLabel}" /><TextBlock x:Name="TGpu" Text="—" Style="{StaticResource TileValue}" /><TextBlock x:Name="TGpuAi" Style="{StaticResource TileAi}" ToolTip="How much of this Qwen itself is using" /></StackPanel>
         </Border>
         <Border Style="{StaticResource Tile}" ToolTip="Graphics memory in use. Qwen runs fast while it fits here.">
-          <StackPanel><TextBlock Text="AI memory" Style="{StaticResource TileLabel}" /><TextBlock x:Name="TVram" Text="—" Style="{StaticResource TileValue}" /></StackPanel>
+          <StackPanel><TextBlock Text="AI memory" Style="{StaticResource TileLabel}" /><TextBlock x:Name="TVram" Text="—" Style="{StaticResource TileValue}" /><TextBlock x:Name="TVramAi" Style="{StaticResource TileAi}" ToolTip="How much of this Qwen itself is using" /></StackPanel>
         </Border>
         <Border Style="{StaticResource Tile}" ToolTip="Processor usage">
-          <StackPanel><TextBlock Text="Processor" Style="{StaticResource TileLabel}" /><TextBlock x:Name="TCpu" Text="—" Style="{StaticResource TileValue}" /></StackPanel>
+          <StackPanel><TextBlock Text="Processor" Style="{StaticResource TileLabel}" /><TextBlock x:Name="TCpu" Text="—" Style="{StaticResource TileValue}" /><TextBlock x:Name="TCpuAi" Style="{StaticResource TileAi}" ToolTip="How much of this Qwen itself is using" /></StackPanel>
         </Border>
         <Border Style="{StaticResource Tile}" ToolTip="System memory in use">
-          <StackPanel><TextBlock Text="Memory" Style="{StaticResource TileLabel}" /><TextBlock x:Name="TRam" Text="—" Style="{StaticResource TileValue}" /></StackPanel>
+          <StackPanel><TextBlock Text="Memory" Style="{StaticResource TileLabel}" /><TextBlock x:Name="TRam" Text="—" Style="{StaticResource TileValue}" /><TextBlock x:Name="TRamAi" Style="{StaticResource TileAi}" ToolTip="How much of this Qwen itself is using" /></StackPanel>
         </Border>
       </UniformGrid>
 

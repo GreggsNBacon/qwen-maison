@@ -5,17 +5,46 @@
   </picture>
 </p>
 
-**maison** is a Windows app that sets up and runs AI models on your own GPU with [Ollama](https://ollama.com), and launches
-**Claude Code** or **Qwen Code** against them. It needs no API keys and makes no cloud calls, so everything stays at home.
+**Run a capable AI coding assistant on your own PC, for free, with one click.**
+
+maison sets up [Ollama](https://ollama.com) and a Qwen model sized for your graphics card, then runs **Qwen Code** or
+**Claude Code** on it. No accounts, no API keys, no subscription, and nothing you type leaves your computer.
 
 ![Dashboard](docs/screenshot-dashboard.png)
+
+## What it does for you
+
+- **One button to get started.** Press **Start** and maison installs everything it needs, picks the right model for your
+  GPU and opens a ready-to-use Qwen terminal. It tells you what it's doing at every step, and skips anything you already have.
+- **Private and free.** The AI runs on your own graphics card. After setup it works offline, with no usage limits and
+  no per-token bills.
+- **Claude Code and Qwen Code, locally.** Use the coding agents you know against your own model. Your normal Claude Code
+  setup isn't touched.
+- **No "out of tokens" surprises.** maison tells each agent how much the local model can really hold, so long sessions
+  are summarised in time instead of failing halfway.
+- **Terminals built in.** Agents run in tabs inside the app, without flicker. Pop a session out into its own window, and
+  get a notification when an agent finishes and is waiting for you.
+- **See what your PC is doing.** Live gauges for the GPU, memory, CPU and power show how much of each the AI is using.
+  If another app is hogging graphics memory and slowing the AI down, maison warns you and shows which app it is.
+- **Models made easy.** Browse models that fit your GPU, install them with a progress bar, and see which ones you
+  haven't used in a while so you can free up disk space. You can even move all models to a bigger drive.
+- **An AI pool for the whole house.** Run models on the PCs with the best graphics cards and use them from your laptop or
+  other PCs. maison finds them on its own, sends work to whichever is free, and lets you manage their models from one page.
+- **Use it from your phone.** Check on a long task, or type to the agent, from your phone's browser on your home Wi-Fi.
+  It's password-protected and encrypted.
+- **Simple or advanced.** New users get a calm view with one button and one terminal. Flip **Advanced** for the full
+  controls: model and context choice, permissions, start-command options, extensions, colours and more.
+
+| Simple view | Terminals | Phone |
+|---|---|---|
+| ![Simple view](docs/screenshot-simple.png) | ![Terminals](docs/screenshot-terminal.png) | ![Phone portal](docs/screenshot-portal.png) |
 
 ## Install
 
 ### What you need
 - **Windows 10 or 11, 64-bit.**
-- **A graphics card with plenty of memory.** An NVIDIA GPU is recommended, and the GPU gauges only work on NVIDIA.
-  maison picks a model that fits your card:
+- **A graphics card with plenty of memory.** NVIDIA is recommended (the GPU gauges need it). maison picks a model that
+  fits your card:
 
   | GPU memory (VRAM) | Model maison installs | Download |
   |---|---|---|
@@ -25,213 +54,119 @@
   | No GPU / under 6 GB | qwen3.5:4b or 2b on the CPU | ~3 GB (slow) |
 
 - **Free disk space:** about 2 GB for the tools, plus the model.
-- **Internet**, for the first setup only. After that everything runs offline on your PC.
-- No accounts, API keys or subscriptions.
+- **Internet** for the first setup only.
 
 ### 1. Download
-Go to the [latest release](https://github.com/GreggsNBacon/qwen-maison/releases/latest) and download **`maison.exe`**.
-It's a single self-contained file (no .NET install needed), so you can put it anywhere, e.g. your Desktop or `C:\Tools`.
+Download **`maison-<version>.exe`** from the [latest release](https://github.com/GreggsNBacon/qwen-maison/releases/latest).
+It's a single file with nothing else to install, so put it wherever you like, e.g. your Desktop.
 
 ### 2. Run it
-Double-click `maison.exe`. The exe isn't code-signed, so Windows SmartScreen may say **"Windows protected your PC"**.
-Click **More info**, then **Run anyway**. This happens only the first time.
+Double-click it. The exe isn't code-signed, so Windows SmartScreen may say **"Windows protected your PC"**: click
+**More info**, then **Run anyway**. This happens only the first time.
 
-> To check the download, compare its hash with the SHA-256 in the release notes:
-> `Get-FileHash .\maison.exe` in PowerShell.
+> To check the download, compare `Get-FileHash .\maison-<version>.exe` (in PowerShell) with the SHA-256 in the release notes.
 
 ### 3. Press Start
-On a new PC maison opens in the **simple view**. Press **Start** and it installs everything, showing each step as it goes:
+maison installs, in order:
+1. **Ollama**, the engine that runs AI models (about 1.6 GB).
+2. **A Qwen model** for your GPU (the big download).
+3. **Claude Code**, from Anthropic's official installer.
+4. **Node.js**. Windows asks for permission once, so click **Yes**.
+5. **Qwen Code**.
 
-1. **Ollama**, the engine that runs AI models (official installer, about 1.6 GB, no admin needed).
-2. **A Qwen model** sized for your GPU (the big download, see the table above).
-3. **Claude Code** (Anthropic's official installer).
-4. **Node.js LTS** through winget. Windows asks for permission once, so click **Yes**.
-5. **Qwen Code** (`npm install -g @qwen-code/qwen-code`).
-
-Steps already done on your PC are skipped. If one fails, press **Try again**, or **Show details** to see the installer output.
+If a step fails, press **Try again**, or **Show details** to see what went wrong.
 
 ### 4. Use it
-When it's ready you'll see a ✓ **Qwen is ready** and a Qwen Code terminal. Type what you want it to do.
-- **Change folder** picks the project Qwen works in.
-- Turn on **Advanced** (top right) for the full app: Claude Code, models, tabs, system stats, extensions, settings and the phone portal.
+When you see ✓ **Qwen is ready**, type what you want done into the terminal. **Change folder** picks the project it
+works on. Turn on **Advanced** (top right) for everything else.
 
-Windows may ask whether maison can use the network. That's only needed for the optional phone portal; allow **Private networks** if you plan to use it.
+Windows may ask whether maison can use the network. That's only needed for phone access; allow **Private networks** if
+you want it.
 
-### Updating
-Download the newer `maison.exe` from [Releases](https://github.com/GreggsNBacon/qwen-maison/releases) and replace the old one.
-Your settings and models are kept.
+## Using maison
 
-### Uninstalling
-1. *(Optional)* In **Advanced → Setup**, use **Uninstall** on the parts you no longer want (Ollama, Claude Code, Node.js, Qwen Code).
-2. Delete `maison.exe`, and the settings folder `%APPDATA%\Maison` if you want them gone too.
-3. Models live in Ollama's folder (`%USERPROFILE%\.ollama\models` unless you moved it in Settings). Uninstalling Ollama
-   doesn't always delete them, so remove that folder to get the disk space back.
+**Simple view.** One terminal, four plain stats (graphics card, AI memory, processor, memory) and a warning if
+something is slowing Qwen down. Sessions keep running when you switch views.
 
-### Build from source
-You'll need the [.NET 10 SDK](https://dotnet.microsoft.com/download) on Windows.
+**Advanced view:**
+- **Dashboard**: health checks with one-click fixes (Start, Restart, Repair Ollama), live gauges, and launch buttons for
+  Claude Code, Qwen Code and plain Chat. Choose the model, how much it can keep in mind (context window), the project
+  folder, where it opens (a tab, Windows Terminal or PowerShell) and what the agent may do without asking.
+- **Terminals**: all sessions in tabs. Paste with Ctrl+V; copy by selecting and right-clicking. A dot on a tab means that
+  agent has finished and is waiting.
+- **Models**: install, use or delete models; a catalog that shows what fits your GPU; "stale" badges for unused models.
+- **Setup**: install, reinstall or uninstall each part separately.
+- **System**: detailed CPU, memory and GPU information, and which apps are using graphics memory.
+- **Extensions**: add skills and plugins to Qwen Code, including Claude Code plugin marketplaces.
+- **Settings**: accent colour, terminal colours and font size, notifications, start-command options, where models are
+  stored, the AI pool, starting with Windows (optionally minimised), update checks, and phone access.
+
+Every button has a tooltip explaining what it does.
+
+## Phone access
+1. In **Settings → Web portal**, set a password and turn the portal on.
+2. On your phone (same Wi-Fi), open one of the addresses shown, e.g. `https://192.168.1.20:<port>`. Your browser will warn
+   that the certificate isn't trusted, because maison made it itself. Check that the fingerprint matches the one in
+   Settings, then continue.
+3. Sign in once; that phone stays signed in until you sign it out in Settings.
+
+You see the same live sessions as on the PC (type on either), plus stats and a key bar with Esc, Tab, Ctrl+C and arrows.
+
+Is it safe? Connections are encrypted, the password is stored only as a strong hash, repeated wrong guesses are locked
+out, and by default only devices on your home network (or a VPN like Tailscale) can connect at all.
+
+## The AI pool: use your other PCs' AI
+Run the model on the PCs with good graphics cards, and use them from any PC at home: like Claude Code with a model in
+the cloud, except the "cloud" is your own PCs. With more than one AI PC, a busy one hands work to a free one.
+
+1. **On each AI PC:** in **Settings → AI pool**, turn on **Share this PC's AI with my other PCs**. Windows asks for
+   permission once. maison shows a 6-digit pairing code. Keep maison running there: **Settings → Start with Windows**
+   (with **Start minimised**) does that for you.
+2. **On your other PC:** open the **AI pool** page (or, in the simple view, click **Use its AI instead**). AI PCs at home
+   show up by themselves, with no addresses to type. Enter each one's code and press **Add to pool**, then turn on **Use the AI pool**.
+
+The AI pool page shows each AI PC's graphics card and whether it's free or busy, which agents are using it (from which
+PC), and its models. You can install or remove models on it, or set the whole PC up (Ollama and a model sized for its
+GPU) from where you sit.
+
+Agents work on the files of the PC you're at; only the model's thinking happens on an AI PC. Each session stays on one
+AI PC while that PC is free, so replies start quickly, and moves to another if it gets busy or switched off.
+
+Is it safe? Only PCs you've paired with the code can use an AI PC, connections are encrypted, and maison only opens its
+ports to your home network (and Tailscale), never the internet. Ollama itself stays private to each PC.
+## Troubleshooting
+
+**The AI is extremely slow or never finishes.** Usually another app is using graphics memory the model needs, so Windows
+pushes part of the model into normal RAM and it slows to a crawl. maison shows a warning naming the app. Close it (or
+turn off its overlay or instant replay; the NVIDIA App's overlay is a common one), or pick a smaller context window on
+the Dashboard.
+
+**An AI PC doesn't show up, or shows Offline.** Check that PC is on and awake, that maison is running there with sharing
+turned on, and that both PCs are on the same network. Windows must treat that network as Private; maison offers to set
+this when you turn sharing on. On another network (e.g. Tailscale), add it by name under **Not listed?** on the AI pool page.
+
+**Something isn't installed or won't start.** The Dashboard's health checks say what's wrong. **Repair Ollama** fixes a
+broken Ollama update, and **Setup** can reinstall any part.
+
+## Updating and uninstalling
+- **Update:** maison checks GitHub for a newer version when it starts and once a day (turn this off, or **Check now**,
+  in **Settings → Updates**). When there is one, an **Update to …** button appears in the title bar and opens the download
+  page. Download the newer `maison-<version>.exe`, close maison, run the new one and delete the old one (recreate any desktop shortcut with the
+  **Desktop shortcut** button). Your settings and models are kept.
+- **Uninstall:** optionally use **Uninstall** on the parts you don't want in **Advanced → Setup**, then delete the exe
+  and the settings folder `%APPDATA%\Maison`. Models live in `%USERPROFILE%\.ollama\models` (unless you moved them);
+  delete that folder to get the disk space back.
+
+## Build it yourself
+With the [.NET 10 SDK](https://dotnet.microsoft.com/download) installed:
 ```powershell
 git clone https://github.com/GreggsNBacon/qwen-maison.git
-cd qwen-maison\src
-dotnet publish -c Release -o ..\dist
-..\dist\maison.exe
+cd qwen-maison
+.\build.ps1
 ```
-Settings live in `%APPDATA%\Maison\config.json`. Settings from the older "Qwen Local Launcher" build are migrated automatically.
-
-## Pages
-
-**Dashboard**
-- Cards: Ollama server status, the loaded model (with % on GPU and context size), and the last speed test.
-- GPU gauges, refreshed every 2 s: temperature (green, then amber at 75 °C, then red at 85 °C), load, power against the
-  card's limit, VRAM, fan speed and core clock (NVIDIA via `nvidia-smi`).
-- Health checks: Ollama install, runtime files (`llama-server.exe`, which catches a broken auto-update), server, loaded
-  models with CPU-spill warnings, installed models, and the `claude`/`qwen` CLIs. Refreshes every 10 s.
-- Actions: Start, Restart, Speed test, Unload, Repair Ollama (bundled script), and Remove old aliases.
-- Machine gauges: GPU temperature, load, power, VRAM, plus CPU and RAM. A warning appears when another app (an overlay, a
-  browser, a game) holds GPU memory the model needs. Without that room, Windows quietly moves part of the model to system RAM and
-  generation drops from about 35 tokens/s to almost nothing.
-- Launch **Claude Code**, **Qwen Code** or **Chat**. **Open in** chooses where: this app (a tab), Windows Terminal, or a PowerShell window.
-  - Claude Code gets a per-session `ANTHROPIC_BASE_URL=http://127.0.0.1:11434` and `ANTHROPIC_AUTH_TOKEN=ollama`, with every
-    model slot mapped to the local model. Ollama serves the Anthropic Messages API natively, and your normal `claude` is untouched.
-  - Qwen Code runs `qwen --auth-type openai --openai-base-url http://127.0.0.1:11434/v1 ...`.
-- **Permissions**: Ask each time, Accept edits, Plan only, or Skip all prompts. maison always passes an explicit mode
-  (`claude --permission-mode …`, `qwen --approval-mode …`). Claude Code's *auto* mode isn't offered because its safety
-  check runs on Anthropic's servers, which aren't reachable through Ollama ("Auto mode can't check actions in this session").
-- Context-window picker. The default is 64K, set by creating a settings-only `<model>-ctx64k` variant.
-- Copyable start commands for the current selection.
-
-**Terminals**: Claude Code, Qwen Code, Chat and plain PowerShell sessions in tabs inside the app.
-
-![Qwen Code running inside maison](docs/screenshot-terminal.png)
-
-- Each tab is a real Windows pseudo console (ConPTY) shown by xterm.js (WebGL renderer) in WebView2. Full-screen TUIs
-  work as they do in Windows Terminal. Output is sent in whole frames, so Claude Code and Qwen Code redraws don't jitter.
-- A strip above the tabs shows live GPU, temperature, VRAM, CPU, RAM and Ollama usage.
-- **Ctrl+V** (or Shift+Insert, or right-click with nothing selected) pastes once. Select text, then right-click or press Ctrl+Shift+C, to copy.
-- **Idle indicator**: once an agent you gave a task stops producing output, its tab gets a dot and you're told. A Windows
-  notification and a flashing taskbar button appear if maison is in the background, a pop-up if it's in front.
-- **Pop out** opens a second window that *mirrors* the same session live: the same process and the same screen, and you can type in
-  either. The window you type in sets the size, and other mirrors scale to fit. Closing the pop-out keeps the session.
-
-**Models**
-- Install any Ollama model by name, with live progress (size, speed, time left) and Cancel. Interrupted downloads resume.
-- Installed list with size, parameter count, quantization, capabilities, age and **last used**. **Use** sets a model as the main model,
-  and **Delete** removes it along with its context variants, so the disk space is actually freed.
-- **Stale** badge: models not launched or loaded for 14 days (adjustable in Settings) are marked, so you can see what's safe to uninstall.
-- A curated Qwen catalog showing whether each model fits your GPU, with a ★ on the recommended pick and a warning when disk space is low.
-
-**Setup**: **Set up everything** installs whatever is missing:
-1. Ollama: the official `OllamaSetup.exe` (about 1.6 GB), installed silently for the current user, after which the server starts.
-2. The recommended Qwen model for the GPU: qwen3.8:27b for 24 GB, qwen3.5:9b for 10–16 GB, qwen3.5:4b for 6–8 GB, and 4b or 2b on CPU.
-3. Claude Code: `irm https://claude.ai/install.ps1 | iex`.
-4. Node.js LTS: winget (asks for admin once).
-5. Qwen Code: `npm install -g @qwen-code/qwen-code`.
-
-Each step also has **Uninstall** (Stop for the server), so any part can be removed and set up again. **Reinstall everything**
-reinstalls the latest Ollama, Claude Code, Node.js and Qwen Code over the top. Models, settings and history are kept.
-
-**System**: CPU (name, cores and threads, usage), memory, GPU (temperature, power, clocks, driver), Windows version and uptime,
-model-drive space, Ollama's own CPU/RAM/VRAM use, GPU memory per app, and the busiest processes by CPU and RAM. CPU
-temperature isn't shown because Windows doesn't expose it to apps without the board vendor's tools.
-
-**Extensions**: a manager for Qwen Code extensions. Qwen Code installs Claude Code marketplace plugins (converting them
-automatically), Gemini CLI extensions, npm packages and git repos.
-- Built-in marketplaces: [anthropics/claude-plugins-official](https://github.com/anthropics/claude-plugins-official),
-  [anthropics/skills](https://github.com/anthropics/skills) and [anthropics/claude-code](https://github.com/anthropics/claude-code)
-  (demo plugins). You can add any Claude-format marketplace by `owner/repo`.
-- There's a link to the [Gemini CLI extension gallery](https://geminicli.com/extensions/); install any extension from it by its GitHub URL.
-- Installs, updates and uninstalls run in a terminal tab, so you can review and confirm them.
-
-**Settings**
-- Accent colour (purple by default, to match the logo) and terminal colour themes: maison, Campbell, One Half Dark,
-  Solarized Dark, Midnight Violet and Light. Also the terminal font size.
-- Idle notifications: on or off, the number of seconds, and the sound.
-- Stale threshold.
-- **Model storage folder**: moves the whole Ollama model store to another drive and points `OLLAMA_MODELS` at it. Ollama
-  keeps all models in one folder, so the location is per PC, not per model.
-- **Web portal**, below.
-
-**Simple view**: for people who don't want the technical side. New installs start here, and the **Advanced** toggle
-(top right) or **Simple view** in the sidebar switches between the two. Sessions keep running when you switch.
-- Before setup it shows one **Start** button. Setup runs the same real steps as the Setup page. Each step gets a friendly
-  headline ("Moving Qwen in — this is the big download…") with the actual action, progress and latest installer output under it.
-  If a step fails, you get **Try again** or **Show details**.
-- Once ready it shows one ✓ "Qwen is ready", four plain stats (graphics card, AI memory, processor, memory), a warning if
-  another app is slowing Qwen down, and a Qwen Code terminal. That terminal is the same session as the one in Terminals.
-
-| System | Settings | Phone portal |
-|---|---|---|
-| ![System](docs/screenshot-system.png) | ![Settings](docs/screenshot-settings.png) | ![Portal](docs/screenshot-portal.png) |
-
-### Web portal (phone access)
-Open maison in your phone's browser to see the PC's stats and health, start sessions, and use the **same** terminal
-sessions as the app. They're mirrors, not copies, and phone pages add a key bar with Esc, Tab, Ctrl+C, the arrow keys and Paste.
-
-1. In **Settings → Web portal**, set a password (at least 8 characters) and turn the portal on.
-2. Windows may ask once whether maison can use the network. Allow **Private networks**.
-3. On your phone (same Wi-Fi), open one of the addresses shown, such as `https://192.168.1.20:<port>`. Your browser will warn that
-   the certificate isn't trusted, because maison made it itself on this PC. Check that the fingerprint matches the one in Settings, then continue.
-4. Sign in once. That device stays signed in, and you can sign devices out from Settings.
-
-Security:
-- **Encryption**: HTTPS only, with a self-signed certificate kept in your Windows certificate store.
-- **Password**: stored only as a salted PBKDF2-SHA256 hash (600,000 rounds). Changing it signs every device out.
-- **Remembered devices**: a random 256-bit token in an `HttpOnly; Secure; SameSite=Strict` cookie. Only its SHA-256 hash is stored.
-- **Brute-force limits**: 5 wrong passwords lock that address out for 15 minutes, with a global cap of 30 failures an hour.
-- **Cross-site protection**: Origin checks on every change and on terminal WebSockets, and a strict Content-Security-Policy.
-- **Home network only by default**: connections from the internet are refused (LAN, plus VPN ranges such as Tailscale's 100.64/10).
-  You *can* allow them for router port-forwarding, but a VPN such as Tailscale is the safer way to reach maison from outside.
-- **Unique port**: picked at random on first run, and changeable.
-
-Every button and control has a tooltip.
-
-## Troubleshooting: Qwen (or Claude) via Ollama is extremely slow or never finishes
-Look at **System → GPU memory by app**. If another app holds several GB of VRAM while a model is loaded, the model no
-longer fits and Windows moves part of it into system RAM. Generation then drops to single-digit tokens/s (seen here:
-NVIDIA App's overlay holding 6.4 GB next to a 21.6 GB model). Close the app, or turn off its overlay or instant replay, or
-pick a smaller context (32K) on the Dashboard. maison shows a warning when this happens.
-
-## Project layout
-| Path | |
-|---|---|
-| `src/Services/OllamaClient.cs` | Ollama REST API (version, tags, ps, create, pull with progress, generate, delete) |
-| `src/Services/SystemProbe.cs` | Install/runtime checks, nvidia-smi, fresh PATH lookup, start/stop/repair |
-| `src/Services/Installer.cs` | Fresh-PC installers (Ollama, Claude Code, Node.js, Qwen Code) |
-| `src/Services/ModelCatalog.cs` | Curated Qwen models, VRAM fit estimate, per-PC recommendation |
-| `src/Services/Launcher.cs` | Per-session environment and commands; external terminal launch |
-| `src/Services/PseudoConsole.cs` | ConPTY wrapper |
-| `src/Services/TerminalHub.cs` | Shared sessions: process, history, frame batching, idle detection, size control |
-| `src/Services/TermLink.cs`, `TerminalPage.cs` | One viewer ↔ session protocol; the xterm.js page (app and portal) |
-| `src/Services/StatsService.cs`, `HealthAdvice.cs` | CPU/RAM/GPU and per-app VRAM polling; the VRAM-crowding warning |
-| `src/Services/WebPortal.cs`, `PortalSecurity.cs` | Phone portal (Kestrel HTTPS + WebSockets), auth, cert |
-| `src/Services/QwenExtensions.cs`, `ModelStorage.cs` | Extension marketplaces; moving the model store |
-| `src/Controls/TerminalViewer.cs` | A WebView2 view onto a shared session (tabs and pop-outs) |
-| `src/Controls/ArcGauge.cs` | Animated arc gauge |
-| `src/Views/` | Models, Setup and Terminals pages |
-| `src/MainWindow.xaml(.cs)` | Shell, sidebar and Dashboard (WPF-UI 4.3) |
-| `src/Assets/terminal/` | xterm.js 6.0 + addons (MIT), embedded |
-| `src/Assets/brand/` | App icon (`maison.ico`, all sizes) and logos |
-| `branding/` | Logo source (`maison-icon.svg`), `make-assets.ps1` to regenerate the icon and logos, and the design explorations |
-
-## Brand
-- Name: **maison**, French for "house", with the pun on **ai**. Always lowercase, with *ai* in the gradient.
-- Tagline: "the **Qwen**-tissential AI home", with *Qwen* in the gradient.
-- Icon: a lowercase *ai* in Segoe UI Variable Display Bold under a gradient roof. The i's dot is coral, like a lit window.
-- Gradient: `#E8825F` → `#C76AD8` → `#7C5CFF`.
-
-## Self-test
-`maison.exe --selftest <dir> [--pull <model>] [--term <folder>] [--portal <password>]` screenshots every page, writes `selftest.txt` and exits.
-- `--pull` installs a model through the Models page and then removes it.
-- `--term` opens Claude Code, Qwen Code and PowerShell tabs, then checks:
-  - typing through xterm.js reaches the shell;
-  - a pop-out mirror shows the same history and its input reaches the shell;
-  - Ctrl+V pastes exactly once;
-  - Claude Code starts without the auto-mode warning.
-- `--portal` runs the web portal over real HTTPS and checks login, cookies, lockout, origin checks, state, launching and the
-  mirrored terminal WebSocket. Set `MAISON_CONFIG_DIR` to a scratch folder so your real settings aren't touched.
-
-## Notes
-- The exe is unsigned. On another PC, SmartScreen may show "Windows protected your PC": click **More info**, then **Run anyway**.
-- The GPU gauges need an NVIDIA card. In-app terminals need the WebView2 Runtime, which ships with Windows 11.
+That makes `dist\maison-<version>.exe`. Or open the folder in maison and ask Qwen Code to *"build maison and run the
+self-test"*: the repository includes instructions for AI agents. Details, testing and how it works:
+[docs/DEVELOPING.md](docs/DEVELOPING.md).
 
 ## Legal
 - **Unofficial.** maison is an independent project. It isn't affiliated with, endorsed by or sponsored by Anthropic,

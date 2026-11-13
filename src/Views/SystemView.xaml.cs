@@ -36,6 +36,8 @@ public partial class SystemView : UserControl
         CpuSub.Text = $"{s.Cores} cores · {s.Threads} threads" + (s.CpuMhz is { } m ? $" · {m:N0} MHz base" : "");
         GCpu.Value = s.CpuPercent;
         GCpu.Display = $"{s.CpuPercent:0}%";
+        bool ai = s.OllamaRamGb >= 0.05;
+        GCpu.SetAi(ai, Math.Min(s.OllamaCpuPercent, s.CpuPercent), $"AI {s.OllamaCpuPercent:0}%");
 
         RamName.Text = $"{s.RamTotalGb:0} GB";
         RamSub.Text = $"{s.RamUsedGb:0.0} GB in use · {s.RamTotalGb - s.RamUsedGb:0.0} GB free";
@@ -44,6 +46,7 @@ public partial class SystemView : UserControl
         GRam.Danger = GRam.Maximum * 0.95;
         GRam.Value = s.RamUsedGb;
         GRam.Display = $"{s.RamUsedGb:0.0} GB";
+        GRam.SetAi(ai, s.OllamaRamGb, $"AI {s.OllamaRamGb:0.0} GB");
 
         if (s.Gpu is { } g)
         {
@@ -62,6 +65,7 @@ public partial class SystemView : UserControl
             GVram.Danger = GVram.Maximum * 0.97;
             GVram.Value = g.UsedGb;
             GVram.Display = $"{g.UsedGb:0.0} GB";
+            GVram.SetAi(ai, Math.Min(s.OllamaVramGb, g.UsedGb), $"AI {s.OllamaVramGb:0.0} GB");
         }
         else
         {

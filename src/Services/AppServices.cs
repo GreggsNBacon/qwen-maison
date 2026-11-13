@@ -26,8 +26,56 @@ public static class Theming
         ("Teal", "#2BB5A0"), ("Green", "#4CC38A"), ("Gold", "#E5B454"), ("Windows accent", ""),
     ];
 
+    private static readonly string[] AccentColorKeys = ["SystemAccentColor", "SystemAccentColorPrimary", "SystemAccentColorSecondary", "SystemAccentColorTertiary"];
+    /// <summary>Theme brush key → which accent shade (index into AccentColorKeys) it was built from.</summary>
+    private static readonly Dictionary<object, int> AccentBrushKeys = [];
+    private static readonly List<Color[]> SeenShades = [];
+
+    private static Color[] CurrentShades() =>
+        AccentColorKeys.Select(k => System.Windows.Application.Current.TryFindResource(k) is Color c ? c : Colors.Transparent).ToArray();
+
+    private static IEnumerable<ResourceDictionary> AllDictionaries(ResourceDictionary d)
+    {
+        yield return d;
+        foreach (var m in d.MergedDictionaries)
+            foreach (var x in AllDictionaries(m)) yield return x;
+    }
+
+    /// <summary>
+    /// WPF UI builds control brushes (toggle switch fill, focus borders, slider thumbs, check boxes…) from the accent
+    /// colour once, so changing the accent left them in the old colour until a restart. Find every theme brush whose
+    /// colour is one of the accent shades seen so far and redefine it (at app level) in the matching new shade.
+    /// </summary>
+    private static void RetintThemeBrushes(Color[] newShades)
+    {
+        var app = System.Windows.Application.Current;
+        foreach (var dict in AllDictionaries(app.Resources).ToList())
+            foreach (var key in dict.Keys.Cast<object>().ToList())
+            {
+                if (AccentBrushKeys.ContainsKey(key) || key is string s && s.StartsWith("Maison")) continue;
+                SolidColorBrush? b;
+                try { b = dict[key] as SolidColorBrush; }
+                catch { continue; }   // a lazily-built resource that can't be built out of its own context: not ours
+                if (b is null) continue;
+                foreach (var shades in SeenShades)
+                {
+                    int i = Array.FindIndex(shades, c => c.A > 0 && c.R == b.Color.R && c.G == b.Color.G && c.B == b.Color.B);
+                    if (i >= 0) { AccentBrushKeys[key] = i; break; }
+                }
+            }
+        foreach (var (key, i) in AccentBrushKeys)
+        {
+            var old = app.TryFindResource(key) as SolidColorBrush;
+            var nc = newShades[i];
+            var brush = new SolidColorBrush(Color.FromArgb(old?.Color.A ?? 255, nc.R, nc.G, nc.B)) { Opacity = old?.Opacity ?? 1 };
+            brush.Freeze();
+            app.Resources[key] = brush;
+        }
+    }
+
     public static void ApplyAccent(string name)
     {
+        SeenShades.Add(CurrentShades());
         var hex = Accents.FirstOrDefault(a => a.Name == name).Hex;
         Color c;
         if (string.IsNullOrEmpty(hex))
@@ -46,6 +94,27 @@ public static class Theming
         res["MaisonAccentBrush"] = Frozen(c);
         res["MaisonAccentSoftBrush"] = Frozen(Color.FromArgb(0x38, c.R, c.G, c.B));
         res["MaisonAccentTextBrush"] = Frozen(Mix(c, Colors.White, 0.35));
+        RetintThemeBrushes(CurrentShades());
+        RecolourWindowBorders(c);
+    }
+
+    [System.Runtime.InteropServices.DllImport("dwmapi.dll")]
+    private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attribute, ref uint value, int size);
+    private const int DWMWA_BORDER_COLOR = 34;
+
+    /// <summary>
+    /// The thin accent border Windows draws round the focused window. WPF-UI only recolours it when focus changes, so
+    /// after picking a new accent the focused window would keep the old colour until clicked away and back.
+    /// </summary>
+    private static void RecolourWindowBorders(Color c)
+    {
+        uint colorref = (uint)(c.R | c.G << 8 | c.B << 16);   // COLORREF is 0x00BBGGRR
+        foreach (System.Windows.Window w in System.Windows.Application.Current.Windows)
+        {
+            if (!w.IsActive) continue;   // inactive windows keep Windows' dimmed border
+            var hwnd = new System.Windows.Interop.WindowInteropHelper(w).Handle;
+            if (hwnd != IntPtr.Zero) try { DwmSetWindowAttribute(hwnd, DWMWA_BORDER_COLOR, ref colorref, sizeof(uint)); } catch { }
+        }
     }
 
     private static SolidColorBrush Frozen(Color c) { var b = new SolidColorBrush(c); b.Freeze(); return b; }

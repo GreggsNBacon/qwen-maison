@@ -114,8 +114,72 @@ public sealed class PortalDevice
     public DateTime LastSeen { get; set; }
 }
 
+/// <summary>
+/// Everything that goes into the Claude Code / Qwen Code / Chat start commands, editable on Settings → Start commands.
+/// Defaults are what maison used before, plus telling each agent the real context window.
+/// </summary>
+public sealed class LaunchOptions
+{
+    // Shared
+    /// <summary>Tell the agent how big Ollama's context window really is, so it compacts before it fills (instead of erroring).</summary>
+    public bool TellContextWindow { get; set; } = true;
+    /// <summary>Max tokens per reply. 0 = automatic: a quarter of the context window, 4K–32K.</summary>
+    public int MaxOutputTokens { get; set; }
+
+    // Claude Code
+    /// <summary>Compact at this % of the window. 0 = Claude Code's default.</summary>
+    public int ClaudeCompactPercent { get; set; }
+    public bool ClaudeDisableThinking { get; set; }
+    public bool ClaudeNoNonessentialTraffic { get; set; } = true;
+    public bool ClaudeNoPromptCaching { get; set; } = true;
+    public bool ClaudeContinue { get; set; }
+    public string ClaudeExtraArgs { get; set; } = "";
+    public string ClaudeExtraEnv { get; set; } = "";
+
+    // Qwen Code
+    /// <summary>Compact at this fraction of the window (Qwen Code's context.autoCompactThreshold, default 0.85).</summary>
+    public double QwenCompactThreshold { get; set; } = 0.85;
+    /// <summary>Per-request timeout. Local models on long prompts can take minutes (Qwen Code's default is 2 min).</summary>
+    public int QwenTimeoutSeconds { get; set; } = 600;
+    public bool QwenContinue { get; set; }
+    public string QwenExtraArgs { get; set; } = "";
+    public string QwenExtraEnv { get; set; } = "";
+
+    // Chat (ollama run)
+    public bool ChatVerbose { get; set; }
+    /// <summary>"default", "on" or "off" (ollama run --think).</summary>
+    public string ChatThink { get; set; } = "default";
+    public string ChatExtraArgs { get; set; } = "";
+}
+
+/// <summary>An AI PC this PC has paired with (client side).</summary>
+public sealed class PoolMember
+{
+    public string Id { get; set; } = "";
+    public string Name { get; set; } = "";
+    /// <summary>Last address it was seen at (refreshed by discovery).</summary>
+    public string Address { get; set; } = "";
+    public int Port { get; set; } = 11435;
+    /// <summary>The key it gave us at pairing.</summary>
+    public string Token { get; set; } = "";
+    /// <summary>Its HTTPS certificate's SHA-256, pinned at pairing.</summary>
+    public string Thumbprint { get; set; } = "";
+    public bool Enabled { get; set; } = true;
+}
+
+/// <summary>A PC paired with this AI PC (host side).</summary>
+public sealed class PoolClient
+{
+    public string Id { get; set; } = "";
+    public string Name { get; set; } = "";
+    public string TokenHash { get; set; } = "";
+    public DateTime Added { get; set; }
+    public DateTime LastSeen { get; set; }
+}
+
 public sealed class AppConfig
 {
+    public LaunchOptions Launch { get; set; } = new();
     public string MainModel { get; set; } = "";
     public string FastModel { get; set; } = "";
     public string Context { get; set; } = "64K";
@@ -140,6 +204,28 @@ public sealed class AppConfig
     public int StaleDays { get; set; } = 14;
     public Dictionary<string, DateTime> ModelLastUsed { get; set; } = [];
     public DateTime UsageTrackingSince { get; set; } = DateTime.Now;
+
+    /// <summary>Look for a newer maison on GitHub at start-up and once a day.</summary>
+    public bool CheckForUpdates { get; set; } = true;
+
+    // AI pool
+    /// <summary>Stable id for this PC in AI pools (so a PC is recognised when its address changes).</summary>
+    public string MachineId { get; set; } = Guid.NewGuid().ToString("N");
+    /// <summary>Use the AI pool (paired AI PCs, and optionally this PC) instead of only this PC's Ollama.</summary>
+    public bool UseRemoteAi { get; set; }
+    /// <summary>Also use this PC's own Ollama as part of the pool.</summary>
+    public bool PoolIncludeThisPc { get; set; } = true;
+    /// <summary>AI PCs this PC has paired with.</summary>
+    public List<PoolMember> PoolMembers { get; set; } = [];
+    /// <summary>Legacy (unreleased builds): a single remote address.</summary>
+    public string RemoteAiAddress { get; set; } = "";
+
+    /// <summary>This PC is an AI PC: maison's pool service shares its Ollama with paired PCs at home.</summary>
+    public bool ShareAi { get; set; }
+    /// <summary>The code other PCs enter once to pair with this AI PC.</summary>
+    public string PoolPairCode { get; set; } = "";
+    /// <summary>PCs paired with this AI PC (only a hash of each key is kept).</summary>
+    public List<PoolClient> PoolClients { get; set; } = [];
 
     // Web portal
     public bool PortalEnabled { get; set; }

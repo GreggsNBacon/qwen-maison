@@ -10,7 +10,7 @@
     <UseWindowsForms>true</UseWindowsForms>
     <AssemblyName>maison</AssemblyName>
     <RootNamespace>Maison</RootNamespace>
-    <Version>0.0.4</Version>
+    <Version>0.0.5</Version>
     <Product>maison</Product>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>Assets\brand\maison.ico</ApplicationIcon>
@@ -46,5 +46,17 @@
     <!-- phone web portal pages -->
     <EmbeddedResource Include="Assets\portal\*.html" LogicalName="portal/%(Filename)%(Extension)" />
   </ItemGroup>
+
+  <!-- dotnet publish names the exe after the version (maison-0.0.5.exe), so downloads say which build they are.
+       Only the file name changes: the app, its settings and its process are still "maison". Plain builds keep maison.exe. -->
+  <Target Name="VersionedPublishName" AfterTargets="Publish">
+    <PropertyGroup>
+      <_PublishedExe>$([System.IO.Path]::Combine($(PublishDir), '$(AssemblyName).exe'))</_PublishedExe>
+      <_VersionedExe>$([System.IO.Path]::Combine($(PublishDir), '$(AssemblyName)-$(Version).exe'))</_VersionedExe>
+    </PropertyGroup>
+    <Delete Files="$(_VersionedExe)" Condition="Exists('$(_PublishedExe)')" />
+    <Move SourceFiles="$(_PublishedExe)" DestinationFiles="$(_VersionedExe)" Condition="Exists('$(_PublishedExe)')" />
+    <Message Importance="high" Text="maison -> $(_VersionedExe)" />
+  </Target>
 
 </Project>

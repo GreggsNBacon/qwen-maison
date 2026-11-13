@@ -27,6 +27,35 @@ public sealed class ArcGauge : FrameworkElement
         nameof(Danger), typeof(double), typeof(ArcGauge), new FrameworkPropertyMetadata(double.NaN, FrameworkPropertyMetadataOptions.AffectsRender));
     private static readonly DependencyProperty AnimatedProperty = DependencyProperty.Register(
         "Animated", typeof(double), typeof(ArcGauge), new FrameworkPropertyMetadata(0.0, FrameworkPropertyMetadataOptions.AffectsRender));
+    /// <summary>How much of <see cref="Value"/> the AI (Ollama) accounts for. NaN = not shown.</summary>
+    public static readonly DependencyProperty AiValueProperty = DependencyProperty.Register(
+        nameof(AiValue), typeof(double), typeof(ArcGauge), new PropertyMetadata(double.NaN, OnAiChanged));
+    public static readonly DependencyProperty AiDisplayProperty = DependencyProperty.Register(
+        nameof(AiDisplay), typeof(string), typeof(ArcGauge), new FrameworkPropertyMetadata("", FrameworkPropertyMetadataOptions.AffectsRender));
+    private static readonly DependencyProperty AnimatedAiProperty = DependencyProperty.Register(
+        "AnimatedAi", typeof(double), typeof(ArcGauge), new FrameworkPropertyMetadata(0.0, FrameworkPropertyMetadataOptions.AffectsRender));
+
+    public double AiValue { get => (double)GetValue(AiValueProperty); set => SetValue(AiValueProperty, value); }
+    /// <summary>Small label under the value, e.g. "AI 6.1 GB".</summary>
+    public string AiDisplay { get => (string)GetValue(AiDisplayProperty); set => SetValue(AiDisplayProperty, value); }
+
+    /// <summary>Shows (or hides) the AI's part of the reading.</summary>
+    public void SetAi(bool show, double value, string text)
+    {
+        AiValue = show ? Math.Max(0, value) : double.NaN;
+        AiDisplay = show ? text : "";
+    }
+
+    private static void OnAiChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        var g = (ArcGauge)d;
+        var v = (double)e.NewValue;
+        if (double.IsNaN(v)) { g.BeginAnimation(AnimatedAiProperty, null); g.InvalidateVisual(); return; }
+        g.BeginAnimation(AnimatedAiProperty, new DoubleAnimation(v, TimeSpan.FromMilliseconds(600))
+        {
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut },
+        });
+    }
 
     public double Value { get => (double)GetValue(ValueProperty); set => SetValue(ValueProperty, value); }
     public double Maximum { get => (double)GetValue(MaximumProperty); set => SetValue(MaximumProperty, value); }
@@ -61,10 +90,24 @@ public sealed class ArcGauge : FrameworkElement
 
         double v = (double)GetValue(AnimatedProperty);
         double frac = Maximum > 0 ? Math.Clamp(v / Maximum, 0, 1) : 0;
+        bool showAi = !double.IsNaN(AiValue);
+        var colour = ColorFor(Value);
         if (frac > 0.002)
         {
-            var pen = new Pen(new SolidColorBrush(ColorFor(Value)), Thickness) { StartLineCap = PenLineCap.Round, EndLineCap = PenLineCap.Round };
+            // With an AI share: the whole reading is dim, the AI's part of it is drawn bright on top.
+            var c = showAi ? Color.FromArgb(0x66, colour.R, colour.G, colour.B) : colour;
+            var pen = new Pen(new SolidColorBrush(c), Thickness) { StartLineCap = PenLineCap.Round, EndLineCap = PenLineCap.Round };
             DrawArc(dc, center, r, StartAngle, Sweep * frac, pen);
+        }
+        if (showAi)
+        {
+            double ai = (double)GetValue(AnimatedAiProperty);
+            double aiFrac = Maximum > 0 ? Math.Clamp(ai / Maximum, 0, frac) : 0;
+            if (aiFrac > 0.002)
+            {
+                var pen = new Pen(new SolidColorBrush(colour), Thickness) { StartLineCap = PenLineCap.Round, EndLineCap = PenLineCap.Round };
+                DrawArc(dc, center, r, StartAngle, Sweep * aiFrac, pen);
+            }
         }
 
         double dpi = VisualTreeHelper.GetDpi(this).PixelsPerDip;
@@ -73,7 +116,16 @@ public sealed class ArcGauge : FrameworkElement
         var valueText = new FormattedText(Display, CultureInfo.CurrentUICulture, FlowDirection.LeftToRight,
             new Typeface(new FontFamily("Segoe UI Variable Display, Segoe UI"), FontStyles.Normal, FontWeights.SemiBold, FontStretches.Normal),
             Math.Max(12, size * 0.17), primary, dpi);
-        dc.DrawText(valueText, new Point(center.X - valueText.Width / 2, center.Y - valueText.Height / 2 - 2));
+        bool aiLabel = !double.IsNaN(AiValue) && !string.IsNullOrEmpty(AiDisplay);
+        double valueY = center.Y - valueText.Height / 2 - 2 - (aiLabel ? size * 0.06 : 0);
+        dc.DrawText(valueText, new Point(center.X - valueText.Width / 2, valueY));
+        if (aiLabel)
+        {
+            var aiText = new FormattedText(AiDisplay, CultureInfo.CurrentUICulture, FlowDirection.LeftToRight,
+                new Typeface(new FontFamily("Segoe UI"), FontStyles.Normal, FontWeights.SemiBold, FontStretches.Normal),
+                Math.Max(9.5, size * 0.085), Brush("MaisonAccentTextBrush", Color.FromRgb(0xB8, 0xA8, 0xFF)), dpi);
+            dc.DrawText(aiText, new Point(center.X - aiText.Width / 2, valueY + valueText.Height - 2));
+        }
 
         if (!string.IsNullOrEmpty(Caption))
         {

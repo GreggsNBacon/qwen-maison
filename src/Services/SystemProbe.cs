@@ -87,7 +87,8 @@ public static class SystemProbe
 
     public static async Task<bool> StartOllamaAsync()
     {
-        if (await OllamaClient.GetVersionAsync(2) is not null) return true;
+        // Always this PC's own Ollama (it may be serving the AI pool while this PC also uses the pool).
+        if (await OllamaClient.GetLocalVersionAsync(2) is not null) return true;
         if (File.Exists(OllamaApp))
             Process.Start(new ProcessStartInfo(OllamaApp) { UseShellExecute = true, WorkingDirectory = OllamaDir });
         else if (OllamaInstalled)
@@ -97,7 +98,7 @@ public static class SystemProbe
 
         for (int i = 0; i < 40; i++)
         {
-            if (await OllamaClient.GetVersionAsync(2) is not null) return true;
+            if (await OllamaClient.GetLocalVersionAsync(2) is not null) return true;
             await Task.Delay(500);
         }
         return false;

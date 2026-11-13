@@ -17,7 +17,16 @@
       <RowDefinition Height="*" />
     </Grid.RowDefinitions>
 
-    <ui:TitleBar Grid.Row="0" Title="maison">
+    <ui:TitleBar x:Name="AppTitleBar" Grid.Row="0" Title="maison">
+      <ui:TitleBar.Header>
+        <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="12,0,0,0">
+          <TextBlock Text="maison" FontSize="12" Margin="0,0,0,0" VerticalAlignment="Center" Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+          <TextBlock x:Name="TitleVersion" FontSize="11" Margin="8,1,0,0" VerticalAlignment="Center" Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                     ToolTip="maison version" />
+          <ui:Button x:Name="UpdateButton" Visibility="Collapsed" Margin="12,0,0,0" Padding="10,2" FontSize="12" Appearance="Primary"
+                     Icon="{ui:SymbolIcon ArrowDownload24}" Click="UpdateButton_Click" WindowChrome.IsHitTestVisibleInChrome="True" />
+        </StackPanel>
+      </ui:TitleBar.Header>
       <ui:TitleBar.Icon>
         <ui:ImageIcon Source="pack://application:,,,/Assets/brand/maison-32.png" Width="16" Height="16" />
       </ui:TitleBar.Icon>
@@ -73,6 +82,9 @@
           <ui:Button x:Name="NavSystem" Content="System" Icon="{ui:SymbolIcon Board24}" Tag="system" Click="Nav_Click"
                      HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Padding="12,9" Margin="0,0,0,4" BorderThickness="0"
                      ToolTip="What this PC is and what it's doing: CPU, memory, GPU, which apps use GPU memory, busiest processes" />
+          <ui:Button x:Name="NavPool" Content="AI pool" Icon="{ui:SymbolIcon Server24}" Tag="pool" Click="Nav_Click"
+                     HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Padding="12,9" Margin="0,0,0,4" BorderThickness="0"
+                     ToolTip="Other PCs at home that run the AI for this one: find and add them, see what they're doing, manage their models" />
           <ui:Button x:Name="NavExtensions" Content="Extensions" Icon="{ui:SymbolIcon PuzzlePiece24}" Tag="extensions" Click="Nav_Click"
                      HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Padding="12,9" Margin="0,0,0,4" BorderThickness="0"
                      ToolTip="Qwen Code extensions, skills and plugins from marketplaces" />
@@ -89,6 +101,7 @@
       <v:SystemView x:Name="SystemPage" Grid.Column="1" Visibility="Collapsed" />
       <v:ExtensionsView x:Name="ExtensionsPage" Grid.Column="1" Visibility="Collapsed" />
       <v:SettingsView x:Name="SettingsPage" Grid.Column="1" Visibility="Collapsed" />
+      <v:PoolView x:Name="PoolPage" Grid.Column="1" Visibility="Collapsed" />
 
       <ScrollViewer x:Name="DashboardPage" Grid.Column="1" VerticalScrollBarVisibility="Auto">
         <StackPanel Margin="20,4,28,28">
@@ -157,6 +170,13 @@
                 <TextBlock x:Name="GpuExtra" Grid.Column="1" Text="" FontSize="12" VerticalAlignment="Center"
                            Foreground="{DynamicResource TextFillColorSecondaryBrush}" ToolTip="Fan speed and current core clock, updated every 2 seconds" />
               </Grid>
+              <StackPanel x:Name="AiLegend" Orientation="Horizontal" Margin="0,-4,0,6" Visibility="Collapsed"
+                          ToolTip="The bright part of each gauge is what the AI (Ollama and the model it runs) is using; the dim part is everything else on this PC. Power is estimated from the AI's share of the GPU's work.">
+                <Border Width="18" Height="5" CornerRadius="2.5" Background="{DynamicResource MaisonAccentBrush}" VerticalAlignment="Center" />
+                <TextBlock Text="AI" FontSize="11.5" Margin="6,0,14,0" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                <Border Width="18" Height="5" CornerRadius="2.5" Background="{DynamicResource MaisonAccentBrush}" Opacity="0.4" VerticalAlignment="Center" />
+                <TextBlock Text="everything else" FontSize="11.5" Margin="6,0,0,0" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+              </StackPanel>
               <UniformGrid Columns="6" Height="150">
                 <c:ArcGauge x:Name="GTemp" Maximum="100" Warn="75" Danger="85" Caption="GPU temp" Margin="6"
                             ToolTip="GPU core temperature. Green under 75 °C, amber 75–85 °C, red above 85 °C." />
@@ -260,6 +280,8 @@
                               ToolTip="How much text the model can keep in mind. Claude Code needs ~15K just for its instructions; 64K is a good default. Too large and the model spills onto the CPU." />
                   </StackPanel>
                 </Grid>
+                <TextBlock x:Name="ContextHint" FontSize="11.5" TextWrapping="Wrap" Margin="0,6,0,0"
+                           Foreground="{DynamicResource TextFillColorTertiaryBrush}" />
 
                 <TextBlock Text="Fast model — Claude Code's haiku slot (blank = same as main, fastest on one GPU)" Style="{StaticResource SectionLabel}" Margin="0,12,0,4" />
                 <ComboBox x:Name="FastModel" IsEditable="True" SelectionChanged="Selection_Changed" KeyUp="Selection_KeyUp"
@@ -376,6 +398,5 @@
       </ScrollViewer>
     </Grid>
 
-    <ui:SnackbarPresenter x:Name="Snackbar" Grid.Row="1" VerticalAlignment="Bottom" />
   </Grid>
 </ui:FluentWindow>

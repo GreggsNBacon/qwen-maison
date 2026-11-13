@@ -39,9 +39,246 @@ public partial class SettingsView : UserControl
         ModelsDir.Text = ModelStorage.Current;
         var disk = StatsService.Disk(ModelStorage.Current);
         ModelsDirSub.Text = disk is { } d ? $"{d.FreeGb:N0} GB free of {d.TotalGb:N0} GB on {d.Drive}" : "";
+        LoadLaunch();
+        AutoUpdateCheck.IsChecked = _c.CheckForUpdates;
+        RefreshAutoStart();
+        if (UpdateState.Text.Length == 0) UpdateState.Text = $"This is maison {AppInfo.Version}.";
         _loading = false;
+        RefreshSharing();
+        UpdatePreview();
         BuildSwatches();
         RefreshPortal();
+    }
+
+    // ------------------------------------------------------------------ AI pool
+
+    /// <summary>Scrolls so the "AI pool" card starts at the top.</summary>
+    public void ShowAiCard() => Dispatcher.BeginInvoke(() =>
+    {
+        var y = AiCard.TransformToAncestor(Scroller).Transform(new Point(0, 0)).Y;
+        Scroller.ScrollToVerticalOffset(Scroller.VerticalOffset + y - 8);
+    }, System.Windows.Threading.DispatcherPriority.Loaded);
+
+    private void RefreshSharing()
+    {
+        var s = AiSharing.Check();
+        ShareAiToggle.IsChecked = _c.ShareAi;
+        SharePanel.Visibility = _c.ShareAi ? Visibility.Visible : Visibility.Collapsed;
+        PairCode.Text = _c.ShareAi ? Services.Pool.PoolHost.PairCode.Insert(3, " ") : "";
+        PairedList.ItemsSource = _c.ShareAi ? _c.PoolClients.OrderByDescending(x => x.LastSeen).ToList() : null;
+        NoPaired.Visibility = _c.ShareAi && _c.PoolClients.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        ShareState.Text = !_c.ShareAi
+            ? (s.OllamaExposed
+                ? "Off in maison, but Ollama itself accepts connections from the network with no password (its \"Expose Ollama to the network\" setting or OLLAMA_HOST). Turn that off in Ollama, and share through maison instead."
+                : "Off: only this PC can use its AI.")
+            : s.Working ? "On: paired PCs at home can use this PC's AI."
+            : "On, but " + string.Join(", ", new[]
+              {
+                  s.ServiceRunning ? null : "maison's pool service isn't running",
+                  s.FirewallOpen ? null : "the firewall rule is missing",
+              }.Where(x => x is not null)) + ". Turn it off and on again to fix.";
+
+        UseRemoteToggle.IsChecked = _c.UseRemoteAi;
+        IncludeThisToggle.IsChecked = _c.PoolIncludeThisPc;
+        IncludeThisToggle.IsEnabled = SystemProbe.OllamaInstalled;
+        var n = _c.PoolMembers.Count(m => m.Enabled);
+        RemoteState.Text = !_c.UseRemoteAi
+            ? "Off: this PC runs its own AI."
+            : n == 0 && !_c.PoolIncludeThisPc ? "On, but no AI PCs are added yet. Open the AI pool to find them."
+            : $"On: using {n} AI PC{(n == 1 ? "" : "s")}{(_c.PoolIncludeThisPc && SystemProbe.OllamaInstalled ? " and this PC" : "")}.";
+    }
+
+    private async void ShareAi_Click(object sender, RoutedEventArgs e)
+    {
+        bool on = ShareAiToggle.IsChecked == true;
+        if (on && !SystemProbe.OllamaInstalled)
+        {
+            ShareAiToggle.IsChecked = false;
+            ShareState.Text = "Ollama isn't installed on this PC, so there's nothing to share. Set it up on the Setup page first.";
+            return;
+        }
+        ShareAiToggle.IsEnabled = false;
+        try
+        {
+            bool ok; string message;
+            if (on)
+            {
+                ShareState.Text = "Checking Windows Firewall and your network…";
+                var survey = await AiSharing.SurveyAsync();
+                if (!await Shell.ConfirmAsync("Make this PC an AI PC?",
+                        "PCs at home that you pair (with a code shown here) can use this PC's models through maison, encrypted. Ollama itself stays private to this PC.\n\n" +
+                        $"maison opens its ports ({Services.Pool.PoolPorts.Service} and {Services.Pool.PoolPorts.Discovery}) in Windows Firewall for your home network only (and Tailscale), never the internet." +
+                        (survey.BroadOllamaRules.Count > 0
+                            ? "\n\nWindows currently lets anyone reach Ollama directly on Public networks (a rule made when \"Allow\" was clicked on its prompt). maison switches that rule off."
+                            : "") +
+                        "\n\nWindows asks for admin permission once.", "Share"))
+                {
+                    ShareAiToggle.IsChecked = false;
+                    return;
+                }
+                bool makePrivate = survey.PublicNetworks.Count > 0 && await Shell.ConfirmAsync("Set your network to Private?",
+                    $"Windows treats \"{survey.PublicNetworks[0].Name}\" as a Public network (like café Wi-Fi), and the sharing rule only works on Private networks.\n\n" +
+                    "If this PC is on your home network, set it to Private: that's the normal setting at home. Choose Keep Public if this is a public network.",
+                    "Set to Private", "Keep Public");
+                (ok, message) = await AiSharing.EnableAsync(survey, makePrivate, Log);
+            }
+            else (ok, message) = await AiSharing.DisableAsync(Log);
+            Shell.Log(message);
+            Shell.Toast(ok ? (on ? "This PC is an AI PC" : "AI is private again") : "Sharing wasn't turned on", message,
+                ok ? ControlAppearance.Success : ControlAppearance.Danger, ok ? SymbolRegular.Share24 : SymbolRegular.ErrorCircle24);
+        }
+        finally
+        {
+            ShareAiToggle.IsEnabled = true;
+            RefreshSharing();
+            await Shell.OnModelsChangedAsync();
+        }
+    }
+
+    private void Log(string line) => Dispatcher.Invoke(() => { ShareState.Text = line; Shell.Log(line); });
+
+    private void NewCode_Click(object sender, RoutedEventArgs e)
+    {
+        Services.Pool.PoolHost.RenewPairCode();
+        RefreshSharing();
+    }
+
+    private async void Unpair_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.Tag is not PoolClient c) return;
+        if (!await Shell.ConfirmAsync($"Remove {c.Name}?", $"{c.Name} won't be able to use this PC's AI until it's paired again with the code.", "Remove")) return;
+        Services.Pool.PoolHost.Revoke(c);
+        RefreshSharing();
+    }
+
+    private async void UseRemote_Click(object sender, RoutedEventArgs e) => await Shell.SetUsePoolAsync(UseRemoteToggle.IsChecked == true);
+
+    private async void IncludeThis_Click(object sender, RoutedEventArgs e)
+    {
+        _c.PoolIncludeThisPc = IncludeThisToggle.IsChecked == true;
+        _c.Save();
+        RefreshSharing();
+        await Services.Pool.AiPool.RefreshAsync();
+        if (_c.UseRemoteAi) await Shell.OnModelsChangedAsync();
+    }
+
+    private void OpenPool_Click(object sender, RoutedEventArgs e) => Shell.ShowPool();
+
+    /// <summary>Called by the shell after the pool is switched on or off elsewhere.</summary>
+    public void RefreshPool() => RefreshSharing();
+    // ------------------------------------------------------------------ start with Windows
+
+    private void RefreshAutoStart()
+    {
+        var on = AutoStart.IsOn;
+        StartWithWindows.IsChecked = on;
+        StartMinimized.IsChecked = AutoStart.StartsMinimized;
+        StartMinimized.IsEnabled = on;
+        AutoStartState.Text = on ? "On: starts " + (AutoStart.StartsMinimized ? "minimised " : "") + "from " + AutoStart.Command : "";
+    }
+
+    internal void AutoStart_Click(object sender, RoutedEventArgs e)
+    {
+        try { AutoStart.Set(StartWithWindows.IsChecked == true, StartMinimized.IsChecked == true); }
+        catch (Exception ex) { Shell.Toast("Couldn't change start-up", ex.Message, ControlAppearance.Danger, SymbolRegular.ErrorCircle24); }
+        RefreshAutoStart();
+    }
+
+    // ------------------------------------------------------------------ updates
+
+    private void AutoUpdate_Click(object sender, RoutedEventArgs e)
+    {
+        _c.CheckForUpdates = AutoUpdateCheck.IsChecked == true;
+        _c.Save();
+    }
+
+    private async void CheckUpdate_Click(object sender, RoutedEventArgs e)
+    {
+        BtnCheckUpdate.IsEnabled = false;
+        UpdateState.Text = "Checking…";
+        try { UpdateState.Text = await Shell.CheckForUpdatesAsync(manual: true); }
+        finally { BtnCheckUpdate.IsEnabled = true; }
+    }
+
+    // ------------------------------------------------------------------ start commands
+
+    private static readonly (string Key, string Label)[] ThinkChoices = [("default", "Model default"), ("on", "Always think"), ("off", "Answer straight away")];
+
+    private void LoadLaunch()
+    {
+        var o = _c.Launch;
+        LTellCtx.IsChecked = o.TellContextWindow;
+        LMaxOut.Value = o.MaxOutputTokens;
+        LClaudeContinue.IsChecked = o.ClaudeContinue;
+        LClaudeNoThink.IsChecked = o.ClaudeDisableThinking;
+        LClaudeNoTraffic.IsChecked = o.ClaudeNoNonessentialTraffic;
+        LClaudeNoCache.IsChecked = o.ClaudeNoPromptCaching;
+        LClaudePct.Value = o.ClaudeCompactPercent;
+        LClaudeArgs.Text = o.ClaudeExtraArgs;
+        LClaudeEnv.Text = o.ClaudeExtraEnv;
+        LQwenContinue.IsChecked = o.QwenContinue;
+        LQwenPct.Value = Math.Round(o.QwenCompactThreshold * 100);
+        LQwenTimeout.Value = o.QwenTimeoutSeconds;
+        LQwenArgs.Text = o.QwenExtraArgs;
+        LQwenEnv.Text = o.QwenExtraEnv;
+        LChatVerbose.IsChecked = o.ChatVerbose;
+        if (LChatThink.Items.Count == 0) foreach (var (_, label) in ThinkChoices) LChatThink.Items.Add(label);
+        LChatThink.SelectedIndex = Math.Max(0, Array.FindIndex(ThinkChoices, t => t.Key == o.ChatThink));
+        LChatArgs.Text = o.ChatExtraArgs;
+    }
+
+    private void Launch_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_loading || !IsLoaded) return;
+        var o = _c.Launch;
+        o.TellContextWindow = LTellCtx.IsChecked == true;
+        o.MaxOutputTokens = (int)(LMaxOut.Value ?? 0);
+        o.ClaudeContinue = LClaudeContinue.IsChecked == true;
+        o.ClaudeDisableThinking = LClaudeNoThink.IsChecked == true;
+        o.ClaudeNoNonessentialTraffic = LClaudeNoTraffic.IsChecked == true;
+        o.ClaudeNoPromptCaching = LClaudeNoCache.IsChecked == true;
+        o.ClaudeCompactPercent = (int)(LClaudePct.Value ?? 0);
+        o.ClaudeExtraArgs = LClaudeArgs.Text.Trim();
+        o.ClaudeExtraEnv = LClaudeEnv.Text;
+        o.QwenContinue = LQwenContinue.IsChecked == true;
+        o.QwenCompactThreshold = Math.Clamp((LQwenPct.Value ?? 85) / 100.0, 0.3, 1.0);
+        o.QwenTimeoutSeconds = (int)(LQwenTimeout.Value ?? 600);
+        o.QwenExtraArgs = LQwenArgs.Text.Trim();
+        o.QwenExtraEnv = LQwenEnv.Text;
+        o.ChatVerbose = LChatVerbose.IsChecked == true;
+        o.ChatThink = ThinkChoices[Math.Max(0, LChatThink.SelectedIndex)].Key;
+        o.ChatExtraArgs = LChatArgs.Text.Trim();
+        _c.Save();
+        UpdatePreview();
+        Shell.UpdateCommands();
+    }
+
+    private void LTabs_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        if (e.Source == LTabs) UpdatePreview();
+    }
+
+    private void UpdatePreview()
+    {
+        if (Shell is null) return;
+        var kind = (LTabs.SelectedItem as TabItem)?.Tag as string ?? "claude";
+        LPreview.Text = Shell.StartCommandPreview(kind);
+    }
+
+    private void ResetLaunch_Click(object sender, RoutedEventArgs e)
+    {
+        _c.Launch = new LaunchOptions();
+        _c.Save();
+        _loading = true;
+        LoadLaunch();
+        AutoUpdateCheck.IsChecked = _c.CheckForUpdates;
+        RefreshAutoStart();
+        if (UpdateState.Text.Length == 0) UpdateState.Text = $"This is maison {AppInfo.Version}.";
+        _loading = false;
+        RefreshSharing();
+        UpdatePreview();
+        Shell.UpdateCommands();
+        Shell.Toast("Start commands reset", "Every option is back to maison's defaults.", ControlAppearance.Success, SymbolRegular.ArrowReset24);
     }
 
     // ------------------------------------------------------------------ appearance

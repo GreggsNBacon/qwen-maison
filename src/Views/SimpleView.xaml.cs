@@ -63,14 +63,16 @@ public partial class SimpleView : UserControl
     private async Task<List<string>> MissingAsync()
     {
         var missing = new List<string>();
-        if (!SystemProbe.OllamaInstalled || !SystemProbe.RuntimeOk) missing.Add("the AI engine (Ollama)");
-        bool running = await OllamaClient.GetVersionAsync(2) is not null;
+        bool remote = OllamaClient.IsRemote;
+        if (!remote && (!SystemProbe.OllamaInstalled || !SystemProbe.RuntimeOk)) missing.Add("the AI engine (Ollama)");
+        bool running = await OllamaClient.GetVersionAsync(remote ? 4 : 2) is not null;
+        if (remote && !running) missing.Add("a connection to your AI pool");
         if (!running && SystemProbe.OllamaInstalled && SystemProbe.RuntimeOk)
         {
             ShowBusy("Waking things up", "Starting the AI engine (Ollama server)…");
             running = await SystemProbe.StartOllamaAsync();
         }
-        if (!running && missing.Count == 0) missing.Add("the AI engine to start");
+        if (!running && missing.Count == 0 && !remote) missing.Add("the AI engine to start");
         if (running)
         {
             try
@@ -81,7 +83,7 @@ public partial class SimpleView : UserControl
             }
             catch { missing.Add("a Qwen model"); }
         }
-        else if (missing.Count == 1 && missing[0].Contains("engine")) missing.Add("a Qwen model");
+        else if (!remote && missing.Count == 1 && missing[0].Contains("engine")) missing.Add("a Qwen model");
         if (Installer.QwenPath is null) missing.Add("Qwen Code");
         return missing;
     }
@@ -104,6 +106,7 @@ public partial class SimpleView : UserControl
         SetupPanel.Visibility = Visibility.Visible;
         ReadyPanel.Visibility = Visibility.Collapsed;
         StartButton.Visibility = Visibility.Collapsed;
+        RemoteLink.Visibility = Visibility.Collapsed;
         ErrorPanel.Visibility = Visibility.Collapsed;
         ProgressPanel.Visibility = Visibility.Visible;
         Ring.Visibility = Visibility.Visible;
@@ -132,9 +135,21 @@ public partial class SimpleView : UserControl
             ? "One click installs everything Qwen needs to run privately on this PC. No account, no subscription. Grab a coffee — the first setup downloads a lot."
             : "Still to do: " + string.Join(", ", missing) + ". Press Start and maison takes care of it.";
         StartButton.Content = fresh ? "Start" : "Finish setup";
+        RemoteLink.Content = "Got a PC with a better graphics card? Use its AI instead (AI pool)";
+        RemoteLink.Visibility = OllamaClient.IsRemote ? Visibility.Collapsed : Visibility.Visible;
+        if (OllamaClient.IsRemote && missing.Any(m => m.Contains("AI PC")))
+        {
+            Headline.Text = "Can't reach the AI PC";
+            Subline.Text = "maison is set to use your AI pool, but no AI PC in it answers. Check they're on with maison running, then press Try again.";
+            StartButton.Content = "Try again";
+            RemoteLink.Content = "Open the AI pool";
+            RemoteLink.Visibility = Visibility.Visible;
+        }
     }
 
     // ------------------------------------------------------------------ setup run
+
+    private void RemoteLink_Click(object sender, RoutedEventArgs e) => Shell.ShowAiSettings();
 
     private async void Start_Click(object sender, RoutedEventArgs e)
     {
@@ -249,7 +264,8 @@ public partial class SimpleView : UserControl
         SetupPanel.Visibility = Visibility.Collapsed;
         ReadyPanel.Visibility = Visibility.Visible;
         var gpu = StatsService.Latest?.Gpu?.Name.Replace("NVIDIA GeForce ", "").Replace("NVIDIA ", "");
-        ReadySub.Text = $"Running {Shell.MainModelName} on {(gpu is null ? "this PC" : "your " + gpu)} · working in {Shell.WorkingFolder}";
+        var where = OllamaClient.IsRemote ? "your AI pool" : gpu is null ? "this PC" : "your " + gpu;
+        ReadySub.Text = $"Running {Shell.MainModelName} on {where} · working in {Shell.WorkingFolder}";
         if (StatsService.Latest is { } st) ShowStats(st);
 
         // Show the newest running Qwen Code session, or start one.
@@ -298,6 +314,12 @@ public partial class SimpleView : UserControl
         TVram.Text = g is null ? "—" : $"{g.UsedGb:0.0} / {g.TotalGb:0} GB";
         TCpu.Text = $"{s.CpuPercent:0}%";
         TRam.Text = $"{s.RamUsedGb:0.0} / {s.RamTotalGb:0} GB";
+        // Qwen's own share (Ollama runs the model), empty while nothing is loaded.
+        bool ai = s.OllamaRamGb >= 0.05;
+        TGpuAi.Text = ai && g is not null && s.OllamaGpuPercent is { } og ? $"Qwen {Math.Min(og, g.LoadPercent):0}%" : "";
+        TVramAi.Text = ai && g is not null ? $"Qwen {Math.Min(s.OllamaVramGb, g.UsedGb):0.0} GB" : "";
+        TCpuAi.Text = ai ? $"Qwen {Math.Min(s.OllamaCpuPercent, s.CpuPercent):0}%" : "";
+        TRamAi.Text = ai ? $"Qwen {s.OllamaRamGb:0.0} GB" : "";
         var hog = HealthAdvice.VramHog(s);
         WarnBox.Visibility = hog is null ? Visibility.Collapsed : Visibility.Visible;
         WarnText.Text = hog is { } h ? $"{h.Name} is using {h.Gb:0.0} GB of graphics memory, so Qwen may be very slow. Closing it should speed things up." : "";

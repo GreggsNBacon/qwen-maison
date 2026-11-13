@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.IO;
+using System.Net.Http.Json;
 using System.Reflection;
 using System.Windows;
 using System.Windows.Controls;
@@ -23,6 +24,7 @@ public partial class MainWindow : FluentWindow, IShell
     private readonly ObservableCollection<StatusItem> _status = [];
     private readonly AppConfig _config = AppConfig.Current;
     private readonly SnackbarService _snackbar = new();
+    private readonly ToastWindow _toasts;
     private readonly DispatcherTimer _autoRefresh = new() { Interval = TimeSpan.FromSeconds(10) };
     private List<ModelInfo> _models = [];
     private List<LoadedModel> _loaded = [];
@@ -37,16 +39,28 @@ public partial class MainWindow : FluentWindow, IShell
     public MainWindow()
     {
         Instance = this;
+        OllamaClient.UsePool(_config.UseRemoteAi);
+        if (_config.UseRemoteAi) _ = StartPoolPartAsync("pool", Services.Pool.PoolRelay.StartAsync);
+        if (_config.ShareAi) _ = StartPoolPartAsync("AI sharing", Services.Pool.PoolHost.StartAsync);
         InitializeComponent();
         StatusList.ItemsSource = _status;
-        _snackbar.SetSnackbarPresenter(Snackbar);
+        // Messages live in their own owned window so they show above the terminals (WebView2 draws over WPF content).
+        _toasts = new ToastWindow(this);
+        _snackbar.SetSnackbarPresenter(_toasts.Presenter);
         ModelsPage.Shell = this;
         SetupPage.Shell = this;
         SystemPage.Shell = this;
         SimplePage.Shell = this;
         ExtensionsPage.Shell = this;
         SettingsPage.Shell = this;
+        PoolPage.Shell = this;
         VersionText.Text = "v" + AppInfo.Version;
+        TitleVersion.Text = "v" + AppInfo.Version;
+        if (Environment.GetCommandLineArgs().All(a => a != "--selftest"))
+        {
+            _ = UpdateLoopAsync();
+            AutoStart.Refresh();
+        }
         Theming.ApplyAccent(_config.Accent);
 
         foreach (var k in Launcher.ContextSizes.Keys) Context.Items.Add(k);
@@ -134,6 +148,108 @@ public partial class MainWindow : FluentWindow, IShell
 
     public async Task OnModelsChangedAsync() => await RefreshAsync(quiet: true);
 
+    private async Task StartPoolPartAsync(string what, Func<Task> start)
+    {
+        try { await start(); await RefreshAsync(quiet: true); }
+        catch (Exception ex) { Log($"Couldn't start the {what}: {ex.Message}"); Toast($"The {what} didn't start", ex.Message, ControlAppearance.Danger, SymbolRegular.ErrorCircle24); }
+    }
+
+    public async Task OnAiLocationChangedAsync()
+    {
+        Log(OllamaClient.IsRemote ? "Using your AI pool" : "Using this PC's AI");
+        _models = []; _loaded = [];
+        await RefreshAsync(quiet: true);
+        await SetupPage.RefreshAsync();
+        if (SimplePage.IsVisible) await SimplePage.ActivateAsync();
+    }
+
+    public void ShowAiSettings() => ShowPool();
+
+    [System.Runtime.InteropServices.DllImport("dwmapi.dll")]
+    private static extern int DwmGetWindowAttribute(IntPtr hwnd, int attribute, out DwmRect value, int size);
+    private struct DwmRect { public int Left, Top, Right, Bottom; }
+
+    // ------------------------------------------------------------------ updates
+
+    private UpdateInfo? _update;
+
+    /// <summary>At start-up (after things settle) and then once a day, unless turned off in Settings.</summary>
+    private async Task UpdateLoopAsync()
+    {
+        await Task.Delay(TimeSpan.FromSeconds(20));
+        while (true)
+        {
+            if (_config.CheckForUpdates) await CheckForUpdatesAsync(manual: false);
+            await Task.Delay(TimeSpan.FromHours(24));
+        }
+    }
+
+    public Task<string> CheckForUpdatesAsync(bool manual) => CheckForUpdatesAsync(manual, null);
+
+    /// <param name="pretendVersion">Self-test only: compare as if this were the running version.</param>
+    private async Task<string> CheckForUpdatesAsync(bool manual, string? pretendVersion)
+    {
+        var mine = AppInfo.Version;
+        try
+        {
+            _update = await UpdateCheck.CheckAsync(pretendVersion);
+            mine = pretendVersion ?? AppInfo.Version;
+        }
+        catch (Exception ex)
+        {
+            if (manual) Log($"Update check failed: {ex.Message}");
+            return "Couldn't reach GitHub to check. Try again later.";
+        }
+        if (_update is null)
+        {
+            UpdateButton.Visibility = Visibility.Collapsed;
+            return $"You have the latest version ({mine}).";
+        }
+        UpdateButton.Content = $"Update to {_update.Version}";
+        UpdateButton.ToolTip = $"maison {_update.Version} is out (you have {mine}). Opens the download page.";
+        UpdateButton.Visibility = Visibility.Visible;
+        Log($"maison {_update.Version} is available: {_update.PageUrl}");
+        if (!manual) Toast($"maison {_update.Version} is available", "Click Update in the title bar to download it.", ControlAppearance.Info, SymbolRegular.ArrowDownload24);
+        return $"maison {_update.Version} is available (you have {mine}).";
+    }
+
+    private async void UpdateButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_update is not { } u) return;
+        if (!await ConfirmAsync($"Download maison {u.Version}?",
+                $"You have {AppInfo.Version}. Your browser opens the release page; download maison-{u.Version}.exe there.\n\n" +
+                "To update: close maison, run the new exe and delete the old one. Your settings and models are kept.",
+                "Open download page", "Later")) return;
+        try { Process.Start(new ProcessStartInfo(u.PageUrl) { UseShellExecute = true }); }
+        catch (Exception ex) { Toast("Couldn't open the browser", u.PageUrl + " · " + ex.Message, ControlAppearance.Caution, SymbolRegular.Warning24); }
+    }
+
+    public void ShowPool()
+    {
+        SetSimpleMode(false);
+        Navigate("pool");
+    }
+
+    public async Task SetUsePoolAsync(bool on)
+    {
+        if (on)
+        {
+            try { await Services.Pool.PoolRelay.StartAsync(); }
+            catch (Exception ex)
+            {
+                Toast("The AI pool didn't start", ex.Message, ControlAppearance.Danger, SymbolRegular.ErrorCircle24);
+                on = false;
+            }
+        }
+        else await Services.Pool.PoolRelay.StopAsync();
+        _config.UseRemoteAi = on;
+        _config.Save();
+        OllamaClient.UsePool(on);
+        SettingsPage.RefreshPool();
+        await OnAiLocationChangedAsync();
+        await PoolPage.RefreshAsync();
+    }
+
     public void Navigate(string page)
     {
         _page = page;
@@ -141,7 +257,7 @@ public partial class MainWindow : FluentWindow, IShell
         {
             ("dashboard", DashboardPage, NavDashboard), ("terminals", TerminalsPage, NavTerminals), ("models", ModelsPage, NavModels),
             ("setup", SetupPage, NavSetup), ("system", SystemPage, NavSystem), ("extensions", ExtensionsPage, NavExtensions),
-            ("settings", SettingsPage, NavSettings),
+            ("settings", SettingsPage, NavSettings), ("pool", PoolPage, NavPool),
         };
         foreach (var (key, view, nav) in pages)
         {
@@ -167,6 +283,7 @@ public partial class MainWindow : FluentWindow, IShell
         if (page == "system") SystemPage.Refresh();
         if (page == "extensions") _ = ExtensionsPage.RefreshAsync();
         if (page == "settings") SettingsPage.Refresh();
+        if (page == "pool") _ = PoolPage.RefreshAsync();
     }
 
     public void Log(string message)
@@ -179,9 +296,9 @@ public partial class MainWindow : FluentWindow, IShell
     public void Toast(string title, string message, ControlAppearance appearance = ControlAppearance.Secondary, SymbolRegular icon = SymbolRegular.Info24) =>
         _snackbar.Show(title, message, appearance, new SymbolIcon(icon), TimeSpan.FromSeconds(4));
 
-    public async Task<bool> ConfirmAsync(string title, string text, string yes)
+    public async Task<bool> ConfirmAsync(string title, string text, string yes, string no = "Cancel")
     {
-        var box = new MessageBox { Title = title, Content = text, PrimaryButtonText = yes, CloseButtonText = "Cancel" };
+        var box = new MessageBox { Title = title, Content = text, PrimaryButtonText = yes, CloseButtonText = no };
         return await box.ShowDialogAsync() == MessageBoxResult.Primary;
     }
 
@@ -194,7 +311,11 @@ public partial class MainWindow : FluentWindow, IShell
 
     private string BaseMain => MainModel.Text.Trim();
     private string BaseFast => string.IsNullOrWhiteSpace(FastModel.Text) ? BaseMain : FastModel.Text.Trim();
-    private int ContextSize => Context.SelectedItem is string s && Launcher.ContextSizes.TryGetValue(s, out var n) ? n : 0;
+    /// <summary>
+    /// The chosen context window (0 = Ollama's default). In the AI pool every PC must give the same window, and their
+    /// defaults differ with their GPUs, so "Ollama default" means a fixed 32K there.
+    /// </summary>
+    private int ContextSize => Context.SelectedItem is string s && Launcher.ContextSizes.TryGetValue(s, out var n) ? (n == 0 && OllamaClient.IsRemote ? 32768 : n) : 0;
     private string PermMode => (Perms.SelectedItem as PermChoice)?.Key ?? "ask";
 
     private void SaveConfig()
@@ -219,13 +340,68 @@ public partial class MainWindow : FluentWindow, IShell
         _config.Save();
     }
 
-    private void UpdateCommands()
+    /// <summary>The context window sessions will really get: the chosen size, or what Ollama uses by default.</summary>
+    private int RealContext => ContextSize > 0 ? ContextSize
+        : _loaded.FirstOrDefault(m => m.Name == BaseMain || m.Name == BaseMain + ":latest") is { Context: > 0 } l ? l.Context
+        : OllamaClient.IsRemote ? 32768 : _ollamaDefaultCtx;
+    private readonly int _ollamaDefaultCtx = OllamaClient.ServerDefaultContext();
+
+    private Launcher.Plan PlanFor(string main, string fast, int ctx) =>
+        new(main, fast, ctx, PermMode, _config.Launch,
+            _models.Where(m => !m.Name.StartsWith("claude-")).Select(m => m.Name).ToList());
+
+    public void UpdateCommands()
     {
         if (_initializing) return;
         var baseMain = BaseMain.Length > 0 ? BaseMain : "<model>";
         var main = Launcher.EffectiveModel(baseMain, ContextSize);
         var fast = Launcher.EffectiveModel(BaseFast.Length > 0 ? BaseFast : baseMain, ContextSize);
-        Commands.Text = Launcher.CommandsText(baseMain, main, fast, ContextSize, PermMode);
+        var plan = PlanFor(main, fast, RealContext);
+        Commands.Text = Launcher.CommandsText(plan, baseMain);
+        ContextHint.Text = (ContextSize == 0
+                ? OllamaClient.IsRemote && !_loaded.Any(m => m.Name == BaseMain || m.Name == BaseMain + ":latest")
+                    ? "The exact window is read from the AI PC when you launch (about 32K is typical). "
+                    : $"Ollama is giving this model {RealContext / 1024}K. "
+                : "") +
+            $"Agents are told the window is {RealContext / 1024}K and replies are capped at {plan.OutputTokens / 1024}K, so they compact instead of overflowing." +
+            (RealContext < 49152 ? " Claude Code's own instructions and tools take ~20–25K, so 64K or more works much better for it." : "");
+    }
+
+    public string StartCommandPreview(string kind)
+    {
+        var baseMain = BaseMain.Length > 0 ? BaseMain : "<model>";
+        var p = PlanFor(Launcher.EffectiveModel(baseMain, ContextSize),
+                        Launcher.EffectiveModel(BaseFast.Length > 0 ? BaseFast : baseMain, ContextSize), RealContext);
+        var sb = new System.Text.StringBuilder();
+        void Env(IDictionary<string, string> env) { foreach (var (k, v) in env) sb.AppendLine($"$env:{k} = {Launcher.Q(v)}"); }
+        sb.AppendLine($"# {p.Main} · context {p.Ctx:N0} tokens · replies up to {p.OutputTokens:N0} · permissions: {Launcher.Mode(PermMode).Label}");
+        switch (kind)
+        {
+            case "claude":
+                Env(Launcher.ClaudeEnv(p));
+                sb.AppendLine("Remove-Item Env:ANTHROPIC_API_KEY -ErrorAction SilentlyContinue");
+                sb.Append(Launcher.ClaudeCommand(p));
+                break;
+            case "qwen":
+                Env(Launcher.QwenEnv(p, p.O.TellContextWindow ? System.IO.Path.Combine(AppConfig.Folder, "qwen", "settings-….json") : null));
+                sb.Append(Launcher.QwenCommand(p));
+                if (p.O.TellContextWindow)
+                    sb.Append($"\n# maison's settings file tells Qwen Code: contextWindowSize {p.Ctx}, max_tokens {p.OutputTokens}, autoCompactThreshold {p.O.QwenCompactThreshold:0.##}. Your ~/.qwen/settings.json isn't changed.");
+                break;
+            default:
+                sb.Append(Launcher.ChatCommand(p));
+                break;
+        }
+        return sb.ToString();
+    }
+
+    /// <summary>The launch plan for a real session (context variant created, real window detected).</summary>
+    private async Task<Launcher.Plan> PlanAsync()
+    {
+        var main = await ResolveAsync(BaseMain);
+        var fast = BaseFast == BaseMain ? main : await ResolveAsync(BaseFast);
+        var ctx = ContextSize > 0 ? ContextSize : await OllamaClient.EffectiveContextAsync(main);
+        return PlanFor(main, fast, ctx);
     }
 
     /// <summary>Returns the model to launch, creating the context variant when needed.</summary>
@@ -275,12 +451,14 @@ public partial class MainWindow : FluentWindow, IShell
             }
 
             var items = new List<StatusItem>();
-            if (SystemProbe.OllamaInstalled)
+            if (OllamaClient.IsRemote)
+                items.Add(new() { Level = Health.Info, Title = "Using your AI pool", Detail = "Models run on the AI PCs in your pool. See and manage them on the AI pool page." });
+            else if (SystemProbe.OllamaInstalled)
                 items.Add(new() { Level = Health.Ok, Title = "Ollama installed", Detail = SystemProbe.OllamaDir });
             else
                 items.Add(new() { Level = Health.Bad, Title = "Ollama is not installed", Detail = "Open Setup to install it." });
 
-            if (SystemProbe.OllamaInstalled)
+            if (SystemProbe.OllamaInstalled && !OllamaClient.IsRemote)
             {
                 var cuda = SystemProbe.CudaDirs;
                 items.Add(SystemProbe.RuntimeOk
@@ -290,7 +468,9 @@ public partial class MainWindow : FluentWindow, IShell
 
             items.Add(running
                 ? new() { Level = Health.Ok, Title = $"Server responding · v{version}", Detail = OllamaClient.BaseUrl }
-                : new() { Level = Health.Bad, Title = "Server not responding", Detail = SystemProbe.OllamaInstalled ? "Click Start." : "Install Ollama from the Setup page." });
+                : OllamaClient.IsRemote
+                    ? new() { Level = Health.Bad, Title = "No AI PC in your pool is reachable", Detail = "Check your AI PCs are on with maison running, and that both are on the same network. The AI pool page shows each one's status." }
+                    : new() { Level = Health.Bad, Title = "Server not responding", Detail = SystemProbe.OllamaInstalled ? "Click Start." : "Install Ollama from the Setup page." });
 
             foreach (var m in _loaded)
             {
@@ -346,18 +526,33 @@ public partial class MainWindow : FluentWindow, IShell
     {
         var red = (Color)ColorConverter.ConvertFromString("#E5534B");
         var green = (Color)ColorConverter.ConvertFromString("#4CC38A");
-        var ok = running && SystemProbe.RuntimeOk;
+        bool remote = OllamaClient.IsRemote;
+        var ok = running && (remote || SystemProbe.RuntimeOk);
         var c = ok ? green : red;
         ServerDot.Fill = new SolidColorBrush(c);
         ServerPill.Background = new SolidColorBrush(Color.FromArgb(0x33, c.R, c.G, c.B));
-        ServerPillText.Text = !SystemProbe.OllamaInstalled ? "Ollama not installed" : !running ? "Ollama offline" : SystemProbe.RuntimeOk ? "Ollama ready" : "Ollama broken";
+        ServerPillText.Text = remote ? (running ? $"AI on {new Uri(OllamaClient.BaseUrl).Host}" : $"Can't reach {new Uri(OllamaClient.BaseUrl).Host}")
+            : !SystemProbe.OllamaInstalled ? "Ollama not installed" : !running ? "Ollama offline" : SystemProbe.RuntimeOk ? "Ollama ready" : "Ollama broken";
 
         MServer.Text = running ? "Running" : "Offline";
-        MServerSub.Text = running ? $"v{version} · 127.0.0.1:11434" : SystemProbe.OllamaInstalled ? "click Start" : "install from Setup";
+        MServerSub.Text = running ? $"v{version} · {new Uri(OllamaClient.BaseUrl).Authority}"
+            : remote ? "check the AI PC" : SystemProbe.OllamaInstalled ? "click Start" : "install from Setup";
+        // Start / Restart / Repair act on this PC's Ollama; with the AI on another PC they belong over there.
+        foreach (var b in new[] { BtnStart, BtnRestart, BtnRepair })
+        {
+            b.Tag ??= b.ToolTip;   // the normal tooltip, to put back
+            b.IsEnabled = !remote;
+            b.ToolTip = remote ? "The AI runs on your AI pool: set up or fix its PCs on the AI pool page" : b.Tag;
+        }
+        bool noChat = remote && !SystemProbe.OllamaInstalled;
+        BtnChat.Tag ??= BtnChat.ToolTip;
+        BtnChat.IsEnabled = !noChat;
+        BtnChat.ToolTip = noChat ? "Chat uses the ollama command, which isn't installed on this PC. Use Qwen Code or Claude Code, or install Ollama from Setup." : BtnChat.Tag;
 
         var top = _loaded.FirstOrDefault();
         MLoaded.Text = top?.Name ?? "None";
         MLoadedSub.Text = top is null ? "loads on first request" : $"{top.GpuPercent}% GPU · ctx {top.Context:N0}";
+        UpdateCommands();   // the real window may have changed with what's loaded
     }
 
     private void ShowStats(StatsSnapshot s)
@@ -374,6 +569,11 @@ public partial class MainWindow : FluentWindow, IShell
         GRam.Value = s.RamUsedGb;
         GRam.Display = $"{s.RamUsedGb:0.0} GB";
         GRam.Caption = $"RAM of {s.RamTotalGb:0} GB";
+        // The AI's part of each reading (Ollama and its model runner), drawn bright inside the dim total.
+        bool ai = s.OllamaRamGb >= 0.05;
+        AiShare(GCpu, ai, Math.Min(s.OllamaCpuPercent, s.CpuPercent), $"AI {s.OllamaCpuPercent:0}%");
+        AiShare(GRam, ai, s.OllamaRamGb, $"AI {s.OllamaRamGb:0.0} GB");
+        AiLegend.Visibility = ai ? Visibility.Visible : Visibility.Collapsed;
 
         var warn = HealthAdvice.VramWarning(s);
         VramWarnBox.Visibility = warn is null ? Visibility.Collapsed : Visibility.Visible;
@@ -385,7 +585,7 @@ public partial class MainWindow : FluentWindow, IShell
             {
                 GpuTitle.Text = "Machine · no NVIDIA GPU detected (nvidia-smi unavailable)";
                 GpuExtra.Text = s.CpuName;
-                foreach (var gauge in new[] { GTemp, GLoad, GPower, GVram }) { gauge.Value = 0; gauge.Display = "—"; }
+                foreach (var gauge in new[] { GTemp, GLoad, GPower, GVram }) { gauge.Value = 0; gauge.Display = "—"; AiShare(gauge, false, 0, ""); }
                 return;
             }
             GpuTitle.Text = "Machine · " + g.Name.Replace("NVIDIA GeForce ", "").Replace("NVIDIA ", "") + " · " + ShortCpu(s.CpuName);
@@ -416,8 +616,17 @@ public partial class MainWindow : FluentWindow, IShell
             GVram.Value = g.UsedGb;
             GVram.Display = $"{g.UsedGb:0.0} GB";
             GVram.Caption = $"VRAM of {g.TotalGb:0} GB";
+
+            AiShare(GVram, ai, Math.Min(s.OllamaVramGb, g.UsedGb), $"AI {s.OllamaVramGb:0.0} GB");
+            var aiLoad = Math.Min(s.OllamaGpuPercent ?? 0, g.LoadPercent);
+            AiShare(GLoad, ai && s.OllamaGpuPercent is not null, aiLoad, $"AI {aiLoad:0}%");
+            // Power isn't measured per app: estimate the AI's part from its share of the GPU's work.
+            var aiPower = g.LoadPercent > 0 && g.PowerW is { } pw ? pw * aiLoad / g.LoadPercent : 0;
+            AiShare(GPower, ai && s.OllamaGpuPercent is not null && g.PowerW is not null, aiPower, $"AI ≈{aiPower:0} W");
         }
     }
+
+    private static void AiShare(Controls.ArcGauge gauge, bool show, double value, string text) => gauge.SetAi(show, value, text);
 
     private static string ShortCpu(string name) =>
         System.Text.RegularExpressions.Regex.Replace(name, @"\(R\)|\(TM\)|CPU|Processor|\d+-Core|@.*$", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase)
@@ -491,15 +700,18 @@ public partial class MainWindow : FluentWindow, IShell
         if (!await EnsureReadyAsync()) return null;
         if (kind == "claude" && SystemProbe.FindOnPath("claude") is null) { Toast("Claude Code is not installed", "Install it from the Setup page.", ControlAppearance.Caution, SymbolRegular.Warning24); return null; }
         if (kind == "qwen" && SystemProbe.FindOnPath("qwen") is null) { Toast("Qwen Code is not installed", "Install it from the Setup page.", ControlAppearance.Caution, SymbolRegular.Warning24); return null; }
-        var main = await ResolveAsync(BaseMain);
+        var p = await PlanAsync();
+        var main = p.Main;
         var folder = WorkingFolder;
+        if (OllamaClient.IsRemote && kind != "chat")   // its own address on the pool relay, so its requests stay together
+            p = p with { Url = Services.Pool.PoolRelay.SessionUrl(Services.Pool.PoolRelay.Register(kind, $"{(kind == "claude" ? "Claude Code" : "Qwen Code")} · {main}")) };
+        Log($"{kind}: context {p.Ctx:N0} tokens, replies up to {p.OutputTokens:N0}");
         return kind switch
         {
-            "claude" => new($"Claude Code · {main}", folder,
-                Launcher.ClaudeEnv(main, BaseFast == BaseMain ? main : await ResolveAsync(BaseFast)),
-                ["Remove-Item Env:ANTHROPIC_API_KEY -ErrorAction SilentlyContinue"], Launcher.ClaudeCommand(PermMode)),
-            "qwen" => new($"Qwen Code · {main}", folder, Launcher.QwenEnv(main), null, Launcher.QwenCommand(main, PermMode)),
-            _ => new($"Chat · {main}", folder, null, null, Launcher.ChatCommand(main)),
+            "claude" => new($"Claude Code · {main}", folder, Launcher.ClaudeEnv(p),
+                ["Remove-Item Env:ANTHROPIC_API_KEY -ErrorAction SilentlyContinue"], Launcher.ClaudeCommand(p)),
+            "qwen" => new($"Qwen Code · {main}", folder, Launcher.QwenEnv(p, Launcher.WriteQwenSettings(p)), null, Launcher.QwenCommand(p)),
+            _ => new($"Chat · {main}", folder, Launcher.ChatEnv(), null, Launcher.ChatCommand(p)),
         };
     }
 
@@ -566,6 +778,7 @@ public partial class MainWindow : FluentWindow, IShell
 
     private async void Start_Click(object sender, RoutedEventArgs e) => await WithBusy(async () =>
     {
+        if (OllamaClient.IsRemote) { await RefreshAsync(quiet: true); return; }
         if (!SystemProbe.OllamaInstalled) { Navigate("setup"); return; }
         Log("Starting Ollama...");
         var ok = await SystemProbe.StartOllamaAsync();
@@ -575,6 +788,7 @@ public partial class MainWindow : FluentWindow, IShell
 
     private async void Restart_Click(object sender, RoutedEventArgs e) => await WithBusy(async () =>
     {
+        if (OllamaClient.IsRemote) { await RefreshAsync(quiet: true); return; }
         Log("Restarting Ollama...");
         await SystemProbe.StopOllamaAsync();
         var ok = await SystemProbe.StartOllamaAsync();
@@ -742,7 +956,7 @@ public partial class MainWindow : FluentWindow, IShell
         Directory.CreateDirectory(dir);
         await Task.Delay(7000);   // first stats sample + gauge animation
         Snap(Path.Combine(dir, "dashboard.png"));
-        foreach (var page in new[] { "models", "setup", "system", "extensions", "settings", "terminals" })
+        foreach (var page in new[] { "models", "setup", "system", "extensions", "settings", "pool", "terminals" })
         {
             Navigate(page);
             await Task.Delay(3000);
@@ -776,15 +990,16 @@ public partial class MainWindow : FluentWindow, IShell
         var termResult = "";
         if (ti >= 0 && ti + 1 < args.Length && BaseMain.Length > 0)
         {
-            var main = await ResolveAsync(BaseMain);
+            var tp = (await PlanAsync()) with { Perm = "ask" };
+            var main = tp.Main;
             var folder = args[ti + 1];
-            var claude = await LaunchAsync(new Launcher.Session($"Claude Code · {main}", folder, Launcher.ClaudeEnv(main, main),
-                ["Remove-Item Env:ANTHROPIC_API_KEY -ErrorAction SilentlyContinue"], Launcher.ClaudeCommand("ask")), "claude", "Claude Code", main, Launcher.TargetApp);
+            var claude = await LaunchAsync(new Launcher.Session($"Claude Code · {main}", folder, Launcher.ClaudeEnv(tp),
+                ["Remove-Item Env:ANTHROPIC_API_KEY -ErrorAction SilentlyContinue"], Launcher.ClaudeCommand(tp)), "claude", "Claude Code", main, Launcher.TargetApp);
             await Task.Delay(15000);
             string claudeScreen = "";
             if (claude is not null) { await claude.CaptureAsync(Path.Combine(dir, "term-claude.png")); claudeScreen = await claude.ReadScreenAsync(); }
             Snap(Path.Combine(dir, "terminals.png"));
-            var qwen = await LaunchAsync(new Launcher.Session($"Qwen Code · {main}", folder, Launcher.QwenEnv(main), null, Launcher.QwenCommand(main, "ask")),
+            var qwen = await LaunchAsync(new Launcher.Session($"Qwen Code · {main}", folder, Launcher.QwenEnv(tp, Launcher.WriteQwenSettings(tp)), null, Launcher.QwenCommand(tp)),
                 "qwen", "Qwen Code", main, Launcher.TargetApp);
             await Task.Delay(15000);
             if (qwen is not null) await qwen.CaptureAsync(Path.Combine(dir, "term-qwen.png"));
@@ -898,6 +1113,310 @@ public partial class MainWindow : FluentWindow, IShell
             await SetupPage.RefreshAsync();
         }
 
+        // Optional: --jitter <workdir> records every frame Qwen Code sends while it streams a long answer.
+        var jitterResult = "";
+        var ji = Array.IndexOf(args, "--jitter");
+        if (ji >= 0 && ji + 1 < args.Length && BaseMain.Length > 0)
+        {
+            var jp = (await PlanAsync()) with { Perm = "ask" };
+            var v = await LaunchAsync(new Launcher.Session($"Qwen Code · {jp.Main}", args[ji + 1], Launcher.QwenEnv(jp, Launcher.WriteQwenSettings(jp)), null, Launcher.QwenCommand(jp)),
+                "qwen", "Qwen Code", jp.Main, Launcher.TargetApp);
+            if (v is not null)
+            {
+                await Task.Delay(20000);
+                var frames = new System.Text.StringBuilder();
+                var sw = Stopwatch.StartNew();
+                void Rec(TermSession _, string t)
+                {
+                    lock (frames) frames.Append($"{sw.ElapsedMilliseconds,7} {t.Length,6} ").Append(t.Replace("\x1b", "\\e").Replace("\r", "\\r").Replace("\n", "\\n")).Append('\n');
+                }
+                v.Session.Output += Rec;
+                await v.TypeAsync("Write a numbered list of 60 different fruits, one per line, each with a short description. No tools.");
+                await Task.Delay(500);
+                await v.TypeAsync("\r");
+                var scroll = new System.Text.StringBuilder();
+                for (int i = 0; i < 300; i++)   // 60 s
+                {
+                    scroll.Append(sw.ElapsedMilliseconds).Append(' ').Append(await v.EvalAsync("term.buffer.active.viewportY + ',' + term.buffer.active.baseY + ',' + term.buffer.active.cursorY")).Append('\n');
+                    await Task.Delay(200);
+                }
+                v.Session.Output -= Rec;
+                File.WriteAllText(Path.Combine(dir, "jitter-frames.txt"), frames.ToString());
+                File.WriteAllText(Path.Combine(dir, "jitter-scroll.txt"), scroll.ToString());
+                await v.CaptureAsync(Path.Combine(dir, "jitter-end.png"));
+                jitterResult = "JITTER: recorded";
+            }
+        }
+
+        // Optional: --launchopts edits Settings → Start commands through its controls and checks preview + launch spec.
+        var launchResult = "";
+        if (args.Contains("--launchopts"))
+        {
+            Navigate("settings");
+            await Task.Delay(800);
+            var sp = SettingsPage;
+            sp.LClaudeContinue.IsChecked = true;
+            sp.LClaudeContinue.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+            sp.LClaudeArgs.Text = "--verbose";
+            sp.LClaudeEnv.Text = "# comment\nMY_TEST_VAR=hello\nbad name=x";
+            sp.LMaxOut.Value = 12288;
+            await Task.Delay(400);
+            var claudePreview = sp.LPreview.Text;
+            sp.LTabs.SelectedIndex = 1;
+            sp.LQwenPct.Value = 70;
+            await Task.Delay(400);
+            var qwenPreview = sp.LPreview.Text;
+            var spec = (await BuildSpecAsync("claude"))!;
+            var qspec = (await BuildSpecAsync("qwen"))!;
+            var qsettings = qspec.Env?.TryGetValue("QWEN_CODE_SYSTEM_SETTINGS_PATH", out var qp) == true && File.Exists(qp) ? File.ReadAllText(qp) : "";
+            sp.LTabs.SelectedIndex = 0;
+            sp.LPreview.BringIntoView();
+            await Task.Delay(500);
+            Snap(Path.Combine(dir, "launchopts.png"));
+            launchResult = "LAUNCHOPTS: " +
+                $"previewContinue={claudePreview.Contains("--continue")} previewArgs={claudePreview.Contains("--verbose")} " +
+                $"previewEnv={claudePreview.Contains("MY_TEST_VAR = 'hello'")} badEnvSkipped={!claudePreview.Contains("bad name")} " +
+                $"previewMaxOut={claudePreview.Contains("CLAUDE_CODE_MAX_OUTPUT_TOKENS = '12288'")} " +
+                $"specCmd=[{spec.Command}] specEnv={(spec.Env is { } se && se.TryGetValue("MY_TEST_VAR", out var mv) ? mv : "")} " +
+                $"qwenPreviewThreshold={qwenPreview.Contains("autoCompactThreshold 0.7")} qwenSettingsThreshold={qsettings.Contains("\"autoCompactThreshold\": 0.7")} " +
+                $"qwenSettingsMaxTokens={qsettings.Contains("\"max_tokens\": 12288")} saved={_config.Launch.ClaudeContinue && _config.Launch.MaxOutputTokens == 12288} " +
+                $"dashboardCommands={Commands.Text.Contains("--continue")}";
+            sp.GetType().GetMethod("ResetLaunch_Click", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(sp, [null, new RoutedEventArgs()]);
+            await Task.Delay(300);
+            launchResult += $" resetOk={!_config.Launch.ClaudeContinue && _config.Launch.MaxOutputTokens == 0 && !Commands.Text.Contains("--continue")}";
+            Navigate("dashboard");
+        }
+
+        // Optional: --pool <port:code,port:code> pairs with AI PCs started with --pool-host on this machine and checks
+        // discovery, pairing, routing, spreading work, moving off a busy PC, agents shown, remote install and keys.
+        var poolResult = "";
+        if (args.Contains("--pool"))
+        {
+            var spec = args[Array.IndexOf(args, "--pool") + 1].Split(',').Select(x => x.Split(':')).Select(x => (Port: int.Parse(x[0]), Code: x[1])).ToList();
+            var pr = new List<string>();
+            void PAdd(string s) { pr.Add(s); try { File.AppendAllText(Path.Combine(dir, "pool-progress.txt"), s + Environment.NewLine); } catch { } }   // progress file: shows where it stopped if it hangs
+            try
+            {
+                _config.PoolIncludeThisPc = false;
+                _config.Save();
+                var found = await Services.Pool.AiPool.DiscoverAsync();
+                PAdd($"discovered={found.Count}");
+                var pcs = new List<Services.Pool.FoundPc>();
+                foreach (var (port, _) in spec) if (await Services.Pool.AiPool.LookupAsync($"127.0.0.1:{port}") is { } pc) pcs.Add(pc);
+                PAdd($"lookup={pcs.Count}/{spec.Count}");
+                var (badOk, _) = await Services.Pool.AiPool.PairAsync(pcs[0], "000000");
+                PAdd($"badCodeRejected={!badOk}");
+                for (int k = 0; k < pcs.Count; k++)
+                {
+                    var (ok, msg) = await Services.Pool.AiPool.PairAsync(pcs[k], spec[k].Code);
+                    PAdd($"pair{k}={ok}");
+                    if (!ok) PAdd($"pairMsg={msg}");
+                }
+                await SetUsePoolAsync(true);
+                await Services.Pool.AiPool.RefreshAsync();
+                var members = Services.Pool.AiPool.Members.ToList();
+                PAdd($"online={members.Count(m => m.Online)}/{members.Count}");
+                using var relay = new System.Net.Http.HttpClient { BaseAddress = new Uri(Services.Pool.PoolRelay.Url), Timeout = TimeSpan.FromMinutes(5) };
+                var tags = await relay.GetFromJsonAsync<System.Text.Json.JsonElement>("/api/tags");
+                var models = tags.GetProperty("models").EnumerateArray()
+                    .Select(m => (Name: m.GetProperty("name").GetString()!, Size: m.GetProperty("size").GetInt64()))
+                    .Where(m => !System.Text.RegularExpressions.Regex.IsMatch(m.Name, @"-ctx\d+k")).OrderBy(m => m.Size).ToList();
+                PAdd($"relayTags={models.Count}");
+                var small = models[0].Name;
+                PAdd($"model={small}");
+                object Gen(int n) => new { model = small, prompt = "Count from 1 upwards, one number per line.", stream = false, options = new { num_predict = n }, keep_alive = "10m" };
+
+                // warm up (load the model) through a session-less request
+                await relay.PostAsJsonAsync("/api/generate", Gen(1));
+                // two sessions at once go to different PCs
+                var a = Services.Pool.PoolRelay.Register("qwen", "Test A");
+                var b = Services.Pool.PoolRelay.Register("claude", "Test B");
+                var ta = relay.PostAsJsonAsync($"/s/{a}/api/generate", Gen(400));
+                await Task.Delay(800);
+                var rb = await relay.PostAsJsonAsync($"/s/{b}/api/generate", Gen(5));
+                await ta;
+                var routes = Services.Pool.PoolRelay.Routes.ToDictionary(r => r.Id);
+                PAdd($"genOk={rb.IsSuccessStatusCode}");
+                PAdd($"spread={routes[a].MemberId != routes[b].MemberId}");
+
+                // someone else keeps A's PC busy: A's next request moves to the other PC
+                var busyMember = members.First(m => m.Member.Id == routes[a].MemberId);
+                var handler = new System.Net.Http.HttpClientHandler { ServerCertificateCustomValidationCallback = (_, _, _, _) => true };
+                using var other = new System.Net.Http.HttpClient(handler) { BaseAddress = new Uri($"https://127.0.0.1:{busyMember.Member.Port}"), Timeout = TimeSpan.FromMinutes(5) };
+                var code = spec[members.IndexOf(busyMember)].Code;
+                var pairResp = await other.PostAsJsonAsync("/maison/pair", new Services.Pool.PairRequest(code, "OTHER-PC", "other-pc-id"));
+                var otherToken = (await pairResp.Content.ReadFromJsonAsync<Services.Pool.PairReply>(new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web)))!.Token;
+                other.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", otherToken);
+                var busy = other.PostAsJsonAsync("/api/generate", Gen(600));
+                await Task.Delay(300);
+                await Services.Pool.AiPool.RefreshAsync();
+                PAdd($"seenBusy={busyMember.BusyForUs}");
+                var agentsSeen = busyMember.Info?.Agents.Select(x => $"{x.Kind}@{x.Client}").ToList() ?? [];
+                PAdd($"agents=[{string.Join(" ", agentsSeen)}]");
+                await relay.PostAsJsonAsync($"/s/{a}/api/generate", Gen(5));
+                routes = Services.Pool.PoolRelay.Routes.ToDictionary(r => r.Id);
+                PAdd($"movedOffBusy={routes[a].MemberId != busyMember.Member.Id && routes[a].Moves == 1}");
+                await busy;
+
+                // bad key is refused
+                using var bad = new System.Net.Http.HttpClient(new System.Net.Http.HttpClientHandler { ServerCertificateCustomValidationCallback = (_, _, _, _) => true })
+                    { BaseAddress = new Uri($"https://127.0.0.1:{busyMember.Member.Port}") };
+                bad.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", "not-a-real-key-not-a-real-key");
+                PAdd($"badKey={(int)(await bad.GetAsync("/api/tags")).StatusCode}");
+
+                // remote install (a model it already has: quick) and its progress
+                var target = members[^1];
+                var (pullOk, _) = await Services.Pool.AiPool.InstallModelAsync(target.Member, small);
+                Services.Pool.PoolTask? task = null;
+                for (int k = 0; k < 60 && pullOk; k++)
+                {
+                    await Task.Delay(1000);
+                    await Services.Pool.AiPool.RefreshAsync();
+                    task = target.Info?.Task;
+                    if (task is { Running: false }) break;
+                }
+                PAdd($"remotePull={pullOk && task is { Running: false, Error: null }}");
+                if (task?.Error is { } te) PAdd($"pullErr={te}");
+
+                Navigate("pool");
+                await Task.Delay(2500);
+                Snap(Path.Combine(dir, "pool-test.png"));
+                await SetUsePoolAsync(false);
+            }
+            catch (Exception ex) { PAdd($"error={ex.GetType().Name}: {ex.Message}"); }
+            poolResult = string.Join(" ", pr);
+        }
+
+        // Optional: --update checks GitHub for real: as this version (expect no update unless one is released), then as
+        // 0.0.1 (expect the title-bar button), and the version comparison rules.
+        var updateResult = "";
+        if (args.Contains("--update"))
+        {
+            var ur = new List<string>();
+            try
+            {
+                var now = await CheckForUpdatesAsync(manual: true);
+                ur.Add($"current=\"{now}\"");
+                var old = await CheckForUpdatesAsync(true, "0.0.1");
+                ur.Add($"as001=\"{old}\" button={UpdateButton.Visibility == Visibility.Visible} label=\"{UpdateButton.Content}\" exe={_update?.DownloadUrl}");
+                Navigate("dashboard");
+                await Task.Delay(600);
+                Snap(Path.Combine(dir, "update-button.png"));
+                ur.Add($"rules={UpdateCheck.IsNewer("v0.0.10", "0.0.9") && !UpdateCheck.IsNewer("v0.0.5", "0.0.5") && !UpdateCheck.IsNewer("v0.0.4", "0.0.5") && UpdateCheck.IsNewer("v0.1.0-beta", "0.0.9") && !UpdateCheck.IsNewer("garbage", "0.0.1")}");
+                await CheckForUpdatesAsync(manual: true);   // back to the real state
+                ur.Add($"hiddenAgain={UpdateButton.Visibility != Visibility.Visible}");
+            }
+            catch (Exception ex) { ur.Add($"error={ex.Message}"); }
+            updateResult = "UPDATE: " + string.Join(" ", ur);
+        }
+
+        // Optional: --autostart flips Settings → Start with Windows through its switches and reads the Run key
+        // (set MAISON_RUN_NAME so a test entry is used, not the real one). Also: a stale entry is repointed here.
+        var autoResult = "";
+        if (args.Contains("--autostart"))
+        {
+            var ar = new List<string>();
+            try
+            {
+                if (Environment.GetEnvironmentVariable("MAISON_RUN_NAME") is not { Length: > 0 }) throw new InvalidOperationException("set MAISON_RUN_NAME");
+                Navigate("settings");
+                await Task.Delay(500);
+                var sp = SettingsPage;
+                ar.Add($"startOff={!AutoStart.IsOn}");
+                sp.StartWithWindows.IsChecked = true; sp.AutoStart_Click(sp, new RoutedEventArgs());
+                ar.Add($"on={AutoStart.IsOn} pointsHere={AutoStart.Command?.Contains(Environment.ProcessPath!) == true} min={AutoStart.StartsMinimized} minEnabled={sp.StartMinimized.IsEnabled}");
+                sp.StartMinimized.IsChecked = true; sp.AutoStart_Click(sp, new RoutedEventArgs());
+                ar.Add($"cmd={AutoStart.Command}");
+                // stale entry (exe deleted after an update) is repointed at this exe, keeping "minimised"
+                using (var k = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run", true)!)
+                    k.SetValue(Environment.GetEnvironmentVariable("MAISON_RUN_NAME")!, "\"C:\\nowhere\\maison-0.0.1.exe\" --minimized");
+                AutoStart.Refresh();
+                ar.Add($"repointed={AutoStart.Command?.Contains(Environment.ProcessPath!) == true && AutoStart.StartsMinimized}");
+                Snap(Path.Combine(dir, "autostart.png"));
+                sp.StartWithWindows.IsChecked = false; sp.AutoStart_Click(sp, new RoutedEventArgs());
+                ar.Add($"offAgain={!AutoStart.IsOn}");
+            }
+            catch (Exception ex) { ar.Add($"error={ex.Message}"); }
+            autoResult = "AUTOSTART: " + string.Join(" ", ar);
+        }
+        var windowResult = args.Contains(AutoStart.MinimizedArg) ? $"WINDOW: {WindowState}" : "";
+
+        // Optional: --toast opens a terminal tab, shows a message and checks Windows really puts it above the terminal.
+        var toastResult = "";
+        if (args.Contains("--toast"))
+        {
+            Navigate("terminals");
+            await TerminalsPage.OpenAsync(new Launcher.Session("Toast test", Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), null, null, "Get-ChildItem $env:WINDIR | Select-Object -First 40"), "shell");
+            await Task.Delay(4000);
+            Activate();
+            Toast("Toast test", "This message should float above the terminal.", ControlAppearance.Success, SymbolRegular.Alert24);
+            await Task.Delay(1200);
+            var bar = FindDescendant<Snackbar>(_toasts.Presenter);
+            var toastHwnd = new System.Windows.Interop.WindowInteropHelper(_toasts).Handle;
+            var mainHwnd = new System.Windows.Interop.WindowInteropHelper(this).Handle;
+            string Owner(Point screen)
+            {
+                var h = GetAncestor(WindowFromPoint(new PT { X = (int)screen.X, Y = (int)screen.Y }), 2);
+                return h == toastHwnd ? "toast" : h == mainHwnd ? "main" : "other";
+            }
+            var onToast = bar is { ActualWidth: > 0 } ? Owner(bar.PointToScreen(new Point(bar.ActualWidth / 2, bar.ActualHeight / 2))) : "no-snackbar";
+            var viewer = FindViewers(Root).FirstOrDefault(v => v.IsVisible);
+            var onTerminalTop = viewer is not null ? Owner(viewer.PointToScreen(new Point(viewer.ActualWidth / 2, 20))) : "no-terminal";
+            var topLeft = PointToScreen(new Point(0, 0));
+            var size = PointToScreen(new Point(ActualWidth, ActualHeight));
+            using (var shot = new System.Drawing.Bitmap((int)(size.X - topLeft.X), (int)(size.Y - topLeft.Y)))
+            {
+                using (var g = System.Drawing.Graphics.FromImage(shot)) g.CopyFromScreen((int)topLeft.X, (int)topLeft.Y, 0, 0, shot.Size);
+                shot.Save(Path.Combine(dir, "toast-screen.png"), System.Drawing.Imaging.ImageFormat.Png);
+            }
+            toastResult = $"TOAST: underToast={onToast} terminalTop={onTerminalTop} foreground={GetForegroundWindow() == mainHwnd}";
+            Navigate("dashboard");
+        }
+
+        // The colour actually on screen at the middle of the window's left edge (where Windows draws the border).
+        string DwmBorder()
+        {
+            var r = new DwmRect();
+            DwmGetWindowAttribute(new System.Windows.Interop.WindowInteropHelper(this).Handle, 9 /* DWMWA_EXTENDED_FRAME_BOUNDS */, out r, System.Runtime.InteropServices.Marshal.SizeOf<DwmRect>());
+            using var bmp = new System.Drawing.Bitmap(1, 1);
+            using (var g = System.Drawing.Graphics.FromImage(bmp)) g.CopyFromScreen(r.Left, (r.Top + r.Bottom) / 2, 0, 0, new System.Drawing.Size(1, 1));
+            var px = bmp.GetPixel(0, 0);
+            return $"{px.R},{px.G},{px.B}";
+        }
+
+        // Optional: --accent switches accent colours live and reads the colour the switches are actually drawn in.
+        var accentResult = "";
+        if (args.Contains("--accent"))
+        {
+            var before = _config.Accent;
+            Navigate("settings");
+            await Task.Delay(800);
+            var parts = new List<string>();
+            foreach (var name in new[] { "Coral", "Blue", "Green" })
+            {
+                Theming.ApplyAccent(name);
+                await Task.Delay(700);
+                var want = (Color)ColorConverter.ConvertFromString(Theming.Accents.First(a => a.Name == name).Hex);
+                var toggle = DominantColour(ModeToggle);
+                var idle = DominantColour(SettingsPage.IdleNotify);
+                Activate();
+                await Task.Delay(300);
+                var borderNow = DwmBorder();
+                // focus away and back: what WPF-UI itself paints, which must match
+                using var other = new System.Windows.Forms.Form { Width = 200, Height = 100, ShowInTaskbar = false, StartPosition = System.Windows.Forms.FormStartPosition.CenterScreen };
+                other.Show(); other.Activate(); await Task.Delay(400);
+                var borderInactive = DwmBorder();
+                other.Close(); Activate(); await Task.Delay(400);
+                var borderRefocus = DwmBorder();
+                parts.Add($"{name}: want={want.R},{want.G},{want.B} titleToggle={toggle} settingsToggle={idle} " +
+                          $"match={(Near(toggle, want) && Near(idle, want))} border={borderNow} inactive={borderInactive} refocus={borderRefocus} borderMatch={borderNow == borderRefocus}");
+                Snap(Path.Combine(dir, $"accent-{name.ToLowerInvariant()}.png"));
+            }
+            Theming.ApplyAccent(before);
+            Navigate("dashboard");
+            accentResult = "ACCENT: " + string.Join(" | ", parts);
+        }
+
         // Optional: --portal <password> starts the web portal and exercises it over real HTTPS (use with MAISON_CONFIG_DIR).
         var po = Array.IndexOf(args, "--portal");
         var portalResult = "";
@@ -907,9 +1426,9 @@ public partial class MainWindow : FluentWindow, IShell
             catch (Exception ex) { portalResult = "PORTAL: exception " + ex; }
         }
 
-        var lines = new List<string> { "STATUS:", pullResult, termResult, simpleResult, portalResult };
+        var lines = new List<string> { "STATUS:", pullResult, termResult, simpleResult, accentResult, toastResult, jitterResult, launchResult, poolResult, updateResult, autoResult, windowResult, portalResult };
         lines.AddRange(_status.Select(s => $"[{s.Level}] {s.Title} | {s.Detail}"));
-        lines.Add($"GAUGES: temp={GTemp.Display} load={GLoad.Display} power={GPower.Display} vram={GVram.Display} cpu={GCpu.Display} ram={GRam.Display} | {GpuTitle.Text} | {GpuExtra.Text}");
+        lines.Add($"GAUGES: temp={GTemp.Display} load={GLoad.Display} power={GPower.Display} vram={GVram.Display} cpu={GCpu.Display} ram={GRam.Display} | ai: load={GLoad.AiDisplay} power={GPower.AiDisplay} vram={GVram.AiDisplay} cpu={GCpu.AiDisplay} ram={GRam.AiDisplay} | {GpuTitle.Text} | {GpuExtra.Text}");
         if (_stats is { } st)
             lines.Add("VRAM USERS: " + string.Join(", ", st.VramUsers.Select(p => $"{p.Name} {p.VramGb:0.0}GB")) + $" | warning: {HealthAdvice.VramWarning(st) ?? "none"}");
         lines.Add($"VERSION: {AppInfo.Version} | PERMS: {_config.Permissions} | ACCENT: {_config.Accent} | UIMODE: {_config.UiMode}");
@@ -944,6 +1463,20 @@ public partial class MainWindow : FluentWindow, IShell
     }
 
     [System.Runtime.InteropServices.DllImport("user32.dll")] private static extern bool SetCursorPos(int x, int y);
+    private struct PT { public int X, Y; }
+    [System.Runtime.InteropServices.DllImport("user32.dll")] private static extern IntPtr WindowFromPoint(PT p);
+    [System.Runtime.InteropServices.DllImport("user32.dll")] private static extern IntPtr GetAncestor(IntPtr h, uint flags);
+
+    private static T? FindDescendant<T>(DependencyObject root) where T : DependencyObject
+    {
+        for (int i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
+        {
+            var c = VisualTreeHelper.GetChild(root, i);
+            if (c is T t) return t;
+            if (FindDescendant<T>(c) is { } d) return d;
+        }
+        return null;
+    }
     [System.Runtime.InteropServices.DllImport("user32.dll")] private static extern void mouse_event(uint flags, uint dx, uint dy, uint data, UIntPtr extra);
 
     /// <summary>Self-test: a genuine left click in the middle of an element (not a synthetic Click event).</summary>
@@ -958,6 +1491,31 @@ public partial class MainWindow : FluentWindow, IShell
         await Task.Delay(60);
         mouse_event(0x0004, 0, 0, 0, UIntPtr.Zero);   // left up
     }
+
+    /// <summary>Self-test: the most saturated colour an element is drawn with (e.g. a switch's "on" fill).</summary>
+    private static Color? DominantColour(FrameworkElement? el)
+    {
+        if (el is null || el.ActualWidth < 1) return null;
+        var bmp = new RenderTargetBitmap((int)el.ActualWidth, (int)el.ActualHeight, 96, 96, PixelFormats.Pbgra32);
+        // Through a brush: Render(el) would apply el's offset in its parent and miss it.
+        var dv = new DrawingVisual();
+        using (var dc = dv.RenderOpen()) dc.DrawRectangle(new VisualBrush(el), null, new Rect(0, 0, el.ActualWidth, el.ActualHeight));
+        bmp.Render(dv);
+        var px = new byte[bmp.PixelWidth * bmp.PixelHeight * 4];
+        bmp.CopyPixels(px, bmp.PixelWidth * 4, 0);
+        Color? best = null; int bestSat = 40;
+        for (int i = 0; i < px.Length; i += 4)
+        {
+            if (px[i + 3] < 200) continue;
+            int b = px[i], g = px[i + 1], r = px[i + 2];
+            int sat = Math.Max(r, Math.Max(g, b)) - Math.Min(r, Math.Min(g, b));
+            if (sat > bestSat) { bestSat = sat; best = Color.FromRgb((byte)r, (byte)g, (byte)b); }
+        }
+        return best;
+    }
+
+    private static bool Near(Color? a, Color b) =>
+        a is { } x && Math.Abs(x.R - b.R) + Math.Abs(x.G - b.G) + Math.Abs(x.B - b.B) < 60;
 
     private static IEnumerable<Controls.TerminalViewer> FindViewers(DependencyObject root)
     {
