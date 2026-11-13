@@ -56,7 +56,9 @@ settings aren't touched.
 - `--pool <port:code,...>` tests the AI pool against AI PCs started on this machine with `--pool-host` (no window; give
   each its own `MAISON_CONFIG_DIR` with `ShareAi`/`PoolPairCode` set, and `MAISON_POOL_PORT`). Checks discovery, pairing
   (and a wrong code), routing through the relay, two sessions spreading over two PCs, moving off a PC another client keeps
-  busy, the agents list, a bad key (401) and a remote install. Progress goes to `pool-progress.txt` as it runs.- `--jitter` records every frame Qwen Code sends while it streams a long answer (`jitter-frames.txt`).
+  busy, the agents list, a bad key (401) and a remote install. Progress goes to `pool-progress.txt` as it runs.- `--update` asks GitHub's releases API for real, as this version and as 0.0.1, checks the title-bar button appears and
+  hides again, and the version comparison rules (`MAISON_UPDATE_URL` points the check at another URL).
+- `--jitter` records every frame Qwen Code sends while it streams a long answer (`jitter-frames.txt`).
 - `--portal` runs the web portal over real HTTPS and checks login, cookies, lockout, origin checks, state, launching and
   the mirrored terminal WebSocket.
 
@@ -137,6 +139,7 @@ an accent shade when the accent changes.
 | `src/Services/TermLink.cs`, `TerminalPage.cs` | One viewer ↔ session protocol; the xterm.js page (app and portal) |
 | `src/Services/StatsService.cs`, `HealthAdvice.cs` | CPU/RAM/GPU and per-app VRAM/GPU polling; the VRAM-crowding warning |
 | `src/Services/AppServices.cs` | Version, accent theming, idle notifications |
+| `src/Services/UpdateCheck.cs` | Compares this version with the latest GitHub release (title-bar button, Settings → Updates) |
 | `src/Services/AiSharing.cs` | Making this PC an AI PC: firewall rules, starting/stopping the pool service |
 | `src/Services/Pool/` | AI pool: `PoolHost` (AI PC service), `AiPool` (discovery, pairing, status), `PoolRelay` (routing), `PoolProtocol` |
 | `src/Views/PoolView.xaml(.cs)` | The AI pool page |
@@ -152,6 +155,10 @@ an accent shade when the accent changes.
 | `branding/` | Logo source, `make-assets.ps1` to regenerate the icon and logos, and [brand notes](../branding/README.md) |
 
 ## Releasing
+
+Releases are what the update check sees: it reads the latest (non-pre-release) release's tag (`v<version>`) and offers
+it when it's higher than the running version, so tag releases `v<Version>` and attach the `maison-<version>.exe`.
+
 1. Bump `<Version>` in `src/Maison.csproj`, then `.\build.ps1 -Test`.
 2. Commit and push, then
    `gh release create v<version> dist\maison-<version>.exe THIRD-PARTY-NOTICES.md --title "maison <version>"`, with the

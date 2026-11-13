@@ -257,6 +257,21 @@
           </Grid>
         </StackPanel>
       </ui:Card>
+      <!-- Updates -->
+      <ui:Card Margin="0,0,0,12">
+        <StackPanel>
+          <TextBlock Text="Updates" Style="{StaticResource H}" />
+          <TextBlock Style="{StaticResource Sub}"
+                     Text="maison looks for a newer version on GitHub when it starts and once a day. If there is one, a button in the title bar takes you to the download." />
+          <ui:ToggleSwitch x:Name="AutoUpdateCheck" Content="Check for updates automatically" Click="AutoUpdate_Click"
+                           ToolTip="Asks GitHub for the latest maison release. Nothing about you or this PC is sent." />
+          <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+            <ui:Button x:Name="BtnCheckUpdate" Content="Check now" Icon="{ui:SymbolIcon ArrowSync24}" Click="CheckUpdate_Click" />
+            <TextBlock x:Name="UpdateState" VerticalAlignment="Center" Margin="12,0,0,0" TextWrapping="Wrap" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+          </StackPanel>
+        </StackPanel>
+      </ui:Card>
+
       <!-- Web portal -->
       <ui:Card Margin="0,0,0,12">
         <StackPanel>

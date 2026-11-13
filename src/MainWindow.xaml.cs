@@ -56,6 +56,7 @@ public partial class MainWindow : FluentWindow, IShell
         PoolPage.Shell = this;
         VersionText.Text = "v" + AppInfo.Version;
         TitleVersion.Text = "v" + AppInfo.Version;
+        if (Environment.GetCommandLineArgs().All(a => a != "--selftest")) _ = UpdateLoopAsync();
         Theming.ApplyAccent(_config.Accent);
 
         foreach (var k in Launcher.ContextSizes.Keys) Context.Items.Add(k);
@@ -159,6 +160,61 @@ public partial class MainWindow : FluentWindow, IShell
     }
 
     public void ShowAiSettings() => ShowPool();
+
+    // ------------------------------------------------------------------ updates
+
+    private UpdateInfo? _update;
+
+    /// <summary>At start-up (after things settle) and then once a day, unless turned off in Settings.</summary>
+    private async Task UpdateLoopAsync()
+    {
+        await Task.Delay(TimeSpan.FromSeconds(20));
+        while (true)
+        {
+            if (_config.CheckForUpdates) await CheckForUpdatesAsync(manual: false);
+            await Task.Delay(TimeSpan.FromHours(24));
+        }
+    }
+
+    public Task<string> CheckForUpdatesAsync(bool manual) => CheckForUpdatesAsync(manual, null);
+
+    /// <param name="pretendVersion">Self-test only: compare as if this were the running version.</param>
+    private async Task<string> CheckForUpdatesAsync(bool manual, string? pretendVersion)
+    {
+        var mine = AppInfo.Version;
+        try
+        {
+            _update = await UpdateCheck.CheckAsync(pretendVersion);
+            mine = pretendVersion ?? AppInfo.Version;
+        }
+        catch (Exception ex)
+        {
+            if (manual) Log($"Update check failed: {ex.Message}");
+            return "Couldn't reach GitHub to check. Try again later.";
+        }
+        if (_update is null)
+        {
+            UpdateButton.Visibility = Visibility.Collapsed;
+            return $"You have the latest version ({mine}).";
+        }
+        UpdateButton.Content = $"Update to {_update.Version}";
+        UpdateButton.ToolTip = $"maison {_update.Version} is out (you have {mine}). Opens the download page.";
+        UpdateButton.Visibility = Visibility.Visible;
+        Log($"maison {_update.Version} is available: {_update.PageUrl}");
+        if (!manual) Toast($"maison {_update.Version} is available", "Click Update in the title bar to download it.", ControlAppearance.Info, SymbolRegular.ArrowDownload24);
+        return $"maison {_update.Version} is available (you have {mine}).";
+    }
+
+    private async void UpdateButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_update is not { } u) return;
+        if (!await ConfirmAsync($"Download maison {u.Version}?",
+                $"You have {AppInfo.Version}. Your browser opens the release page; download maison-{u.Version}.exe there.\n\n" +
+                "To update: close maison, run the new exe and delete the old one. Your settings and models are kept.",
+                "Open download page", "Later")) return;
+        try { Process.Start(new ProcessStartInfo(u.PageUrl) { UseShellExecute = true }); }
+        catch (Exception ex) { Toast("Couldn't open the browser", u.PageUrl + " · " + ex.Message, ControlAppearance.Caution, SymbolRegular.Warning24); }
+    }
 
     public void ShowPool()
     {
@@ -1223,6 +1279,29 @@ public partial class MainWindow : FluentWindow, IShell
             poolResult = string.Join(" ", pr);
         }
 
+        // Optional: --update checks GitHub for real: as this version (expect no update unless one is released), then as
+        // 0.0.1 (expect the title-bar button), and the version comparison rules.
+        var updateResult = "";
+        if (args.Contains("--update"))
+        {
+            var ur = new List<string>();
+            try
+            {
+                var now = await CheckForUpdatesAsync(manual: true);
+                ur.Add($"current=\"{now}\"");
+                var old = await CheckForUpdatesAsync(true, "0.0.1");
+                ur.Add($"as001=\"{old}\" button={UpdateButton.Visibility == Visibility.Visible} label=\"{UpdateButton.Content}\" exe={_update?.DownloadUrl}");
+                Navigate("dashboard");
+                await Task.Delay(600);
+                Snap(Path.Combine(dir, "update-button.png"));
+                ur.Add($"rules={UpdateCheck.IsNewer("v0.0.10", "0.0.9") && !UpdateCheck.IsNewer("v0.0.5", "0.0.5") && !UpdateCheck.IsNewer("v0.0.4", "0.0.5") && UpdateCheck.IsNewer("v0.1.0-beta", "0.0.9") && !UpdateCheck.IsNewer("garbage", "0.0.1")}");
+                await CheckForUpdatesAsync(manual: true);   // back to the real state
+                ur.Add($"hiddenAgain={UpdateButton.Visibility != Visibility.Visible}");
+            }
+            catch (Exception ex) { ur.Add($"error={ex.Message}"); }
+            updateResult = "UPDATE: " + string.Join(" ", ur);
+        }
+
         // Optional: --toast opens a terminal tab, shows a message and checks Windows really puts it above the terminal.
         var toastResult = "";
         if (args.Contains("--toast"))
@@ -1288,7 +1367,7 @@ public partial class MainWindow : FluentWindow, IShell
             catch (Exception ex) { portalResult = "PORTAL: exception " + ex; }
         }
 
-        var lines = new List<string> { "STATUS:", pullResult, termResult, simpleResult, accentResult, toastResult, jitterResult, launchResult, poolResult, portalResult };
+        var lines = new List<string> { "STATUS:", pullResult, termResult, simpleResult, accentResult, toastResult, jitterResult, launchResult, poolResult, updateResult, portalResult };
         lines.AddRange(_status.Select(s => $"[{s.Level}] {s.Title} | {s.Detail}"));
         lines.Add($"GAUGES: temp={GTemp.Display} load={GLoad.Display} power={GPower.Display} vram={GVram.Display} cpu={GCpu.Display} ram={GRam.Display} | ai: load={GLoad.AiDisplay} power={GPower.AiDisplay} vram={GVram.AiDisplay} cpu={GCpu.AiDisplay} ram={GRam.AiDisplay} | {GpuTitle.Text} | {GpuExtra.Text}");
         if (_stats is { } st)

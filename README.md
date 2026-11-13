@@ -148,7 +148,9 @@ this when you turn sharing on. On another network (e.g. Tailscale), add it by na
 broken Ollama update, and **Setup** can reinstall any part.
 
 ## Updating and uninstalling
-- **Update:** download the newer `maison-<version>.exe` and delete the old one (recreate any desktop shortcut with the
+- **Update:** maison checks GitHub for a newer version when it starts and once a day (turn this off, or **Check now**,
+  in **Settings → Updates**). When there is one, an **Update to …** button appears in the title bar and opens the download
+  page. Download the newer `maison-<version>.exe`, close maison, run the new one and delete the old one (recreate any desktop shortcut with the
   **Desktop shortcut** button). Your settings and models are kept.
 - **Uninstall:** optionally use **Uninstall** on the parts you don't want in **Advanced → Setup**, then delete the exe
   and the settings folder `%APPDATA%\Maison`. Models live in `%USERPROFILE%\.ollama\models` (unless you moved them);

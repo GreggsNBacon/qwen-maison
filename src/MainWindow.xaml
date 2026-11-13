@@ -23,6 +23,8 @@
           <TextBlock Text="maison" FontSize="12" Margin="0,0,0,0" VerticalAlignment="Center" Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
           <TextBlock x:Name="TitleVersion" FontSize="11" Margin="8,1,0,0" VerticalAlignment="Center" Foreground="{DynamicResource TextFillColorTertiaryBrush}"
                      ToolTip="maison version" />
+          <ui:Button x:Name="UpdateButton" Visibility="Collapsed" Margin="12,0,0,0" Padding="10,2" FontSize="12" Appearance="Primary"
+                     Icon="{ui:SymbolIcon ArrowDownload24}" Click="UpdateButton_Click" WindowChrome.IsHitTestVisibleInChrome="True" />
         </StackPanel>
       </ui:TitleBar.Header>
       <ui:TitleBar.Icon>

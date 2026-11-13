@@ -205,6 +205,9 @@ public sealed class AppConfig
     public Dictionary<string, DateTime> ModelLastUsed { get; set; } = [];
     public DateTime UsageTrackingSince { get; set; } = DateTime.Now;
 
+    /// <summary>Look for a newer maison on GitHub at start-up and once a day.</summary>
+    public bool CheckForUpdates { get; set; } = true;
+
     // AI pool
     /// <summary>Stable id for this PC in AI pools (so a PC is recognised when its address changes).</summary>
     public string MachineId { get; set; } = Guid.NewGuid().ToString("N");

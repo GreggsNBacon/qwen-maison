@@ -40,6 +40,8 @@ public partial class SettingsView : UserControl
         var disk = StatsService.Disk(ModelStorage.Current);
         ModelsDirSub.Text = disk is { } d ? $"{d.FreeGb:N0} GB free of {d.TotalGb:N0} GB on {d.Drive}" : "";
         LoadLaunch();
+        AutoUpdateCheck.IsChecked = _c.CheckForUpdates;
+        if (UpdateState.Text.Length == 0) UpdateState.Text = $"This is maison {AppInfo.Version}.";
         _loading = false;
         RefreshSharing();
         UpdatePreview();
@@ -163,6 +165,22 @@ public partial class SettingsView : UserControl
 
     /// <summary>Called by the shell after the pool is switched on or off elsewhere.</summary>
     public void RefreshPool() => RefreshSharing();
+    // ------------------------------------------------------------------ updates
+
+    private void AutoUpdate_Click(object sender, RoutedEventArgs e)
+    {
+        _c.CheckForUpdates = AutoUpdateCheck.IsChecked == true;
+        _c.Save();
+    }
+
+    private async void CheckUpdate_Click(object sender, RoutedEventArgs e)
+    {
+        BtnCheckUpdate.IsEnabled = false;
+        UpdateState.Text = "Checking…";
+        try { UpdateState.Text = await Shell.CheckForUpdatesAsync(manual: true); }
+        finally { BtnCheckUpdate.IsEnabled = true; }
+    }
+
     // ------------------------------------------------------------------ start commands
 
     private static readonly (string Key, string Label)[] ThinkChoices = [("default", "Model default"), ("on", "Always think"), ("off", "Answer straight away")];
@@ -234,6 +252,8 @@ public partial class SettingsView : UserControl
         _c.Save();
         _loading = true;
         LoadLaunch();
+        AutoUpdateCheck.IsChecked = _c.CheckForUpdates;
+        if (UpdateState.Text.Length == 0) UpdateState.Text = $"This is maison {AppInfo.Version}.";
         _loading = false;
         RefreshSharing();
         UpdatePreview();

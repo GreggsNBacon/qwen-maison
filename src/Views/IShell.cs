@@ -24,6 +24,8 @@ public interface IShell
     void ShowAiSettings();
     /// <summary>Opens the advanced view at the AI pool page.</summary>
     void ShowPool();
+    /// <summary>Looks for a newer maison on GitHub; shows the title-bar button if there is one. Returns a status line.</summary>
+    Task<string> CheckForUpdatesAsync(bool manual);
     /// <summary>Switches this PC's agents to the AI pool (or back to this PC's own AI).</summary>
     Task SetUsePoolAsync(bool on);
     /// <summary>The PowerShell maison would run for "claude", "qwen" or "chat" with the current selection and options.</summary>
