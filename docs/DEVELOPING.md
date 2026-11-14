@@ -76,6 +76,10 @@ There are no unit tests; the self-test is the test suite.
 - Permissions: maison always passes an explicit mode (`claude --permission-mode …`, `qwen --approval-mode …`). Claude
   Code's *auto* mode isn't offered: its safety check runs on Anthropic's servers, which aren't reachable through Ollama.
 - Context window: a size other than Ollama's default is set by creating a settings-only `<model>-ctx64k` variant.
+  The default is "Model maximum" (`Launcher.ModelMax`): the model's own `*.context_length` from `/api/show` (via the pool relay when the
+  pool is on), cached per model by `MainWindow.ContextFor` and awaited before a launch. Reply length is a quarter of the window, 4K–64K.
+  maison 0.0.9 moved the old fixed-64K default to this once (`ContextMaxMigrated`); a 64K picked afterwards stays. With the pool on,
+  the dashboard names the AI PCs (`PoolWhere`), not the relay's 127.0.0.1 address.
 - Token limits: Claude Code and Qwen Code assume a 200K window for models they don't know, so on a 32K/64K local model
   they ran until Ollama's window overflowed. maison tells each the real window (`CLAUDE_CODE_MAX_CONTEXT_TOKENS`; for
   Qwen Code a per-session settings file in `%APPDATA%\Maison\qwen` via `QWEN_CODE_SYSTEM_SETTINGS_PATH`) and caps

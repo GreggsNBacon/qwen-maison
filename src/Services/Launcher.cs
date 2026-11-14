@@ -12,9 +12,13 @@ namespace Maison.Services;
 /// </summary>
 public static class Launcher
 {
+    /// <summary>Context choice meaning "the most this model was trained for" (read from Ollama), not a fixed size.</summary>
+    public const int ModelMax = -1;
+    public const string ModelMaxName = "Model maximum";
+
     public static readonly Dictionary<string, int> ContextSizes = new()
     {
-        ["Ollama default"] = 0, ["32K"] = 32768, ["64K"] = 65536, ["128K"] = 131072,
+        [ModelMaxName] = ModelMax, ["Ollama default"] = 0, ["32K"] = 32768, ["64K"] = 65536, ["128K"] = 131072, ["256K"] = 262144,
     };
 
     /// <summary>Name of the settings-only variant used for a non-default context, e.g. qwen3.8:27b-ctx64k.</summary>
@@ -32,8 +36,8 @@ public static class Launcher
     {
         /// <summary>Where the agent sends requests: Ollama, or this session's address on the AI pool relay.</summary>
         public string Url { get; init; } = OllamaClient.BaseUrl;
-        /// <summary>Max tokens per reply: the user's number, or a quarter of the window (4K–32K) so prompt + reply fit.</summary>
-        public int OutputTokens => O.MaxOutputTokens > 0 ? O.MaxOutputTokens : Math.Clamp(Ctx / 4, 4096, 32768);
+        /// <summary>Max tokens per reply: the user's number, or a quarter of the window (4K–64K) so prompt + reply fit.</summary>
+        public int OutputTokens => O.MaxOutputTokens > 0 ? O.MaxOutputTokens : Math.Clamp(Ctx / 4, 4096, 65536);
     }
 
     public static Dictionary<string, string> ClaudeEnv(Plan p)

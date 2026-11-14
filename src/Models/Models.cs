@@ -186,7 +186,9 @@ public sealed class AppConfig
     public LaunchOptions Launch { get; set; } = new();
     public string MainModel { get; set; } = "";
     public string FastModel { get; set; } = "";
-    public string Context { get; set; } = "64K";
+    public string Context { get; set; } = "Model maximum";
+    /// <summary>Set once the old fixed 64K default has been replaced by "Model maximum" (maison 0.0.9), so a later deliberate 64K stays.</summary>
+    public bool ContextMaxMigrated { get; set; }
     public string WorkDir { get; set; } = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
     public string OpenIn { get; set; } = "This app";
     /// <summary>Legacy (≤1.3): replaced by <see cref="Permissions"/>.</summary>

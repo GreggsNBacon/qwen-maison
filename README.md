@@ -91,7 +91,7 @@ all of maison's settings in their own window, so you don't need the advanced vie
 
 **Advanced view:**
 - **Dashboard**: health checks with one-click fixes (Start, Restart, Repair Ollama), live gauges, and launch buttons for
-  Claude Code, Qwen Code and plain Chat. Choose the model, how much it can keep in mind (context window), the project
+  Claude Code, Qwen Code and plain Chat. Choose the model, how much it can keep in mind (context window; the default, **Model maximum**, uses the most the model supports, with 32K to 256K if you want less), the project
   folder, where it opens (a tab, Windows Terminal or PowerShell) and what the agent may do without asking.
 - **Terminals**: all sessions in tabs. Paste with Ctrl+V; copy by selecting and right-clicking. A dot on a tab means that
   agent has finished and is waiting.
