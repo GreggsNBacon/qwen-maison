@@ -135,6 +135,56 @@ public static class PortalSelfTest
         PortalAuth.DisableTotp();
         r.Add($"totpOffLoginOk={(int)(await Login(password, origin)).StatusCode == 200}");
 
+        // Install-as-app files are public and correct.
+        using (var h3 = new HttpClient(new HttpClientHandler { ServerCertificateCustomValidationCallback = (_, _, _, _) => true, AllowAutoRedirect = false }) { BaseAddress = new Uri(baseUrl) })
+        {
+            var mf = await h3.GetAsync("/manifest.webmanifest");
+            var mfJson = JsonDocument.Parse(await mf.Content.ReadAsStringAsync()).RootElement;
+            bool maskable = mfJson.GetProperty("icons").EnumerateArray().Any(i => i.GetProperty("purpose").GetString() == "maskable");
+            r.Add($"manifest={(int)mf.StatusCode} display={mfJson.GetProperty("display").GetString()} maskableIcon={maskable}");
+            var sw = await h3.GetAsync("/sw.js");
+            r.Add($"serviceWorker={(int)sw.StatusCode} fetchHandler={(await sw.Content.ReadAsStringAsync()).Contains("'fetch'")}");
+            var icon = await h3.GetAsync("/pwa/icon-512.png");
+            var iconBytes = await icon.Content.ReadAsByteArrayAsync();
+            r.Add($"icon512={(int)icon.StatusCode} png={iconBytes.Length > 8 && iconBytes[1] == (byte)'P'}");
+            r.Add($"lockup={(int)(await h3.GetAsync("/pwa/lockup.png")).StatusCode} appleTouch={(int)(await h3.GetAsync("/apple-touch-icon.png")).StatusCode} unknownPwaFile404={(int)(await h3.GetAsync("/pwa/secret.png")).StatusCode == 404}");
+            r.Add($"brand={(int)(await h3.GetAsync("/brand.png")).StatusCode}");
+        }
+
+        // maison.local: port 443 serves the portal, port 80 only redirects, and the mDNS responder answers.
+        r.Add($"friendlyActive={WebPortal.FriendlyActive} problem=[{WebPortal.FriendlyProblem}{MdnsResponder.Problem}]");
+        if (WebPortal.FriendlyActive)
+        {
+            using var h4 = new HttpClient(new HttpClientHandler { ServerCertificateCustomValidationCallback = (_, _, _, _) => true, AllowAutoRedirect = false });
+            try { r.Add($"https443Login={(int)(await h4.GetAsync("https://localhost/login")).StatusCode}"); } catch (Exception ex) { r.Add("https443Login=ERR(" + ex.GetType().Name + ")"); }
+            try
+            {
+                var redir = await h4.GetAsync("http://localhost/term/abc");
+                r.Add($"http80Redirects={(int)redir.StatusCode == 302 && redir.Headers.Location?.ToString() == "https://localhost/term/abc"}");
+            }
+            catch (Exception ex) { r.Add("http80Redirects=ERR(" + ex.GetType().Name + ")"); }
+
+            // Real mDNS queries are multicast (a unicast packet to the shared port may reach another program), so ask the way a phone does.
+            var lan = PortalNet.LanAddresses().FirstOrDefault();
+            using var udp = new System.Net.Sockets.UdpClient(0);
+            var mdnsDest = new IPEndPoint(IPAddress.Parse("224.0.0.251"), 5353);
+            if (lan is not null) udp.Client.SetSocketOption(System.Net.Sockets.SocketOptionLevel.IP, System.Net.Sockets.SocketOptionName.MulticastInterface, lan.GetAddressBytes());
+            var q = new List<byte> { 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0 };
+            foreach (var label in new[] { "maison", "local" }) { q.Add((byte)label.Length); q.AddRange(Encoding.ASCII.GetBytes(label)); }
+            q.AddRange([0, 0, 1, 0, 1]);   // end of name, type A, class IN
+            await udp.SendAsync(q.ToArray(), q.Count, mdnsDest);
+            var rx = udp.ReceiveAsync();
+            var done = await Task.WhenAny(rx, Task.Delay(3000));
+            bool answered = done == rx && rx.Result.Buffer.Length > 12 && (rx.Result.Buffer[2] & 0x80) != 0 && rx.Result.Buffer[7] >= 1;
+            r.Add($"mdnsAnswersMaisonLocal={answered}");
+            var other = new List<byte> { 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0 };
+            foreach (var label in new[] { "printer", "local" }) { other.Add((byte)label.Length); other.AddRange(Encoding.ASCII.GetBytes(label)); }
+            other.AddRange([0, 0, 1, 0, 1]);
+            await udp.SendAsync(other.ToArray(), other.Count, mdnsDest);
+            var rx2 = udp.ReceiveAsync();
+            r.Add($"mdnsIgnoresOtherNames={await Task.WhenAny(rx2, Task.Delay(1000)) != rx2}");
+        }
+
         // Lockout: 5 wrong passwords from one address → the right one is refused too.
         using (var h2 = new HttpClient(new HttpClientHandler { ServerCertificateCustomValidationCallback = (_, _, _, _) => true }) { BaseAddress = new Uri(baseUrl) })
         {

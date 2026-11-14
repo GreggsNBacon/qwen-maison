@@ -1,3 +1,4 @@
+using System.IO;
 using System.Net;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
@@ -224,6 +225,9 @@ public static class Totp
     public static string Protect(byte[] secret) =>
         Convert.ToBase64String(ProtectedData.Protect(secret, "maison-portal-totp"u8.ToArray(), DataProtectionScope.CurrentUser));
 
+    public static string ProtectText(string text) => Protect(System.Text.Encoding.UTF8.GetBytes(text));
+    public static string? UnprotectText(string stored) => Unprotect(stored) is { } b ? System.Text.Encoding.UTF8.GetString(b) : null;
+
     public static byte[]? Unprotect(string stored)
     {
         try { return ProtectedData.Unprotect(Convert.FromBase64String(stored), "maison-portal-totp"u8.ToArray(), DataProtectionScope.CurrentUser); }
@@ -246,31 +250,34 @@ public static class PortalFirewall
     }
 
     /// <summary>Reads (without admin) whether a rule lets phones reach <paramref name="port"/> on the networks this PC is on.</summary>
-    public static async Task<Status> CheckAsync(int port, bool allowInternet)
+    public static async Task<Status> CheckAsync(int port, bool allowInternet, bool friendly = false)
     {
         const string script = """
             $out = @()
-            foreach ($x in @(Get-NetFirewallRule -DisplayName 'maison web portal' -ErrorAction SilentlyContinue | Where-Object { $_.Enabled -eq 'True' -and $_.Action -eq 'Allow' })) {
+            foreach ($x in @(Get-NetFirewallRule -DisplayName 'maison web portal*' -ErrorAction SilentlyContinue | Where-Object { $_.Enabled -eq 'True' -and $_.Action -eq 'Allow' })) {
               $p = ($x | Get-NetFirewallPortFilter).LocalPort -join ','
               $a = ($x | Get-NetFirewallAddressFilter).RemoteAddress -join ','
-              $out += "RULE|$p|$($x.Profile)|$a"
+              $out += "RULE|$($x.DisplayName)|$p|$($x.Profile)|$a"
             }
             foreach ($n in @(Get-NetConnectionProfile)) { $out += "NET|$($n.Name)|$($n.NetworkCategory)" }
             $out
             """;
         var text = await AiSharing.RunPowerShellAsync(script);
-        bool ruleOk = false;
+        bool ruleOk = false, mdnsOk = false;
         var pub = new List<string>();
         var categories = new List<string>();
         foreach (var raw in text.Split('\n', StringSplitOptions.RemoveEmptyEntries))
         {
             var f = raw.Trim().Split('|');
-            if (f is ["RULE", var p, var prof, var addr])
+            if (f is ["RULE", var rname, var p, var prof, var addr])
             {
+                if (rname.Contains("mDNS", StringComparison.OrdinalIgnoreCase)) { mdnsOk = p.Contains("5353"); continue; }
                 bool profileOk = prof.Contains("Any", StringComparison.OrdinalIgnoreCase) || prof.Contains("Private", StringComparison.OrdinalIgnoreCase)
                                  || prof.Contains("Domain", StringComparison.OrdinalIgnoreCase);
                 bool addrOk = !allowInternet || addr.Contains("Any", StringComparison.OrdinalIgnoreCase);
-                if (p == port.ToString() && profileOk && addrOk) ruleOk = true;
+                var ports = p.Split(',').Select(x => x.Trim()).ToList();
+                bool portsOk = ports.Contains(port.ToString()) && (!friendly || (ports.Contains("443") && ports.Contains("80")));
+                if (portsOk && profileOk && addrOk) ruleOk = true;
             }
             else if (f is ["NET", var name, var cat])
             {
@@ -278,28 +285,33 @@ public static class PortalFirewall
                 if (cat.Equals("Public", StringComparison.OrdinalIgnoreCase)) pub.Add(name);
             }
         }
-        string summary = !ruleOk ? $"Windows Firewall has no rule for port {port}, so phones are blocked."
+        if (friendly && !mdnsOk) ruleOk = false;
+        string summary = !ruleOk ? friendly ? $"Windows Firewall isn't set up for the portal (port {port}, 80, 443 and maison.local), so phones are blocked."
+                      : $"Windows Firewall has no rule for port {port}, so phones are blocked."
             : pub.Count > 0 && !allowInternet ? $"Your network ({pub[0]}) is set to Public in Windows, which blocks phones."
             : "Windows Firewall lets your phone through.";
         return new Status(ruleOk, allowInternet ? [] : pub, summary);
     }
 
     /// <summary>One admin prompt: (re)creates the rule for this port. Returns null on success, else why not.</summary>
-    public static async Task<string?> EnsureAsync(int port, bool allowInternet, bool makePrivate)
+    public static async Task<string?> EnsureAsync(int port, bool allowInternet, bool makePrivate, bool friendly = false)
     {
         var sb = new System.Text.StringBuilder();
         sb.AppendLine("$ErrorActionPreference = 'Stop'");
-        sb.AppendLine($"Get-NetFirewallRule -DisplayName '{RuleName}' -ErrorAction SilentlyContinue | Remove-NetFirewallRule");
+        sb.AppendLine($"Get-NetFirewallRule -DisplayName '{RuleName}*' -ErrorAction SilentlyContinue | Remove-NetFirewallRule");
         var scope = allowInternet ? "-Profile Any -RemoteAddress Any" : "-Profile Private,Domain -RemoteAddress LocalSubnet,100.64.0.0/10";
-        sb.AppendLine($"New-NetFirewallRule -DisplayName '{RuleName}' -Direction Inbound -Action Allow -Protocol TCP -LocalPort {port} {scope} " +
+        sb.AppendLine($"New-NetFirewallRule -DisplayName '{RuleName}' -Direction Inbound -Action Allow -Protocol TCP -LocalPort {(friendly ? $"{port},443,80" : port.ToString())} {scope} " +
                       "-Description 'Lets your phone reach the maison web portal. Managed in maison Settings.' | Out-Null");
+        if (friendly)   // mDNS: lets phones ask "where is maison.local?" (home network only, never the internet)
+            sb.AppendLine($"New-NetFirewallRule -DisplayName '{RuleName} (mDNS)' -Direction Inbound -Action Allow -Protocol UDP -LocalPort 5353 -Profile Private,Domain -RemoteAddress LocalSubnet " +
+                          "-Description 'Lets phones find maison.local. Managed in maison Settings.' | Out-Null");
         if (makePrivate)
             sb.AppendLine("Get-NetConnectionProfile | Where-Object NetworkCategory -eq 'Public' | ForEach-Object { Set-NetConnectionProfile -InterfaceIndex $_.InterfaceIndex -NetworkCategory Private }");
         return await AiSharing.RunElevatedPowerShellAsync(sb.ToString());
     }
 
     public static async Task<string?> RemoveAsync() =>
-        await AiSharing.RunElevatedPowerShellAsync($"Get-NetFirewallRule -DisplayName '{RuleName}' -ErrorAction SilentlyContinue | Remove-NetFirewallRule");
+        await AiSharing.RunElevatedPowerShellAsync($"Get-NetFirewallRule -DisplayName '{RuleName}*' -ErrorAction SilentlyContinue | Remove-NetFirewallRule");
 }
 
 public static class PortalNet
@@ -332,9 +344,20 @@ public static class PortalNet
 /// <summary>Self-signed HTTPS certificate for the portal, kept in the user's certificate store (private key never on disk as a file).</summary>
 public static class PortalCert
 {
+    /// <summary>True when the portal uses the user's own certificate instead of maison's self-signed one.</summary>
+    public static bool IsCustom => AppConfig.Current.PortalCertPfxPath.Length > 0;
+
     public static X509Certificate2 GetOrCreate()
     {
         var c = AppConfig.Current;
+        if (IsCustom)
+        {
+            // A trusted certificate (e.g. from Let's Encrypt) lets phones install the portal as an app with no warnings.
+            if (!File.Exists(c.PortalCertPfxPath)) throw new InvalidOperationException($"The certificate file {c.PortalCertPfxPath} was not found.");
+            var pw = c.PortalCertPfxPassword.Length == 0 ? "" : Totp.UnprotectText(c.PortalCertPfxPassword) ?? "";
+            try { return X509CertificateLoader.LoadPkcs12FromFile(c.PortalCertPfxPath, pw, X509KeyStorageFlags.UserKeySet | X509KeyStorageFlags.EphemeralKeySet); }
+            catch (Exception ex) { throw new InvalidOperationException("Could not open the certificate (wrong password?): " + ex.Message); }
+        }
         using var store = new X509Store(StoreName.My, StoreLocation.CurrentUser);
         store.Open(OpenFlags.ReadWrite);
         if (c.PortalCertThumbprint.Length > 0)
@@ -348,6 +371,7 @@ public static class PortalCert
         var san = new SubjectAlternativeNameBuilder();
         san.AddDnsName("localhost");
         san.AddDnsName(Environment.MachineName);
+        san.AddDnsName("maison.local");   // the short address (new certificates only; existing ones are kept so paired PCs don't break)
         san.AddIpAddress(IPAddress.Loopback);
         foreach (var ip in PortalNet.LanAddresses()) san.AddIpAddress(ip);
         req.CertificateExtensions.Add(san.Build());

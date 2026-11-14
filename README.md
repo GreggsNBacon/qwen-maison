@@ -111,7 +111,8 @@ Every button has a tooltip explaining what it does.
 ## Phone access
 1. In **Settings → Web portal**, set a username and password, turn the portal on, and press **Fix Windows Firewall** if maison
    shows the warning (one admin prompt; it opens just the portal's port, for your home network only).
-2. On your phone (same Wi-Fi), open one of the addresses shown, e.g. `https://192.168.1.20:<port>`. Your browser will warn
+2. On your phone (same Wi-Fi), open **https://maison.local** (no port needed) or one of the other addresses shown, e.g.
+   `https://192.168.1.20:<port>`. Your browser will warn
    that the certificate isn't trusted, because maison made it itself. Check that the fingerprint matches the one in
    Settings, then continue.
 3. Sign in once; that phone stays signed in until you sign it out in Settings.
@@ -119,6 +120,15 @@ Every button has a tooltip explaining what it does.
 **Two-step sign-in (recommended).** In **Settings → Web portal → Two-step sign-in**, press **Set up**, scan the code with an
 authenticator app (Google Authenticator, Microsoft Authenticator, Aegis…) and type back the 6-digit code it shows. From then on
 signing in also asks for the current code. Turn it on before you ever open the portal to the internet.
+
+**Typing just `maison`?** `maison.local` works on its own. A bare `maison/` is only understood if your router's DNS (or a
+Pi-hole) has an entry that points the name `maison` at this PC; maison can't set that up for you.
+
+**Put maison on your home screen.** On Android (Chrome) use ⋮ → *Install app*; on iPhone (Safari) use Share → *Add to Home
+Screen*. You get the maison icon and a full-screen window with no browser bar. Phones only treat it as a real app when
+they trust the HTTPS certificate, and maison's own certificate is self-signed, so without more setup you get a plain
+shortcut. For the full app, give maison a trusted certificate: in **Settings → Web portal → HTTPS certificate** choose a
+`.pfx` for a domain name that points at your PC (a free Let's Encrypt certificate works), then open the portal by that name.
 
 **Phone can't connect?** Windows' own "allow maison?" prompt often allows only *Public* networks and only that one exe file, so
 phone access can stop working when your network is Private or maison moves or updates. **Fix Windows Firewall** replaces that

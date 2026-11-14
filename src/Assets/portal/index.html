@@ -6,6 +6,12 @@
 <meta name="theme-color" content="#16151d">
 <title>maison</title>
 <link rel="icon" href="/brand.png">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/pwa/apple-touch-icon.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="maison">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <style>
   :root { --bg:#16151d; --card:#201e2b; --line:#2f2c42; --text:#ecebf3; --muted:#9d99b3; --dim:#6f6b85; --accent:#8b6cff;
           --ok:#4cc38a; --warn:#e5b454; --bad:#e5534b; }
@@ -13,7 +19,7 @@
   html, body { overflow-x: hidden; } body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.45 "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, sans-serif; }
   header { position: sticky; top: 0; z-index: 5; display: flex; align-items: center; gap: 10px; padding: 12px 16px;
            background: #16151dee; backdrop-filter: blur(8px); border-bottom: 1px solid var(--line); }
-  header img { width: 30px; height: 30px; }
+  header img.logo { width: auto; height: 34px; }
   .wm { font: 600 22px/1 "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif; }
   .g { font-weight: 700; background: linear-gradient(100deg, #e8825f 0%, #c76ad8 50%, #7c5cff 100%); -webkit-background-clip: text; background-clip: text; color: transparent; }
   .pill { margin-left: auto; font-size: 12.5px; padding: 4px 10px; border-radius: 999px; background: #4cc38a22; color: #8fe0b6; white-space: nowrap; }
@@ -54,8 +60,7 @@
 </head>
 <body>
 <header>
-  <img src="/brand.png" alt="">
-  <div class="wm">m<span class="g">ai</span>son</div>
+  <img class="logo" src="/pwa/lockup.png" width="600" height="180" alt="maison">
   <span class="pill" id="pill">connecting…</span>
 </header>
 <main>
@@ -149,6 +154,7 @@
   });
   refresh();
   setInterval(refresh, 3000);
+  if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
 </script>
 </body>
 </html>

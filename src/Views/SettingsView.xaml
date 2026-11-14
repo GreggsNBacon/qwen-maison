@@ -327,6 +327,8 @@
               </StackPanel>
               <ui:ToggleSwitch x:Name="AllowInternet" Content="Allow connections from outside my network" Margin="0,14,0,0" Click="AllowInternet_Click"
                                ToolTip="Off: only your home network (and VPNs like Tailscale) can connect. On: needed only if you forward the port on your router — think twice." />
+              <ui:ToggleSwitch x:Name="Friendly" Content="Also answer at https://maison.local" Margin="0,10,0,0" Click="Friendly_Click"
+                               ToolTip="Lets phones and PCs on your network type maison.local with no port number. Uses ports 80 and 443 (if free) and a small name service for maison.local." />
             </StackPanel>
           </Grid>
 
@@ -378,6 +380,15 @@
               </ItemsControl.ItemTemplate>
             </ItemsControl>
             <TextBlock x:Name="CertText" FontSize="12" TextWrapping="Wrap" Margin="0,6,0,0" Foreground="{DynamicResource TextFillColorTertiaryBrush}" />
+
+            <TextBlock Text="HTTPS certificate (needed to install maison as an app)" Style="{StaticResource SectionLabel}" Margin="0,14,0,4" />
+            <TextBlock x:Name="CertMode" FontSize="12.5" TextWrapping="Wrap" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+            <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+              <ui:PasswordBox x:Name="CertPw" PlaceholderText="Certificate password (if it has one)" Width="250" />
+              <ui:Button Content="Choose .pfx and use it…" Margin="8,0,0,0" Click="CertChoose_Click"
+                         ToolTip="Use your own trusted certificate (for example from Let's Encrypt for your own domain name) instead of maison's self-signed one." />
+              <ui:Button x:Name="CertReset" Content="Back to maison's own" Margin="8,0,0,0" Click="CertReset_Click" Visibility="Collapsed" />
+            </StackPanel>
 
             <TextBlock Text="Signed-in devices" Style="{StaticResource SectionLabel}" Margin="0,14,0,4" />
             <ItemsControl x:Name="DeviceList">

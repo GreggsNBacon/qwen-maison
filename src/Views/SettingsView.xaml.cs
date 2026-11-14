@@ -35,6 +35,7 @@ public partial class SettingsView : UserControl
         StaleDays.Value = _c.StaleDays;
         Port.Value = _c.PortalPort;
         AllowInternet.IsChecked = _c.PortalAllowInternet;
+        Friendly.IsChecked = _c.PortalFriendlyAddress;
         PortalOn.IsChecked = WebPortal.IsRunning;
         ModelsDir.Text = ModelStorage.Current;
         var disk = StatsService.Disk(ModelStorage.Current);
@@ -411,10 +412,17 @@ public partial class SettingsView : UserControl
         PortalState.Text = WebPortal.IsRunning ? $"Running on port {WebPortal.Port}" : "Off";
         PortalInfo.Visibility = WebPortal.IsRunning ? Visibility.Visible : Visibility.Collapsed;
         UrlList.ItemsSource = WebPortal.IsRunning ? WebPortal.Urls : [];
-        CertText.Text = WebPortal.IsRunning
+        CertMode.Text = PortalCert.IsCustom
+            ? $"Using your certificate: {_c.PortalCertPfxPath}. Phones trust it if it was issued for the name you type (your own domain name, or the one Tailscale gives you)."
+            : "maison's own certificate. Phones warn that it isn't trusted, and Android Chrome will only make a plain shortcut instead of installing maison as an app. " +
+              "For a real app icon, use a trusted certificate for a domain name that points at your PC (for example a free Let's Encrypt certificate exported as .pfx).";
+        CertReset.Visibility = PortalCert.IsCustom ? Visibility.Visible : Visibility.Collapsed;
+        CertText.Text = WebPortal.IsRunning && !PortalCert.IsCustom
             ? $"Your phone will warn that the certificate isn't trusted — maison made it itself on this PC. Check the fingerprint starts with {WebPortal.Fingerprint} and continue. " +
               "To reach maison away from home, use a VPN such as Tailscale rather than opening the port on your router."
             : "";
+        var note = new[] { WebPortal.FriendlyProblem, MdnsResponder.Problem }.FirstOrDefault(x => !string.IsNullOrEmpty(x));
+        if (!string.IsNullOrEmpty(note)) CertText.Text = note + (CertText.Text.Length > 0 ? " " + CertText.Text : "");
         List<PortalDevice> devices;
         lock (_c.PortalDevices) devices = _c.PortalDevices.OrderByDescending(d => d.LastSeen).ToList();
         DeviceList.ItemsSource = devices;
@@ -425,7 +433,7 @@ public partial class SettingsView : UserControl
     {
         if (!WebPortal.IsRunning) { FirewallState.Text = ""; FixFirewall.Visibility = Visibility.Collapsed; return; }
         FirewallState.Text = "Checking Windows Firewall…";
-        var st = await PortalFirewall.CheckAsync(_c.PortalPort, _c.PortalAllowInternet);
+        var st = await PortalFirewall.CheckAsync(_c.PortalPort, _c.PortalAllowInternet, _c.PortalFriendlyAddress);
         FirewallState.Text = (st.Healthy ? "✓ " : "⚠ ") + st.Summary;
         FixFirewall.Visibility = st.Healthy ? Visibility.Collapsed : Visibility.Visible;
     }
@@ -434,15 +442,15 @@ public partial class SettingsView : UserControl
 
     private async Task FixFirewallAsync()
     {
-        var st = await PortalFirewall.CheckAsync(_c.PortalPort, _c.PortalAllowInternet);
+        var st = await PortalFirewall.CheckAsync(_c.PortalPort, _c.PortalAllowInternet, _c.PortalFriendlyAddress);
         bool makePrivate = false;
         if (st.PublicNetworks.Count > 0)
             makePrivate = await Shell.ConfirmAsync("Set your network to Private?",
                 $"Windows treats \"{st.PublicNetworks[0]}\" as a Public network (like a café) and blocks other devices from reaching this PC on it. " +
                 "If this is your home network, maison can switch it to Private.", "Set to Private");
-        var err = await PortalFirewall.EnsureAsync(_c.PortalPort, _c.PortalAllowInternet, makePrivate);
+        var err = await PortalFirewall.EnsureAsync(_c.PortalPort, _c.PortalAllowInternet, makePrivate, _c.PortalFriendlyAddress);
         if (err is not null) Shell.Toast("Firewall not changed", err, ControlAppearance.Caution, SymbolRegular.Warning24);
-        else Shell.Toast("Firewall updated", $"Port {_c.PortalPort} is open for " + (_c.PortalAllowInternet ? "any address (internet access is on)." : "your home network and Tailscale."), ControlAppearance.Success, SymbolRegular.ShieldCheckmark24);
+        else Shell.Toast("Firewall updated", $"Port {_c.PortalPort}{(_c.PortalFriendlyAddress ? " (and maison.local)" : "")} is open for " + (_c.PortalAllowInternet ? "any address (internet access is on)." : "your home network and Tailscale."), ControlAppearance.Success, SymbolRegular.ShieldCheckmark24);
         await RefreshFirewallAsync();
     }
 
@@ -531,7 +539,7 @@ public partial class SettingsView : UserControl
                 await WebPortal.StartAsync();
                 _c.PortalEnabled = true;
                 Shell.Log("Web portal on: " + string.Join(", ", WebPortal.Urls));
-                var fw = await PortalFirewall.CheckAsync(_c.PortalPort, _c.PortalAllowInternet);
+                var fw = await PortalFirewall.CheckAsync(_c.PortalPort, _c.PortalAllowInternet, _c.PortalFriendlyAddress);
                 if (!fw.Healthy) Shell.Log("Web portal: " + fw.Summary);
             }
             catch (Exception ex)
@@ -575,6 +583,55 @@ public partial class SettingsView : UserControl
         _c.PortalAllowInternet = AllowInternet.IsChecked == true;
         _c.Save();
         _ = RefreshFirewallAsync();
+    }
+
+    private async Task RestartPortalAsync()
+    {
+        if (!WebPortal.IsRunning) return;
+        await WebPortal.StopAsync();
+        try { await WebPortal.StartAsync(); }
+        catch (Exception ex) { Shell.Toast("Portal could not restart", ex.Message, ControlAppearance.Danger, SymbolRegular.ErrorCircle24); }
+    }
+
+    private async void Friendly_Click(object sender, RoutedEventArgs e)
+    {
+        _c.PortalFriendlyAddress = Friendly.IsChecked == true;
+        _c.Save();
+        await RestartPortalAsync();
+        RefreshPortal();
+    }
+
+    private async void CertChoose_Click(object sender, RoutedEventArgs e)
+    {
+        var dlg = new Microsoft.Win32.OpenFileDialog { Title = "Choose a certificate with its private key", Filter = "Certificate (*.pfx;*.p12)|*.pfx;*.p12" };
+        if (dlg.ShowDialog() != true) return;
+        var (oldPath, oldPw) = (_c.PortalCertPfxPath, _c.PortalCertPfxPassword);
+        _c.PortalCertPfxPath = dlg.FileName;
+        _c.PortalCertPfxPassword = string.IsNullOrEmpty(CertPw.Password) ? "" : Totp.ProtectText(CertPw.Password);
+        try
+        {
+            using (PortalCert.GetOrCreate()) { }   // does it open?
+        }
+        catch (Exception ex)
+        {
+            (_c.PortalCertPfxPath, _c.PortalCertPfxPassword) = (oldPath, oldPw);
+            Shell.Toast("Certificate not used", ex.Message, ControlAppearance.Caution, SymbolRegular.Warning24);
+            return;
+        }
+        _c.Save();
+        CertPw.Password = "";
+        await RestartPortalAsync();
+        Shell.Toast("Certificate in use", "Phones will trust it if it matches the address they open.", ControlAppearance.Success, SymbolRegular.ShieldCheckmark24);
+        RefreshPortal();
+    }
+
+    private async void CertReset_Click(object sender, RoutedEventArgs e)
+    {
+        _c.PortalCertPfxPath = "";
+        _c.PortalCertPfxPassword = "";
+        _c.Save();
+        await RestartPortalAsync();
+        RefreshPortal();
     }
 
     private void CopyUrl_Click(object sender, RoutedEventArgs e)

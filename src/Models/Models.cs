@@ -242,6 +242,11 @@ public sealed class AppConfig
     /// <summary>Last accepted 30-second code window, so a code can't be used twice.</summary>
     public long PortalTotpLastStep { get; set; }
     public string PortalCertThumbprint { get; set; } = "";
+    /// <summary>Also answer on https://maison.local (ports 80/443 + mDNS), so nobody has to type a port.</summary>
+    public bool PortalFriendlyAddress { get; set; } = true;
+    /// <summary>Optional trusted certificate (.pfx) for the portal. Needed for phones to install it as an app without warnings.</summary>
+    public string PortalCertPfxPath { get; set; } = "";
+    public string PortalCertPfxPassword { get; set; } = "";   // DPAPI-protected
     public List<PortalDevice> PortalDevices { get; set; } = [];
 
     // MAISON_CONFIG_DIR lets the self-test use a throwaway config instead of the user's.

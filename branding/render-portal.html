@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<!-- Rasterisation sheet for the phone portal (see make-portal-assets.ps1). Headless Edge screenshots this on a transparent
+     background and each tile is cropped out:
+       icon-192   (x=0,   y=0)   192 x 192   rounded tile (any purpose)
+       icon-512   (x=200, y=0)   512 x 512   rounded tile (any purpose)
+       maskable   (x=720, y=0)   512 x 512   full-bleed tile, art inside the 80% safe zone (Android adaptive icons)
+       apple      (x=1240,y=0)   180 x 180   full-bleed opaque tile (iOS rounds the corners itself)
+       lockup     (x=0,   y=540) 720 x 180   icon + maison wordmark on transparent, for the sign-in page
+     The fonts are baked into the PNGs so phones don't need Segoe UI. -->
+<html><head><meta charset="utf-8">
+<style>
+  html, body { margin:0; background:transparent; }
+  .t { position:absolute; }
+  .wm { position:absolute; left:190px; top:0; height:180px; display:flex; align-items:center;
+        font:600 118px/1 "Segoe UI Variable Display","Segoe UI",sans-serif; letter-spacing:-0.01em; color:#ecebf3; }
+  .grad { font-weight:700; background:linear-gradient(100deg,#e8825f 0%,#c76ad8 50%,#7c5cff 100%); -webkit-background-clip:text; background-clip:text; color:transparent; }
+</style></head>
+<body>
+<svg width="0" height="0" style="position:absolute"><defs>
+  <linearGradient id="g" gradientUnits="userSpaceOnUse" x1="10" y1="10" x2="90" y2="90">
+    <stop offset="0" stop-color="#e8825f"/><stop offset=".5" stop-color="#c76ad8"/><stop offset="1" stop-color="#7c5cff"/>
+  </linearGradient>
+  <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#2a2c36"/><stop offset="1" stop-color="#1b1c22"/>
+  </linearGradient>
+  <g id="art">
+    <path d="M18 41 L50 15 L82 41" fill="none" stroke="url(#g)" stroke-width="7.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="50" y="83" text-anchor="middle" fill="#fff" font-family="Segoe UI Variable Display, Segoe UI" font-weight="700" font-size="58">a<tspan fill="#e8825f">i</tspan></text>
+    <text x="50" y="83" text-anchor="middle" fill="#fff" font-family="Segoe UI Variable Display, Segoe UI" font-weight="700" font-size="58">a&#x131;</text>
+  </g>
+</defs></svg>
+
+<svg class="t" style="left:0;top:0" width="192" height="192" viewBox="0 0 100 100"><rect x="2" y="2" width="96" height="96" rx="22" fill="url(#tile)"/><use href="#art"/></svg>
+<svg class="t" style="left:200px;top:0" width="512" height="512" viewBox="0 0 100 100"><rect x="2" y="2" width="96" height="96" rx="22" fill="url(#tile)"/><use href="#art"/></svg>
+<svg class="t" style="left:720px;top:0" width="512" height="512" viewBox="0 0 100 100"><rect width="100" height="100" fill="url(#tile)"/><use href="#art" transform="translate(50 50) scale(.72) translate(-50 -50)"/></svg>
+<svg class="t" style="left:1240px;top:0" width="180" height="180" viewBox="0 0 100 100"><rect width="100" height="100" fill="url(#tile)"/><use href="#art" transform="translate(50 50) scale(.84) translate(-50 -50)"/></svg>
+
+<div class="t" style="left:0;top:540px;width:720px;height:180px">
+  <svg style="position:absolute;left:0;top:15px" width="150" height="150" viewBox="0 0 100 100"><rect x="2" y="2" width="96" height="96" rx="22" fill="url(#tile)"/><use href="#art"/></svg>
+  <div class="wm">m<span class="grad">ai</span>son</div>
+</div>
+</body></html>

@@ -142,6 +142,15 @@ an accent shade when the accent changes.
 - Origin checks on every change and on terminal WebSockets, and a strict Content-Security-Policy.
 - Internet connections refused by default (LAN plus VPN ranges such as Tailscale's 100.64/10 only).
 - A random port per PC, picked on first run.
+- Short address: `PortalFriendlyAddress` (default on) makes Kestrel also listen on 443 (https) and 80 (redirect to https only), and
+  `MdnsResponder` answers multicast-DNS A queries for `maison.local` only (UDP 5353, `SO_REUSEADDR` because Windows' own client shares the
+  port). If 80/443 are taken the portal falls back to its own port and says so. The firewall rule adds TCP 80/443 and a UDP 5353 rule
+  (`maison web portal (mDNS)`, home subnet only). Existing certificates are not reissued (paired PCs may pin them), so only new ones carry
+  the `maison.local` name.
+- Install as app: `/manifest.webmanifest`, `/sw.js` (no-op fetch handler, caches nothing) and `/pwa/*.png` are served without sign-in; they
+  hold nothing private. Browsers only offer a real install over a *trusted* certificate, so Settings can load the user's own `.pfx`
+  (`PortalCertPfxPath`, password DPAPI-protected). The images are drawn by `branding/make-portal-assets.ps1` (from
+  `branding/render-portal.html`) so the fonts are baked in and phones don't need Segoe UI.
 
 ## Project layout
 | Path | |
@@ -164,7 +173,7 @@ an accent shade when the accent changes.
 | `src/Services/Pool/` | AI pool: `PoolHost` (AI PC service), `AiPool` (discovery, pairing, status), `PoolRelay` (routing), `PoolProtocol` |
 | `src/Views/PoolView.xaml(.cs)` | The Pool page (the AI pool) |
 | `src/Views/SettingsWindow.cs` | Settings from the simple view: borrows the one `SettingsView` from the main window (WebView2 would cover it in-window) and hands it back on close or on switching to Advanced (`MainWindow.ShowSettings`) |
-| `src/Services/WebPortal.cs`, `PortalSecurity.cs` | Phone portal (Kestrel HTTPS + WebSockets), auth, cert |
+| `src/Services/WebPortal.cs`, `PortalSecurity.cs`, `MdnsResponder.cs` | Phone portal (Kestrel HTTPS + WebSockets), auth, TOTP, firewall, cert, maison.local |
 | `src/Services/QwenExtensions.cs`, `ModelStorage.cs` | Extension marketplaces, parsing `qwen extensions list`, update checks; moving the model store |
 | `src/Services/ReaderMcp.cs` | The built-in page reader: `maison.exe --mcp-reader`, an MCP server on stdin/stdout |
 | `src/Controls/TerminalViewer.cs` | A WebView2 view onto a shared session (tabs and pop-outs) |
