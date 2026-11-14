@@ -368,7 +368,19 @@
                          Click="FixFirewall_Click" Visibility="Collapsed"
                          ToolTip="Adds a Windows Firewall rule for the portal's port (one admin prompt). Without it Windows can silently block your phone." />
             </StackPanel>
-            <TextBlock Text="Open on your phone (same Wi-Fi)" Style="{StaticResource SectionLabel}" />
+            <TextBlock Text="Scan with your phone's camera (same Wi-Fi)" Style="{StaticResource SectionLabel}" />
+            <StackPanel Orientation="Horizontal">
+              <Border Background="White" Padding="8" CornerRadius="8" HorizontalAlignment="Left">
+                <Image x:Name="PhoneQr" Width="170" Height="170" RenderOptions.BitmapScalingMode="NearestNeighbor" />
+              </Border>
+              <StackPanel Margin="14,0,0,0" VerticalAlignment="Center" MaxWidth="360">
+                <TextBlock x:Name="PhoneQrUrl" FontFamily="Cascadia Mono, Consolas" FontSize="13" TextWrapping="Wrap" Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+                <TextBlock Text="Point your phone's camera at the code and tap the link. It already contains https:// and the port, so there's nothing to type. maison.local works on iPhones and PCs, but Android browsers can't look it up: use this code or the address instead."
+                           FontSize="12" TextWrapping="Wrap" Margin="0,6,0,0" Foreground="{DynamicResource TextFillColorTertiaryBrush}" />
+                <TextBlock x:Name="LastVisit" FontSize="12.5" TextWrapping="Wrap" Margin="0,10,0,0" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+              </StackPanel>
+            </StackPanel>
+            <TextBlock Text="Or type one of these addresses" Style="{StaticResource SectionLabel}" Margin="0,12,0,0" />
             <ItemsControl x:Name="UrlList">
               <ItemsControl.ItemTemplate>
                 <DataTemplate>

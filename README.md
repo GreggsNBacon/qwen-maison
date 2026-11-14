@@ -111,10 +111,14 @@ Every button has a tooltip explaining what it does.
 ## Phone access
 1. In **Settings → Web portal**, set a username and password, turn the portal on, and press **Fix Windows Firewall** if maison
    shows the warning (one admin prompt; it opens just the portal's port, for your home network only).
-2. On your phone (same Wi-Fi), open **https://maison.local** (no port needed) or one of the other addresses shown, e.g.
-   `https://192.168.1.20:<port>`. Your browser will warn
+2. On your phone (same Wi-Fi as the PC, not mobile data), **scan the QR code** in Settings with the camera and tap the link.
+   Or type the address shown, e.g. `https://192.168.1.20:<port>`. (`https://maison.local` works on iPhones and PCs, but
+   Android browsers can't look that name up.) Your browser will warn
    that the certificate isn't trusted, because maison made it itself. Check that the fingerprint matches the one in
    Settings, then continue.
+   Typed the address without `https://`? maison redirects plain `http://` to the secure address instead of dropping it.
+   Settings also shows when a device last reached maison, which tells "never arrived" (wrong Wi-Fi, guest network, VPN)
+   apart from "arrived but the browser refused the certificate".
 3. Sign in once; that phone stays signed in until you sign it out in Settings.
 
 **Two-step sign-in (recommended).** In **Settings → Web portal → Two-step sign-in**, press **Set up**, scan the code with an

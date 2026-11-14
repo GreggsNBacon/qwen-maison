@@ -331,6 +331,19 @@ public static class PortalNet
         return ip.IsIPv6LinkLocal || ip.IsIPv6UniqueLocal || ip.IsIPv6SiteLocal;
     }
 
+    /// <summary>The address a phone on the same Wi-Fi should use: the one on the adapter that has the router (default gateway).</summary>
+    public static IPAddress? PreferredAddress() =>
+        NetworkInterface.GetAllNetworkInterfaces()
+            .Where(n => n.OperationalStatus == OperationalStatus.Up && n.NetworkInterfaceType != NetworkInterfaceType.Loopback)
+            .Where(n => n.GetIPProperties().GatewayAddresses.Any(g => g.Address.AddressFamily == AddressFamily.InterNetwork && !g.Address.Equals(IPAddress.Any)))
+            .SelectMany(n => n.GetIPProperties().UnicastAddresses)
+            .Select(a => a.Address)
+            .FirstOrDefault(a => a.AddressFamily == AddressFamily.InterNetwork && IsPrivate(a) && !IPAddress.IsLoopback(a) && !IsLinkLocal(a))
+        ?? LanAddresses().FirstOrDefault(a => !IsLinkLocal(a));
+
+    /// <summary>169.254.x.x: what an adapter gives itself when it has no real network. Never useful to a phone.</summary>
+    public static bool IsLinkLocal(IPAddress a) => a.AddressFamily == AddressFamily.InterNetwork && a.GetAddressBytes() is [169, 254, ..];
+
     public static List<IPAddress> LanAddresses() =>
         NetworkInterface.GetAllNetworkInterfaces()
             .Where(n => n.OperationalStatus == OperationalStatus.Up && n.NetworkInterfaceType != NetworkInterfaceType.Loopback)
@@ -392,4 +405,41 @@ public static class PortalCert
     /// <summary>SHA-256 fingerprint, so the user can check the browser's certificate warning is really this PC.</summary>
     public static string Fingerprint(X509Certificate2 cert) =>
         string.Join(":", cert.GetCertHash(HashAlgorithmName.SHA256).Take(8).Select(b => b.ToString("X2"))) + "…";
+}
+
+/// <summary>
+/// What has reached the portal, so Settings can tell "the phone never got here" (network problem) from
+/// "it connected but its browser refused the certificate" from "it loaded the page".
+/// </summary>
+public static class PortalDiag
+{
+    public sealed record Seen(string Address, DateTime At, string What);
+    private static readonly object Gate = new();
+    private static Seen? _connection, _page, _plainHttp;
+
+    public static Seen? LastConnection { get { lock (Gate) return _connection; } }
+    public static Seen? LastPage { get { lock (Gate) return _page; } }
+    public static Seen? LastPlainHttp { get { lock (Gate) return _plainHttp; } }
+
+    private static bool IsThisPc(IPAddress? ip)
+    {
+        if (ip is null) return true;
+        if (ip.IsIPv4MappedToIPv6) ip = ip.MapToIPv4();
+        return IPAddress.IsLoopback(ip) || PortalNet.LanAddresses().Contains(ip);
+    }
+
+    public static void Connection(IPAddress? ip, bool plainHttp)
+    {
+        if (IsThisPc(ip)) return;
+        var s = new Seen(Clean(ip), DateTime.Now, plainHttp ? "plain http" : "tls");
+        lock (Gate) { _connection = s; if (plainHttp) _plainHttp = s; }
+    }
+
+    public static void Page(IPAddress? ip, string path)
+    {
+        if (IsThisPc(ip)) return;
+        lock (Gate) _page = new Seen(Clean(ip), DateTime.Now, path);
+    }
+
+    private static string Clean(IPAddress? ip) => ip is null ? "?" : ip.IsIPv4MappedToIPv6 ? ip.MapToIPv4().ToString() : ip.ToString();
 }

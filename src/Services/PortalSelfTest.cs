@@ -151,6 +151,26 @@ public static class PortalSelfTest
             r.Add($"brand={(int)(await h3.GetAsync("/brand.png")).StatusCode}");
         }
 
+        // A phone that types ip:port without https:// sends plain http to the TLS port: it must be redirected, not dropped.
+        try
+        {
+            using var tcp = new System.Net.Sockets.TcpClient();
+            await tcp.ConnectAsync("127.0.0.1", 47231);
+            var ns = tcp.GetStream();
+            await ns.WriteAsync(Encoding.ASCII.GetBytes("GET /term/abc?x=1 HTTP/1.1\r\nHost: 192.168.2.54:47231\r\n\r\n"));
+            var rb = new byte[1024];
+            int n = await ns.ReadAsync(rb);
+            var txt = Encoding.ASCII.GetString(rb, 0, n);
+            r.Add($"plainHttpRedirected={txt.StartsWith("HTTP/1.1 307") && txt.Contains("Location: https://192.168.2.54:47231/term/abc?x=1")}");
+            using var tcp2 = new System.Net.Sockets.TcpClient();
+            await tcp2.ConnectAsync("127.0.0.1", 47231);
+            await tcp2.GetStream().WriteAsync(Encoding.ASCII.GetBytes("GET / HTTP/1.1\r\nHost: evil host/x\r\n\r\n"));
+            n = await tcp2.GetStream().ReadAsync(rb);
+            r.Add($"plainHttpBadHostRefused={Encoding.ASCII.GetString(rb, 0, n).StartsWith("HTTP/1.1 400")}");
+        }
+        catch (Exception ex) { r.Add("plainHttpRedirected=ERR(" + ex.GetType().Name + ")"); }
+        r.Add($"phoneUrl={(WebPortal.PhoneUrl ?? "none").StartsWith("https://")} noLinkLocalInUrls={!WebPortal.Urls.Any(u => u.Contains("169.254."))}");
+
         // maison.local: port 443 serves the portal, port 80 only redirects, and the mDNS responder answers.
         r.Add($"friendlyActive={WebPortal.FriendlyActive} problem=[{WebPortal.FriendlyProblem}{MdnsResponder.Problem}]");
         if (WebPortal.FriendlyActive)

@@ -408,6 +408,14 @@ public partial class SettingsView : UserControl
         TotpState.Text = PortalAuth.TotpEnabled ? "On: sign-in also asks for a code from your authenticator app." : "Off: sign-in asks for the username and password only.";
         TotpStart.Visibility = PortalAuth.TotpEnabled || TotpSetup.Visibility == Visibility.Visible ? Visibility.Collapsed : Visibility.Visible;
         TotpOff.Visibility = PortalAuth.TotpEnabled ? Visibility.Visible : Visibility.Collapsed;
+        RefreshQr();
+        RefreshVisit();
+        if (_visitTimer is null)
+        {
+            _visitTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
+            _visitTimer.Tick += (_, _) => RefreshVisit();
+            _visitTimer.Start();
+        }
         _ = RefreshFirewallAsync();
         PortalState.Text = WebPortal.IsRunning ? $"Running on port {WebPortal.Port}" : "Off";
         PortalInfo.Visibility = WebPortal.IsRunning ? Visibility.Visible : Visibility.Collapsed;
@@ -427,6 +435,43 @@ public partial class SettingsView : UserControl
         lock (_c.PortalDevices) devices = _c.PortalDevices.OrderByDescending(d => d.LastSeen).ToList();
         DeviceList.ItemsSource = devices;
         NoDevices.Visibility = devices.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private System.Windows.Threading.DispatcherTimer? _visitTimer;
+
+    private void RefreshQr()
+    {
+        var url = WebPortal.IsRunning ? WebPhoneUrl() : null;
+        PhoneQrUrl.Text = url ?? "";
+        if (url is null) { PhoneQr.Source = null; return; }
+        using var gen = new QRCoder.QRCodeGenerator();
+        var png = new QRCoder.PngByteQRCode(gen.CreateQrCode(url, QRCoder.QRCodeGenerator.ECCLevel.M)).GetGraphic(8, [0, 0, 0], [255, 255, 255]);
+        var img = new System.Windows.Media.Imaging.BitmapImage();
+        img.BeginInit();
+        img.CacheOption = System.Windows.Media.Imaging.BitmapCacheOption.OnLoad;
+        img.StreamSource = new MemoryStream(png);
+        img.EndInit();
+        PhoneQr.Source = img;
+    }
+
+    private static string? WebPhoneUrl() => WebPortal.PhoneUrl;
+
+    /// <summary>Says what the portal has actually seen, so "my phone can't load it" can be told apart: never arrived, wrong http, or refused certificate.</summary>
+    private void RefreshVisit()
+    {
+        if (!WebPortal.IsRunning) { LastVisit.Text = ""; return; }
+        var page = PortalDiag.LastPage;
+        var conn = PortalDiag.LastConnection;
+        var plain = PortalDiag.LastPlainHttp;
+        string t(PortalDiag.Seen x) => x.At.ToString("t");
+        if (page is not null && (conn is null || page.At >= conn.At.AddSeconds(-30)))
+            LastVisit.Text = $"✓ A device ({page.Address}) opened the portal at {t(page)}.";
+        else if (conn is not null)
+            LastVisit.Text = plain is not null && plain.At == conn.At
+                ? $"A device ({conn.Address}) reached maison at {t(conn)} using http:// and was sent on to https://. If it still doesn't load, its browser may be refusing the certificate: tap Advanced → Continue."
+                : $"A device ({conn.Address}) connected at {t(conn)} but never loaded a page. Its browser probably refused the certificate: tap Advanced → Continue (or use a trusted certificate).";
+        else
+            LastVisit.Text = "No device has reached maison yet. If a phone shows \"can't be reached\", the connection isn't getting to this PC: check it's on the same Wi-Fi as this PC (not mobile data, a guest network or a VPN).";
     }
 
     private async Task RefreshFirewallAsync()

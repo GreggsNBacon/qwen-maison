@@ -147,6 +147,11 @@ an accent shade when the accent changes.
   port). If 80/443 are taken the portal falls back to its own port and says so. The firewall rule adds TCP 80/443 and a UDP 5353 rule
   (`maison web portal (mDNS)`, home subnet only). Existing certificates are not reissued (paired PCs may pin them), so only new ones carry
   the `maison.local` name.
+- Plain http on the TLS ports: `PlainHttpRedirect` (a Kestrel connection middleware placed before `UseHttps`) peeks at the first byte; a TLS
+  hello (0x16) carries on, anything else gets a 307 to `https://<Host header><path>` (host validated, 400 otherwise). Without it a phone that
+  types `ip:port` with no scheme sends http to a TLS port and just reports "can't be reached".
+- `PortalDiag` records the last connection and page load from another device; Settings shows it under the QR code. `PortalNet.PreferredAddress()`
+  (the adapter with the default gateway, never 169.254.x.x) is what the QR code and the first listed address use.
 - Install as app: `/manifest.webmanifest`, `/sw.js` (no-op fetch handler, caches nothing) and `/pwa/*.png` are served without sign-in; they
   hold nothing private. Browsers only offer a real install over a *trusted* certificate, so Settings can load the user's own `.pfx`
   (`PortalCertPfxPath`, password DPAPI-protected). The images are drawn by `branding/make-portal-assets.ps1` (from
