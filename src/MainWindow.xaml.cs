@@ -387,10 +387,12 @@ public partial class MainWindow : FluentWindow, IShell
                 sb.Append(Launcher.ClaudeCommand(p));
                 break;
             case "qwen":
-                Env(Launcher.QwenEnv(p, p.O.TellContextWindow ? System.IO.Path.Combine(AppConfig.Folder, "qwen", "settings-….json") : null));
+                Env(Launcher.QwenEnv(p, Launcher.NeedsQwenSettings(p.O) ? System.IO.Path.Combine(AppConfig.Folder, "qwen", "settings-….json") : null));
                 sb.Append(Launcher.QwenCommand(p));
                 if (p.O.TellContextWindow)
                     sb.Append($"\n# maison's settings file tells Qwen Code: contextWindowSize {p.Ctx}, max_tokens {p.OutputTokens}, autoCompactThreshold {p.O.QwenCompactThreshold:0.##}. Your ~/.qwen/settings.json isn't changed.");
+                var web = Launcher.QwenMcpServers(p.O).Keys.ToList();
+                if (web.Count > 0) sb.Append($"\n# Web tools for this session (same settings file): {string.Join(", ", web)}.");
                 break;
             default:
                 sb.Append(Launcher.ChatCommand(p));

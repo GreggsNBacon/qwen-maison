@@ -98,7 +98,11 @@ all of maison's settings in their own window, so you don't need the advanced vie
 - **Models**: install, use or delete models; a catalog that shows what fits your GPU; "stale" badges for unused models.
 - **Setup**: install, reinstall or uninstall each part separately.
 - **System**: detailed CPU, memory and GPU information, and which apps are using graphics memory.
-- **Extensions**: add skills and plugins to Qwen Code, including Claude Code plugin marketplaces.
+- **Extensions**: add skills and plugins to Qwen Code, including Claude Code plugin marketplaces. The page lists what is
+  installed (active or not, with its skills, commands and tools), flags updates, and remembers the marketplaces you add.
+- **A browser for Qwen Code.** Qwen Code gets its own hidden Edge window to open pages that need JavaScript, plus a quick page
+  reader for plain pages and online files, so it never has to borrow your browser. The browser needs Node.js and Edge; both can
+  be switched off in Settings → Start commands → Qwen Code.
 - **Settings**: accent colour, terminal colours and font size, notifications, start-command options, where models are
   stored, the AI pool, starting with Windows (optionally minimised), update checks, and phone access.
 
