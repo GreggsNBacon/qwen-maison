@@ -263,7 +263,7 @@ public static class PortalFirewall
             $out
             """;
         var text = await AiSharing.RunPowerShellAsync(script);
-        bool ruleOk = false, mdnsOk = false;
+        bool ruleOk = false;
         var pub = new List<string>();
         var categories = new List<string>();
         foreach (var raw in text.Split('\n', StringSplitOptions.RemoveEmptyEntries))
@@ -271,7 +271,7 @@ public static class PortalFirewall
             var f = raw.Trim().Split('|');
             if (f is ["RULE", var rname, var p, var prof, var addr])
             {
-                if (rname.Contains("mDNS", StringComparison.OrdinalIgnoreCase)) { mdnsOk = p.Contains("5353"); continue; }
+                if (rname.Contains("mDNS", StringComparison.OrdinalIgnoreCase)) continue;   // left by maison 0.0.8/0.0.9; no longer needed
                 bool profileOk = prof.Contains("Any", StringComparison.OrdinalIgnoreCase) || prof.Contains("Private", StringComparison.OrdinalIgnoreCase)
                                  || prof.Contains("Domain", StringComparison.OrdinalIgnoreCase);
                 bool addrOk = !allowInternet || addr.Contains("Any", StringComparison.OrdinalIgnoreCase);
@@ -285,8 +285,7 @@ public static class PortalFirewall
                 if (cat.Equals("Public", StringComparison.OrdinalIgnoreCase)) pub.Add(name);
             }
         }
-        if (friendly && !mdnsOk) ruleOk = false;
-        string summary = !ruleOk ? friendly ? $"Windows Firewall isn't set up for the portal (port {port}, 80, 443 and maison.local), so phones are blocked."
+        string summary = !ruleOk ? friendly ? $"Windows Firewall isn't set up for the portal (ports {port}, 80 and 443), so phones are blocked."
                       : $"Windows Firewall has no rule for port {port}, so phones are blocked."
             : pub.Count > 0 && !allowInternet ? $"Your network ({pub[0]}) is set to Public in Windows, which blocks phones."
             : "Windows Firewall lets your phone through.";
@@ -302,9 +301,6 @@ public static class PortalFirewall
         var scope = allowInternet ? "-Profile Any -RemoteAddress Any" : "-Profile Private,Domain -RemoteAddress LocalSubnet,100.64.0.0/10";
         sb.AppendLine($"New-NetFirewallRule -DisplayName '{RuleName}' -Direction Inbound -Action Allow -Protocol TCP -LocalPort {(friendly ? $"{port},443,80" : port.ToString())} {scope} " +
                       "-Description 'Lets your phone reach the maison web portal. Managed in maison Settings.' | Out-Null");
-        if (friendly)   // mDNS: lets phones ask "where is maison.local?" (home network only, never the internet)
-            sb.AppendLine($"New-NetFirewallRule -DisplayName '{RuleName} (mDNS)' -Direction Inbound -Action Allow -Protocol UDP -LocalPort 5353 -Profile Private,Domain -RemoteAddress LocalSubnet " +
-                          "-Description 'Lets phones find maison.local. Managed in maison Settings.' | Out-Null");
         if (makePrivate)
             sb.AppendLine("Get-NetConnectionProfile | Where-Object NetworkCategory -eq 'Public' | ForEach-Object { Set-NetConnectionProfile -InterfaceIndex $_.InterfaceIndex -NetworkCategory Private }");
         return await AiSharing.RunElevatedPowerShellAsync(sb.ToString());
@@ -384,7 +380,7 @@ public static class PortalCert
         var san = new SubjectAlternativeNameBuilder();
         san.AddDnsName("localhost");
         san.AddDnsName(Environment.MachineName);
-        san.AddDnsName("maison.local");   // the short address (new certificates only; existing ones are kept so paired PCs don't break)
+        san.AddDnsName("maison");   // the short address (new certificates only; existing ones are kept so paired PCs don't break)
         san.AddIpAddress(IPAddress.Loopback);
         foreach (var ip in PortalNet.LanAddresses()) san.AddIpAddress(ip);
         req.CertificateExtensions.Add(san.Build());
@@ -405,6 +401,31 @@ public static class PortalCert
     /// <summary>SHA-256 fingerprint, so the user can check the browser's certificate warning is really this PC.</summary>
     public static string Fingerprint(X509Certificate2 cert) =>
         string.Join(":", cert.GetCertHash(HashAlgorithmName.SHA256).Take(8).Select(b => b.ToString("X2"))) + "…";
+}
+
+/// <summary>
+/// This network's public address, for the QR code and address list when outside access is on. Asks api.ipify.org
+/// (it only sees this connection's address, which any website you visit sees too) and is only ever called when
+/// "Allow connections from outside" is on. Cached for ten minutes.
+/// </summary>
+public static class PublicIp
+{
+    private static string? _ip;
+    private static DateTime _at;
+    public static string? Cached => _ip;
+
+    public static async Task<string?> GetAsync(bool force = false)
+    {
+        if (!force && _ip is not null && (DateTime.Now - _at).TotalMinutes < 10) return _ip;
+        try
+        {
+            using var http = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromSeconds(6) };
+            var text = (await http.GetStringAsync("https://api.ipify.org")).Trim();
+            if (IPAddress.TryParse(text, out var ip) && ip.AddressFamily == AddressFamily.InterNetwork) { _ip = ip.ToString(); _at = DateTime.Now; }
+        }
+        catch { /* offline: keep whatever we had */ }
+        return _ip;
+    }
 }
 
 /// <summary>

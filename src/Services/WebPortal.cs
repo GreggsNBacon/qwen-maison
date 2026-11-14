@@ -32,16 +32,20 @@ public static class WebPortal
     public static bool FriendlyActive { get; private set; }
     /// <summary>Why the short address couldn't be set up (ports 80/443 busy), or empty.</summary>
     public static string FriendlyProblem { get; private set; } = "";
-    public const string FriendlyHost = "maison.local";
 
-    public static IReadOnlyList<string> Urls =>
+    /// <summary>The portal's addresses on this PC's home network, best first (never 169.254.x.x).</summary>
+    public static IReadOnlyList<string> LanUrls =>
         (PortalNet.PreferredAddress() is { } best ? [$"https://{best}:{Port}"] : new List<string>())
-            .Concat(FriendlyActive ? [$"https://{FriendlyHost}"] : [])
             .Concat(PortalNet.LanAddresses().Where(ip => !PortalNet.IsLinkLocal(ip)).Select(ip => $"https://{ip}:{Port}"))
-            .Append($"https://localhost:{Port}").Distinct().ToList();
+            .Distinct().ToList();
+
+    public static IReadOnlyList<string> Urls => LanUrls.Append($"https://localhost:{Port}").ToList();
+
+    /// <summary>"maison/" only works if this PC is actually called maison (the router then hands the name out to phones).</summary>
+    public static bool PcIsNamedMaison => string.Equals(Environment.MachineName, "maison", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>The one address to put in the QR code: the PC's address on the home network, with the scheme and port included
-    /// so a phone can't guess "http" or drop the port (and it needs no name lookup, which Android can't do for maison.local).</summary>
+    /// so a phone can't guess "http" or drop the port, and it needs no name lookup.</summary>
     public static string? PhoneUrl => PortalNet.PreferredAddress() is { } ip ? $"https://{ip}:{Port}" : null;
 
     /// <summary>
@@ -115,12 +119,11 @@ public static class WebPortal
                 // Something else already uses port 80 or 443: carry on with the portal's own port only.
                 try { await app.DisposeAsync(); } catch { }
                 friendly = false;
-                FriendlyProblem = "Port 80 or 443 is already used by another program, so the short address maison.local is off.";
+                FriendlyProblem = "Port 80 or 443 is already used by another program, so the short address (no port number) is off.";
             }
         }
         FriendlyActive = friendly;
         _app = app;
-        if (friendly) MdnsResponder.Start(FriendlyHost);
     }
 
     private static WebApplication Build(bool friendly)
@@ -134,7 +137,7 @@ public static class WebPortal
             k.ListenAnyIP(Port, l => { l.Use(PlainHttpRedirect); l.UseHttps(_cert); });
             if (friendly)
             {
-                k.ListenAnyIP(443, l => { l.Use(PlainHttpRedirect); l.UseHttps(_cert); });   // https://maison.local with no port
+                k.ListenAnyIP(443, l => { l.Use(PlainHttpRedirect); l.UseHttps(_cert); });   // so no port number is needed
                 k.ListenAnyIP(80);                            // plain http only ever redirects to https
             }
         });
@@ -275,7 +278,6 @@ public static class WebPortal
         var a = _app;
         _app = null;
         FriendlyActive = false;
-        MdnsResponder.Stop();
         try
         {
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));

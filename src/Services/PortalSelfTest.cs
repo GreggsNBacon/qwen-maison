@@ -169,10 +169,10 @@ public static class PortalSelfTest
             r.Add($"plainHttpBadHostRefused={Encoding.ASCII.GetString(rb, 0, n).StartsWith("HTTP/1.1 400")}");
         }
         catch (Exception ex) { r.Add("plainHttpRedirected=ERR(" + ex.GetType().Name + ")"); }
-        r.Add($"phoneUrl={(WebPortal.PhoneUrl ?? "none").StartsWith("https://")} noLinkLocalInUrls={!WebPortal.Urls.Any(u => u.Contains("169.254."))}");
+        r.Add($"phoneUrl={(WebPortal.PhoneUrl ?? "none").StartsWith("https://")} noLinkLocalInUrls={!WebPortal.Urls.Any(u => u.Contains("169.254."))} lanUrlsHaveNoLocalhost={!WebPortal.LanUrls.Any(u => u.Contains("localhost"))}");
 
-        // maison.local: port 443 serves the portal, port 80 only redirects, and the mDNS responder answers.
-        r.Add($"friendlyActive={WebPortal.FriendlyActive} problem=[{WebPortal.FriendlyProblem}{MdnsResponder.Problem}]");
+        // Standard ports: 443 serves the portal and port 80 only redirects (skipped when another program holds them).
+        r.Add($"friendlyActive={WebPortal.FriendlyActive} problem=[{WebPortal.FriendlyProblem}]");
         if (WebPortal.FriendlyActive)
         {
             using var h4 = new HttpClient(new HttpClientHandler { ServerCertificateCustomValidationCallback = (_, _, _, _) => true, AllowAutoRedirect = false });
@@ -183,26 +183,6 @@ public static class PortalSelfTest
                 r.Add($"http80Redirects={(int)redir.StatusCode == 302 && redir.Headers.Location?.ToString() == "https://localhost/term/abc"}");
             }
             catch (Exception ex) { r.Add("http80Redirects=ERR(" + ex.GetType().Name + ")"); }
-
-            // Real mDNS queries are multicast (a unicast packet to the shared port may reach another program), so ask the way a phone does.
-            var lan = PortalNet.LanAddresses().FirstOrDefault();
-            using var udp = new System.Net.Sockets.UdpClient(0);
-            var mdnsDest = new IPEndPoint(IPAddress.Parse("224.0.0.251"), 5353);
-            if (lan is not null) udp.Client.SetSocketOption(System.Net.Sockets.SocketOptionLevel.IP, System.Net.Sockets.SocketOptionName.MulticastInterface, lan.GetAddressBytes());
-            var q = new List<byte> { 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0 };
-            foreach (var label in new[] { "maison", "local" }) { q.Add((byte)label.Length); q.AddRange(Encoding.ASCII.GetBytes(label)); }
-            q.AddRange([0, 0, 1, 0, 1]);   // end of name, type A, class IN
-            await udp.SendAsync(q.ToArray(), q.Count, mdnsDest);
-            var rx = udp.ReceiveAsync();
-            var done = await Task.WhenAny(rx, Task.Delay(3000));
-            bool answered = done == rx && rx.Result.Buffer.Length > 12 && (rx.Result.Buffer[2] & 0x80) != 0 && rx.Result.Buffer[7] >= 1;
-            r.Add($"mdnsAnswersMaisonLocal={answered}");
-            var other = new List<byte> { 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0 };
-            foreach (var label in new[] { "printer", "local" }) { other.Add((byte)label.Length); other.AddRange(Encoding.ASCII.GetBytes(label)); }
-            other.AddRange([0, 0, 1, 0, 1]);
-            await udp.SendAsync(other.ToArray(), other.Count, mdnsDest);
-            var rx2 = udp.ReceiveAsync();
-            r.Add($"mdnsIgnoresOtherNames={await Task.WhenAny(rx2, Task.Delay(1000)) != rx2}");
         }
 
         // Lockout: 5 wrong passwords from one address → the right one is refused too.

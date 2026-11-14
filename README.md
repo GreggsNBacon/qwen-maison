@@ -111,9 +111,8 @@ Every button has a tooltip explaining what it does.
 ## Phone access
 1. In **Settings → Web portal**, set a username and password, turn the portal on, and press **Fix Windows Firewall** if maison
    shows the warning (one admin prompt; it opens just the portal's port, for your home network only).
-2. On your phone (same Wi-Fi as the PC, not mobile data), **scan the QR code** in Settings with the camera and tap the link.
-   Or type the address shown, e.g. `https://192.168.1.20:<port>`. (`https://maison.local` works on iPhones and PCs, but
-   Android browsers can't look that name up.) Your browser will warn
+2. On your phone (same Wi-Fi as the PC), **scan the QR code** in Settings with the camera and tap the link. Or type the
+   address shown, e.g. `https://192.168.1.20:<port>`. Your browser will warn
    that the certificate isn't trusted, because maison made it itself. Check that the fingerprint matches the one in
    Settings, then continue.
    Typed the address without `https://`? maison redirects plain `http://` to the secure address instead of dropping it.
@@ -125,8 +124,13 @@ Every button has a tooltip explaining what it does.
 authenticator app (Google Authenticator, Microsoft Authenticator, Aegis…) and type back the 6-digit code it shows. From then on
 signing in also asks for the current code. Turn it on before you ever open the portal to the internet.
 
-**Typing just `maison`?** `maison.local` works on its own. A bare `maison/` is only understood if your router's DNS (or a
-Pi-hole) has an entry that points the name `maison` at this PC; maison can't set that up for you.
+**Outside your home.** Turn on *Allow connections from outside my network* and forward the portal's port on your router to this
+PC. The QR code and address list then show your public address (maison looks it up with api.ipify.org, only while that switch is
+on). Turn on two-step sign-in first.
+
+**Typing just `maison/`.** With *Also answer without a port number* on, maison also uses the standard web ports, so no `:port` is
+needed. For the short name, **Settings → Web portal → Name this PC "maison"** renames the PC (after a restart); most routers then
+share that name with your phones, so `maison/` works. maison can't change your router's name list itself.
 
 **Put maison on your home screen.** On Android (Chrome) use ⋮ → *Install app*; on iPhone (Safari) use Share → *Add to Home
 Screen*. You get the maison icon and a full-screen window with no browser bar. Phones only treat it as a real app when

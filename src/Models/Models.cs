@@ -242,7 +242,7 @@ public sealed class AppConfig
     /// <summary>Last accepted 30-second code window, so a code can't be used twice.</summary>
     public long PortalTotpLastStep { get; set; }
     public string PortalCertThumbprint { get; set; } = "";
-    /// <summary>Also answer on https://maison.local (ports 80/443 + mDNS), so nobody has to type a port.</summary>
+    /// <summary>Also answer on the standard web ports (443, plus 80 redirecting), so nobody has to type a port.</summary>
     public bool PortalFriendlyAddress { get; set; } = true;
     /// <summary>Optional trusted certificate (.pfx) for the portal. Needed for phones to install it as an app without warnings.</summary>
     public string PortalCertPfxPath { get; set; } = "";

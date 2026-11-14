@@ -408,7 +408,6 @@ public partial class SettingsView : UserControl
         TotpState.Text = PortalAuth.TotpEnabled ? "On: sign-in also asks for a code from your authenticator app." : "Off: sign-in asks for the username and password only.";
         TotpStart.Visibility = PortalAuth.TotpEnabled || TotpSetup.Visibility == Visibility.Visible ? Visibility.Collapsed : Visibility.Visible;
         TotpOff.Visibility = PortalAuth.TotpEnabled ? Visibility.Visible : Visibility.Collapsed;
-        RefreshQr();
         RefreshVisit();
         if (_visitTimer is null)
         {
@@ -419,7 +418,7 @@ public partial class SettingsView : UserControl
         _ = RefreshFirewallAsync();
         PortalState.Text = WebPortal.IsRunning ? $"Running on port {WebPortal.Port}" : "Off";
         PortalInfo.Visibility = WebPortal.IsRunning ? Visibility.Visible : Visibility.Collapsed;
-        UrlList.ItemsSource = WebPortal.IsRunning ? WebPortal.Urls : [];
+        _ = RefreshAddressesAsync();
         CertMode.Text = PortalCert.IsCustom
             ? $"Using your certificate: {_c.PortalCertPfxPath}. Phones trust it if it was issued for the name you type (your own domain name, or the one Tailscale gives you)."
             : "maison's own certificate. Phones warn that it isn't trusted, and Android Chrome will only make a plain shortcut instead of installing maison as an app. " +
@@ -429,7 +428,7 @@ public partial class SettingsView : UserControl
             ? $"Your phone will warn that the certificate isn't trusted — maison made it itself on this PC. Check the fingerprint starts with {WebPortal.Fingerprint} and continue. " +
               "To reach maison away from home, use a VPN such as Tailscale rather than opening the port on your router."
             : "";
-        var note = new[] { WebPortal.FriendlyProblem, MdnsResponder.Problem }.FirstOrDefault(x => !string.IsNullOrEmpty(x));
+        var note = WebPortal.FriendlyProblem;
         if (!string.IsNullOrEmpty(note)) CertText.Text = note + (CertText.Text.Length > 0 ? " " + CertText.Text : "");
         List<PortalDevice> devices;
         lock (_c.PortalDevices) devices = _c.PortalDevices.OrderByDescending(d => d.LastSeen).ToList();
@@ -439,22 +438,74 @@ public partial class SettingsView : UserControl
 
     private System.Windows.Threading.DispatcherTimer? _visitTimer;
 
-    private void RefreshQr()
+    /// <summary>
+    /// The QR code and the typed addresses. Outside access off: this PC's home-network address(es) only. Outside access on: the
+    /// public address (looked up, then cached) is the QR code and the extra line; the home address stays for when you're on Wi-Fi.
+    /// </summary>
+    private async Task RefreshAddressesAsync()
     {
-        var url = WebPortal.IsRunning ? WebPhoneUrl() : null;
-        PhoneQrUrl.Text = url ?? "";
-        if (url is null) { PhoneQr.Source = null; return; }
-        using var gen = new QRCoder.QRCodeGenerator();
-        var png = new QRCoder.PngByteQRCode(gen.CreateQrCode(url, QRCoder.QRCodeGenerator.ECCLevel.M)).GetGraphic(8, [0, 0, 0], [255, 255, 255]);
-        var img = new System.Windows.Media.Imaging.BitmapImage();
-        img.BeginInit();
-        img.CacheOption = System.Windows.Media.Imaging.BitmapCacheOption.OnLoad;
-        img.StreamSource = new MemoryStream(png);
-        img.EndInit();
-        PhoneQr.Source = img;
+        if (!WebPortal.IsRunning)
+        {
+            QrPanel.Visibility = Visibility.Collapsed;
+            UrlList.ItemsSource = new List<string>();
+            UrlTitle.Visibility = Visibility.Collapsed;
+            ShortNameRow.Visibility = Visibility.Collapsed;
+            return;
+        }
+        var urls = new List<string>(WebPortal.LanUrls);
+        string? qrUrl = WebPortal.PhoneUrl;
+        string qrNote = "Point the camera at the code and tap the link. It includes https:// and the port, so there is nothing to type. Your phone must be on the same Wi-Fi as this PC.";
+        string qrTitle = "Scan with your phone's camera (same Wi-Fi)";
+        if (_c.PortalAllowInternet)
+        {
+            var pub = await PublicIp.GetAsync();
+            if (!WebPortal.IsRunning) return;
+            if (pub is not null)
+            {
+                qrUrl = $"https://{pub}:{WebPortal.Port}";
+                urls.Add(qrUrl);
+                qrTitle = "Scan with your phone's camera (from anywhere)";
+                qrNote = "This is your public address. It only works from outside your home if your router forwards port " + WebPortal.Port +
+                         " to this PC. On your home Wi-Fi some routers can't loop back to their own public address; use the home address below there.";
+            }
+            else qrNote = "Couldn't look up your public address (no internet?), so this code is for your home Wi-Fi. " + qrNote;
+        }
+        QrPanel.Visibility = qrUrl is null ? Visibility.Collapsed : Visibility.Visible;
+        QrTitle.Text = qrTitle;
+        PhoneQrUrl.Text = qrUrl ?? "";
+        QrNote.Text = qrNote;
+        if (qrUrl is not null)
+        {
+            using var gen = new QRCoder.QRCodeGenerator();
+            var png = new QRCoder.PngByteQRCode(gen.CreateQrCode(qrUrl, QRCoder.QRCodeGenerator.ECCLevel.M)).GetGraphic(8, [0, 0, 0], [255, 255, 255]);
+            var img = new System.Windows.Media.Imaging.BitmapImage();
+            img.BeginInit();
+            img.CacheOption = System.Windows.Media.Imaging.BitmapCacheOption.OnLoad;
+            img.StreamSource = new MemoryStream(png);
+            img.EndInit();
+            PhoneQr.Source = img;
+        }
+        UrlList.ItemsSource = urls;
+        UrlTitle.Visibility = urls.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
+
+        // "maison/" with no scheme and no port: needs the standard ports and this PC to be called maison.
+        ShortNameRow.Visibility = WebPortal.FriendlyActive ? Visibility.Visible : Visibility.Collapsed;
+        RenamePc.Visibility = WebPortal.PcIsNamedMaison ? Visibility.Collapsed : Visibility.Visible;
+        ShortNameText.Text = WebPortal.PcIsNamedMaison
+            ? "This PC is called maison, so on your home network you can type maison/ (Windows PCs find it by name; phones can if your router shares device names, which most do)."
+            : $"To type just maison/ on your phone, this PC has to be called maison (it's called {Environment.MachineName} now). Your router then shares that name with your phones.";
     }
 
-    private static string? WebPhoneUrl() => WebPortal.PhoneUrl;
+    private async void RenamePc_Click(object sender, RoutedEventArgs e)
+    {
+        if (!await Shell.ConfirmAsync("Rename this PC to “maison”?",
+                $"Windows will call this PC maison instead of {Environment.MachineName}. It takes effect after you restart Windows. " +
+                "Other devices on your network that already know this PC by its old name will need to use the new one.", "Rename"))
+            return;
+        var err = await AiSharing.RunElevatedPowerShellAsync("Rename-Computer -NewName 'maison' -Force -ErrorAction Stop");
+        if (err is null) Shell.Toast("PC renamed", "Restart Windows to finish. After that, type maison/ on your network.", ControlAppearance.Success, SymbolRegular.Desktop24);
+        else Shell.Toast("PC not renamed", err, ControlAppearance.Caution, SymbolRegular.Warning24);
+    }
 
     /// <summary>Says what the portal has actually seen, so "my phone can't load it" can be told apart: never arrived, wrong http, or refused certificate.</summary>
     private void RefreshVisit()
@@ -495,7 +546,7 @@ public partial class SettingsView : UserControl
                 "If this is your home network, maison can switch it to Private.", "Set to Private");
         var err = await PortalFirewall.EnsureAsync(_c.PortalPort, _c.PortalAllowInternet, makePrivate, _c.PortalFriendlyAddress);
         if (err is not null) Shell.Toast("Firewall not changed", err, ControlAppearance.Caution, SymbolRegular.Warning24);
-        else Shell.Toast("Firewall updated", $"Port {_c.PortalPort}{(_c.PortalFriendlyAddress ? " (and maison.local)" : "")} is open for " + (_c.PortalAllowInternet ? "any address (internet access is on)." : "your home network and Tailscale."), ControlAppearance.Success, SymbolRegular.ShieldCheckmark24);
+        else Shell.Toast("Firewall updated", $"Port {_c.PortalPort}{(_c.PortalFriendlyAddress ? " (and 80/443)" : "")} is open for " + (_c.PortalAllowInternet ? "any address (internet access is on)." : "your home network and Tailscale."), ControlAppearance.Success, SymbolRegular.ShieldCheckmark24);
         await RefreshFirewallAsync();
     }
 
@@ -628,6 +679,7 @@ public partial class SettingsView : UserControl
         _c.PortalAllowInternet = AllowInternet.IsChecked == true;
         _c.Save();
         _ = RefreshFirewallAsync();
+        _ = RefreshAddressesAsync();
     }
 
     private async Task RestartPortalAsync()
