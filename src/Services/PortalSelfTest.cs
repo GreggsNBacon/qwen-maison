@@ -14,7 +14,9 @@ public static class PortalSelfTest
     public static async Task<string> RunAsync(string password, string dir)
     {
         var r = new List<string>();
+        const string user = "selftest-user";
         PortalAuth.SetPassword(password);
+        PortalAuth.SetUsername(user);
         AppConfig.Current.PortalPort = 47231;
         await WebPortal.StartAsync();
         var baseUrl = "https://localhost:47231";
@@ -35,16 +37,19 @@ public static class PortalSelfTest
         r.Add($"loginPage={(int)login.StatusCode} csp={login.Headers.Contains("Content-Security-Policy")}");
         await File.WriteAllTextAsync(Path.Combine(dir, "portal-login.html"), await login.Content.ReadAsStringAsync());
 
-        async Task<HttpResponseMessage> Login(string pw, string? org)
+        async Task<HttpResponseMessage> Login(string pw, string? org, string un = user, string? code = null)
         {
             var req = new HttpRequestMessage(HttpMethod.Post, "/api/login")
-            { Content = new StringContent(JsonSerializer.Serialize(new { password = pw, device = "selftest" }), Encoding.UTF8, "application/json") };
+            { Content = new StringContent(JsonSerializer.Serialize(new { username = un, password = pw, code, device = "selftest" }), Encoding.UTF8, "application/json") };
             if (org is not null) req.Headers.Add("Origin", org);
             return await http.SendAsync(req);
         }
 
         r.Add($"crossSiteLoginBlocked={(int)(await Login(password, "https://evil.example")).StatusCode == 403}");
         r.Add($"wrongPassword401={(int)(await Login("wrong-password", origin)).StatusCode == 401}");
+        r.Add($"wrongUsername401={(int)(await Login(password, origin, "someone-else")).StatusCode == 401}");
+        r.Add($"usernameCaseInsensitive={(int)(await Login(password, origin, user.ToUpperInvariant())).StatusCode == 200}");
+        AppConfig.Current.PortalDevices.Clear();
         var ok = await Login(password, origin);
         var setCookie = ok.Headers.TryGetValues("Set-Cookie", out var sc) ? string.Join(";", sc) : "";
         r.Add($"rightPassword={(int)ok.StatusCode} cookieHttpOnly={setCookie.Contains("httponly", StringComparison.OrdinalIgnoreCase)} secure={setCookie.Contains("secure", StringComparison.OrdinalIgnoreCase)} samesiteStrict={setCookie.Contains("samesite=strict", StringComparison.OrdinalIgnoreCase)}");
@@ -115,17 +120,82 @@ public static class PortalSelfTest
             r.Add($"wsWithoutCookieRefused={anonRefused}");
         }
 
+        // Two-step sign-in: needs a fresh correct code, and a code only works once.
+        var secret = Totp.NewSecret();
+        r.Add($"totpRfcVector={Totp.Code("12345678901234567890"u8.ToArray(), 59 / 30) == "287082"}");
+        var good = Totp.Code(secret, Totp.NowStep());
+        var wrongCode = (int.Parse(good) + 1).ToString("D6");
+        r.Add($"totpWrongEnableRefused={!PortalAuth.EnableTotp(secret, wrongCode)}");
+        r.Add($"totpEnabled={PortalAuth.EnableTotp(secret, good)} secretEncrypted={!AppConfig.Current.PortalTotpSecret.Contains(Totp.Base32(secret))}");
+        r.Add($"loginPageShowsCode={!(await (await http.GetAsync("/login")).Content.ReadAsStringAsync()).Contains("codebox\" hidden")}");
+        r.Add($"totpMissingCode401={(int)(await Login(password, origin)).StatusCode == 401}");
+        r.Add($"totpReplay401={(int)(await Login(password, origin, code: good)).StatusCode == 401}");
+        AppConfig.Current.PortalTotpLastStep = Totp.NowStep() - 5;   // pretend time moved on
+        r.Add($"totpFreshCodeOk={(int)(await Login(password, origin, code: Totp.Code(secret, Totp.NowStep()))).StatusCode == 200}");
+        PortalAuth.DisableTotp();
+        r.Add($"totpOffLoginOk={(int)(await Login(password, origin)).StatusCode == 200}");
+
+        // Install-as-app files are public and correct.
+        using (var h3 = new HttpClient(new HttpClientHandler { ServerCertificateCustomValidationCallback = (_, _, _, _) => true, AllowAutoRedirect = false }) { BaseAddress = new Uri(baseUrl) })
+        {
+            var mf = await h3.GetAsync("/manifest.webmanifest");
+            var mfJson = JsonDocument.Parse(await mf.Content.ReadAsStringAsync()).RootElement;
+            bool maskable = mfJson.GetProperty("icons").EnumerateArray().Any(i => i.GetProperty("purpose").GetString() == "maskable");
+            r.Add($"manifest={(int)mf.StatusCode} display={mfJson.GetProperty("display").GetString()} maskableIcon={maskable}");
+            var sw = await h3.GetAsync("/sw.js");
+            r.Add($"serviceWorker={(int)sw.StatusCode} fetchHandler={(await sw.Content.ReadAsStringAsync()).Contains("'fetch'")}");
+            var icon = await h3.GetAsync("/pwa/icon-512.png");
+            var iconBytes = await icon.Content.ReadAsByteArrayAsync();
+            r.Add($"icon512={(int)icon.StatusCode} png={iconBytes.Length > 8 && iconBytes[1] == (byte)'P'}");
+            r.Add($"lockup={(int)(await h3.GetAsync("/pwa/lockup.png")).StatusCode} appleTouch={(int)(await h3.GetAsync("/apple-touch-icon.png")).StatusCode} unknownPwaFile404={(int)(await h3.GetAsync("/pwa/secret.png")).StatusCode == 404}");
+            r.Add($"brand={(int)(await h3.GetAsync("/brand.png")).StatusCode}");
+        }
+
+        // maison.local: port 443 serves the portal, port 80 only redirects, and the mDNS responder answers.
+        r.Add($"friendlyActive={WebPortal.FriendlyActive} problem=[{WebPortal.FriendlyProblem}{MdnsResponder.Problem}]");
+        if (WebPortal.FriendlyActive)
+        {
+            using var h4 = new HttpClient(new HttpClientHandler { ServerCertificateCustomValidationCallback = (_, _, _, _) => true, AllowAutoRedirect = false });
+            try { r.Add($"https443Login={(int)(await h4.GetAsync("https://localhost/login")).StatusCode}"); } catch (Exception ex) { r.Add("https443Login=ERR(" + ex.GetType().Name + ")"); }
+            try
+            {
+                var redir = await h4.GetAsync("http://localhost/term/abc");
+                r.Add($"http80Redirects={(int)redir.StatusCode == 302 && redir.Headers.Location?.ToString() == "https://localhost/term/abc"}");
+            }
+            catch (Exception ex) { r.Add("http80Redirects=ERR(" + ex.GetType().Name + ")"); }
+
+            // Real mDNS queries are multicast (a unicast packet to the shared port may reach another program), so ask the way a phone does.
+            var lan = PortalNet.LanAddresses().FirstOrDefault();
+            using var udp = new System.Net.Sockets.UdpClient(0);
+            var mdnsDest = new IPEndPoint(IPAddress.Parse("224.0.0.251"), 5353);
+            if (lan is not null) udp.Client.SetSocketOption(System.Net.Sockets.SocketOptionLevel.IP, System.Net.Sockets.SocketOptionName.MulticastInterface, lan.GetAddressBytes());
+            var q = new List<byte> { 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0 };
+            foreach (var label in new[] { "maison", "local" }) { q.Add((byte)label.Length); q.AddRange(Encoding.ASCII.GetBytes(label)); }
+            q.AddRange([0, 0, 1, 0, 1]);   // end of name, type A, class IN
+            await udp.SendAsync(q.ToArray(), q.Count, mdnsDest);
+            var rx = udp.ReceiveAsync();
+            var done = await Task.WhenAny(rx, Task.Delay(3000));
+            bool answered = done == rx && rx.Result.Buffer.Length > 12 && (rx.Result.Buffer[2] & 0x80) != 0 && rx.Result.Buffer[7] >= 1;
+            r.Add($"mdnsAnswersMaisonLocal={answered}");
+            var other = new List<byte> { 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0 };
+            foreach (var label in new[] { "printer", "local" }) { other.Add((byte)label.Length); other.AddRange(Encoding.ASCII.GetBytes(label)); }
+            other.AddRange([0, 0, 1, 0, 1]);
+            await udp.SendAsync(other.ToArray(), other.Count, mdnsDest);
+            var rx2 = udp.ReceiveAsync();
+            r.Add($"mdnsIgnoresOtherNames={await Task.WhenAny(rx2, Task.Delay(1000)) != rx2}");
+        }
+
         // Lockout: 5 wrong passwords from one address → the right one is refused too.
         using (var h2 = new HttpClient(new HttpClientHandler { ServerCertificateCustomValidationCallback = (_, _, _, _) => true }) { BaseAddress = new Uri(baseUrl) })
         {
             int code = 0;
             for (int i = 0; i < 6; i++)
             {
-                var req = new HttpRequestMessage(HttpMethod.Post, "/api/login") { Content = new StringContent("{\"password\":\"nope\"}", Encoding.UTF8, "application/json") };
+                var req = new HttpRequestMessage(HttpMethod.Post, "/api/login") { Content = new StringContent("{\"username\":\"x\",\"password\":\"nope\"}", Encoding.UTF8, "application/json") };
                 req.Headers.Add("Origin", origin);
                 code = (int)(await h2.SendAsync(req)).StatusCode;
             }
-            var right = new HttpRequestMessage(HttpMethod.Post, "/api/login") { Content = new StringContent(JsonSerializer.Serialize(new { password }), Encoding.UTF8, "application/json") };
+            var right = new HttpRequestMessage(HttpMethod.Post, "/api/login") { Content = new StringContent(JsonSerializer.Serialize(new { username = user, password }), Encoding.UTF8, "application/json") };
             right.Headers.Add("Origin", origin);
             var rc = (int)(await h2.SendAsync(right)).StatusCode;
             r.Add($"lockoutAfter5={code == 429} rightPasswordWhileLocked={rc}");

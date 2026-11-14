@@ -28,17 +28,46 @@ public static class WebPortal
     public static int Port { get; private set; }
     public static string Fingerprint => _cert is null ? "" : PortalCert.Fingerprint(_cert);
 
+    public static bool FriendlyActive { get; private set; }
+    /// <summary>Why the short address couldn't be set up (ports 80/443 busy), or empty.</summary>
+    public static string FriendlyProblem { get; private set; } = "";
+    public const string FriendlyHost = "maison.local";
+
     public static IReadOnlyList<string> Urls =>
-        PortalNet.LanAddresses().Select(ip => $"https://{ip}:{Port}").Append($"https://localhost:{Port}").ToList();
+        (FriendlyActive ? [$"https://{FriendlyHost}"] : new List<string>())
+            .Concat(PortalNet.LanAddresses().Select(ip => $"https://{ip}:{Port}"))
+            .Append($"https://localhost:{Port}").ToList();
 
     public static async Task StartAsync()
     {
         if (_app is not null) return;
         var cfg = AppConfig.Current;
-        if (!PortalAuth.HasPassword) throw new InvalidOperationException("Set a portal password first.");
+        if (!PortalAuth.HasCredentials) throw new InvalidOperationException("Set a portal username and password first.");
         _cert = PortalCert.GetOrCreate();
         Port = cfg.PortalPort;
 
+        bool friendly = cfg.PortalFriendlyAddress;
+        FriendlyProblem = "";
+        WebApplication app;
+        for (;;)
+        {
+            app = Build(friendly);
+            try { await app.StartAsync(); break; }
+            catch when (friendly)
+            {
+                // Something else already uses port 80 or 443: carry on with the portal's own port only.
+                try { await app.DisposeAsync(); } catch { }
+                friendly = false;
+                FriendlyProblem = "Port 80 or 443 is already used by another program, so the short address maison.local is off.";
+            }
+        }
+        FriendlyActive = friendly;
+        _app = app;
+        if (friendly) MdnsResponder.Start(FriendlyHost);
+    }
+
+    private static WebApplication Build(bool friendly)
+    {
         var builder = WebApplication.CreateSlimBuilder(new WebApplicationOptions { ContentRootPath = AppContext.BaseDirectory });
         builder.Logging.ClearProviders();
         builder.WebHost.ConfigureKestrel(k =>
@@ -46,6 +75,11 @@ public static class WebPortal
             k.AddServerHeader = false;
             k.Limits.MaxRequestBodySize = 64 * 1024;
             k.ListenAnyIP(Port, l => l.UseHttps(_cert));
+            if (friendly)
+            {
+                k.ListenAnyIP(443, l => l.UseHttps(_cert));   // https://maison.local with no port
+                k.ListenAnyIP(80);                            // plain http only ever redirects to https
+            }
         });
         var app = builder.Build();
         app.UseWebSockets(new WebSocketOptions { KeepAliveInterval = TimeSpan.FromSeconds(20) });
@@ -53,6 +87,14 @@ public static class WebPortal
         // Network filter + security headers on every request.
         app.Use(async (ctx, next) =>
         {
+            if (!ctx.Request.IsHttps)
+            {
+                // Port 80: never serve anything over plain http, just send the browser to https on the standard port.
+                var host = ctx.Request.Host.Host;
+                if (Uri.CheckHostName(host) == UriHostNameType.Unknown) { ctx.Response.StatusCode = 400; return; }
+                ctx.Response.Redirect($"https://{(host.Contains(':') ? $"[{host}]" : host)}{ctx.Request.Path}{ctx.Request.QueryString}", permanent: false);
+                return;
+            }
             var remote = ctx.Connection.RemoteIpAddress;
             if (!AppConfig.Current.PortalAllowInternet && !PortalNet.IsPrivate(remote))
             {
@@ -70,8 +112,21 @@ public static class WebPortal
             await next();
         });
 
-        app.MapGet("/login", () => Results.Content(Page("login.html"), "text/html; charset=utf-8"));
+        // The 6-digit code box only appears when two-step sign-in is on.
+        app.MapGet("/login", () => Results.Content(
+            Page("login.html").Replace("<!--CODE-->", PortalAuth.TotpEnabled ? "" : "hidden"), "text/html; charset=utf-8"));
         app.MapGet("/brand.png", () => Results.Bytes(BrandPng(), "image/png"));
+
+        // Install-as-app (home-screen icon) files. They hold nothing private, so they're served without sign-in.
+        app.MapGet("/manifest.webmanifest", () => Results.Content(Manifest, "application/manifest+json; charset=utf-8"));
+        app.MapGet("/sw.js", () => Results.Content(ServiceWorker, "text/javascript; charset=utf-8"));
+        app.MapGet("/pwa/{name}", (HttpContext ctx, string name) =>
+        {
+            if (!PwaFiles.Contains(name)) return Results.NotFound();
+            ctx.Response.Headers.CacheControl = "public, max-age=86400";
+            return Results.Bytes(Asset(name), "image/png");
+        });
+        app.MapGet("/apple-touch-icon.png", (HttpContext ctx) => { ctx.Response.Headers.CacheControl = "public, max-age=86400"; return Results.Bytes(Asset("apple-touch-icon.png"), "image/png"); });
 
         app.MapPost("/api/login", async (HttpContext ctx) =>
         {
@@ -84,11 +139,12 @@ public static class WebPortal
             LoginRequest? req;
             try { req = await JsonSerializer.DeserializeAsync<LoginRequest>(ctx.Request.Body, JsonOpts); }
             catch { return Results.BadRequest(); }
-            if (req is null || string.IsNullOrEmpty(req.Password) || !PortalAuth.VerifyPassword(req.Password))
+            if (req is null || string.IsNullOrEmpty(req.Password) || req.Password.Length > 256 || (req.Username ?? "").Length > 100
+                || !PortalAuth.Login(req.Username, req.Password, req.Code))
             {
                 PortalAuth.Failed(ip);
                 await Task.Delay(700);
-                return Results.Json(new { ok = false, error = "Wrong password." }, statusCode: 401);
+                return Results.Json(new { ok = false, error = PortalAuth.TotpEnabled ? "Wrong username, password or code." : "Wrong username or password." }, statusCode: 401);
             }
             PortalAuth.Succeeded(ip);
             var name = string.IsNullOrWhiteSpace(req.Device) ? DeviceName(ctx) : new string(req.Device.Trim().Where(ch => !char.IsControl(ch)).Take(40).ToArray());
@@ -152,8 +208,7 @@ public static class WebPortal
             await PumpAsync(ws, s, ctx.RequestAborted);
         });
 
-        await app.StartAsync();
-        _app = app;
+        return app;
     }
 
     public static async Task StopAsync()
@@ -161,6 +216,8 @@ public static class WebPortal
         if (_app is null) return;
         var a = _app;
         _app = null;
+        FriendlyActive = false;
+        MdnsResponder.Stop();
         try
         {
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
@@ -172,7 +229,7 @@ public static class WebPortal
 
     // ------------------------------------------------------------------ helpers
 
-    private sealed record LoginRequest(string? Password, string? Device);
+    private sealed record LoginRequest(string? Username, string? Password, string? Code, string? Device);
 
     private static readonly JsonSerializerOptions JsonOpts = new(JsonSerializerDefaults.Web);
 
@@ -337,6 +394,43 @@ public static class WebPortal
         using var r = new StreamReader(s);
         return r.ReadToEnd();
     }
+
+    private static readonly HashSet<string> PwaFiles = ["icon-192.png", "icon-512.png", "icon-maskable-512.png", "apple-touch-icon.png", "lockup.png"];
+
+    private static byte[] Asset(string name)
+    {
+        using var s = Assembly.GetExecutingAssembly().GetManifestResourceStream("portal/" + name)
+                      ?? throw new FileNotFoundException("Missing embedded resource portal/" + name);
+        using var ms = new MemoryStream();
+        s.CopyTo(ms);
+        return ms.ToArray();
+    }
+
+    private const string Manifest = """
+        {
+          "name": "maison",
+          "short_name": "maison",
+          "description": "Your PC's local AI, from your phone.",
+          "start_url": "/",
+          "scope": "/",
+          "display": "standalone",
+          "background_color": "#16151d",
+          "theme_color": "#16151d",
+          "icons": [
+            { "src": "/pwa/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+            { "src": "/pwa/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+            { "src": "/pwa/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+          ]
+        }
+        """;
+
+    // Chrome only offers "Install app" when a service worker with a fetch handler exists. This one caches nothing:
+    // the portal is live and private, so every request goes to the network as normal.
+    private const string ServiceWorker = """
+        self.addEventListener('install', () => self.skipWaiting());
+        self.addEventListener('activate', e => e.waitUntil(self.clients.claim()));
+        self.addEventListener('fetch', () => {});
+        """;
 
     private static byte[]? _brand;
     private static byte[] BrandPng()

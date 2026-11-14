@@ -35,6 +35,7 @@ public partial class SettingsView : UserControl
         StaleDays.Value = _c.StaleDays;
         Port.Value = _c.PortalPort;
         AllowInternet.IsChecked = _c.PortalAllowInternet;
+        Friendly.IsChecked = _c.PortalFriendlyAddress;
         PortalOn.IsChecked = WebPortal.IsRunning;
         ModelsDir.Text = ModelStorage.Current;
         var disk = StatsService.Disk(ModelStorage.Current);
@@ -399,29 +400,127 @@ public partial class SettingsView : UserControl
 
     private void RefreshPortal()
     {
-        PwState.Text = PortalAuth.HasPassword ? "A password is set." : "No password yet — required before the portal can start.";
+        if (!PortalUser.IsKeyboardFocusWithin) PortalUser.Text = _c.PortalUsername;
+        PwState.Text = PortalAuth.HasCredentials ? "Username and password are set."
+            : PortalAuth.HasUsername ? "No password yet — required before the portal can start."
+            : PortalAuth.HasPassword ? "Pick a username (and press Save) — now required before the portal can start."
+            : "No username or password yet — required before the portal can start.";
+        TotpState.Text = PortalAuth.TotpEnabled ? "On: sign-in also asks for a code from your authenticator app." : "Off: sign-in asks for the username and password only.";
+        TotpStart.Visibility = PortalAuth.TotpEnabled || TotpSetup.Visibility == Visibility.Visible ? Visibility.Collapsed : Visibility.Visible;
+        TotpOff.Visibility = PortalAuth.TotpEnabled ? Visibility.Visible : Visibility.Collapsed;
+        _ = RefreshFirewallAsync();
         PortalState.Text = WebPortal.IsRunning ? $"Running on port {WebPortal.Port}" : "Off";
         PortalInfo.Visibility = WebPortal.IsRunning ? Visibility.Visible : Visibility.Collapsed;
         UrlList.ItemsSource = WebPortal.IsRunning ? WebPortal.Urls : [];
-        CertText.Text = WebPortal.IsRunning
+        CertMode.Text = PortalCert.IsCustom
+            ? $"Using your certificate: {_c.PortalCertPfxPath}. Phones trust it if it was issued for the name you type (your own domain name, or the one Tailscale gives you)."
+            : "maison's own certificate. Phones warn that it isn't trusted, and Android Chrome will only make a plain shortcut instead of installing maison as an app. " +
+              "For a real app icon, use a trusted certificate for a domain name that points at your PC (for example a free Let's Encrypt certificate exported as .pfx).";
+        CertReset.Visibility = PortalCert.IsCustom ? Visibility.Visible : Visibility.Collapsed;
+        CertText.Text = WebPortal.IsRunning && !PortalCert.IsCustom
             ? $"Your phone will warn that the certificate isn't trusted — maison made it itself on this PC. Check the fingerprint starts with {WebPortal.Fingerprint} and continue. " +
               "To reach maison away from home, use a VPN such as Tailscale rather than opening the port on your router."
             : "";
+        var note = new[] { WebPortal.FriendlyProblem, MdnsResponder.Problem }.FirstOrDefault(x => !string.IsNullOrEmpty(x));
+        if (!string.IsNullOrEmpty(note)) CertText.Text = note + (CertText.Text.Length > 0 ? " " + CertText.Text : "");
         List<PortalDevice> devices;
         lock (_c.PortalDevices) devices = _c.PortalDevices.OrderByDescending(d => d.LastSeen).ToList();
         DeviceList.ItemsSource = devices;
         NoDevices.Visibility = devices.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
     }
 
+    private async Task RefreshFirewallAsync()
+    {
+        if (!WebPortal.IsRunning) { FirewallState.Text = ""; FixFirewall.Visibility = Visibility.Collapsed; return; }
+        FirewallState.Text = "Checking Windows Firewall…";
+        var st = await PortalFirewall.CheckAsync(_c.PortalPort, _c.PortalAllowInternet, _c.PortalFriendlyAddress);
+        FirewallState.Text = (st.Healthy ? "✓ " : "⚠ ") + st.Summary;
+        FixFirewall.Visibility = st.Healthy ? Visibility.Collapsed : Visibility.Visible;
+    }
+
+    private async void FixFirewall_Click(object sender, RoutedEventArgs e) => await FixFirewallAsync();
+
+    private async Task FixFirewallAsync()
+    {
+        var st = await PortalFirewall.CheckAsync(_c.PortalPort, _c.PortalAllowInternet, _c.PortalFriendlyAddress);
+        bool makePrivate = false;
+        if (st.PublicNetworks.Count > 0)
+            makePrivate = await Shell.ConfirmAsync("Set your network to Private?",
+                $"Windows treats \"{st.PublicNetworks[0]}\" as a Public network (like a café) and blocks other devices from reaching this PC on it. " +
+                "If this is your home network, maison can switch it to Private.", "Set to Private");
+        var err = await PortalFirewall.EnsureAsync(_c.PortalPort, _c.PortalAllowInternet, makePrivate, _c.PortalFriendlyAddress);
+        if (err is not null) Shell.Toast("Firewall not changed", err, ControlAppearance.Caution, SymbolRegular.Warning24);
+        else Shell.Toast("Firewall updated", $"Port {_c.PortalPort}{(_c.PortalFriendlyAddress ? " (and maison.local)" : "")} is open for " + (_c.PortalAllowInternet ? "any address (internet access is on)." : "your home network and Tailscale."), ControlAppearance.Success, SymbolRegular.ShieldCheckmark24);
+        await RefreshFirewallAsync();
+    }
+
     private void SetPassword_Click(object sender, RoutedEventArgs e)
     {
+        var user = PortalAuth.NormaliseUsername(PortalUser.Text);
         var a = Pw1.Password ?? "";
         var b = Pw2.Password ?? "";
-        if (a.Length < 8) { Shell.Toast("Password too short", "Use at least 8 characters.", ControlAppearance.Caution, SymbolRegular.Warning24); return; }
-        if (a != b) { Shell.Toast("Passwords don't match", "Type the same password twice.", ControlAppearance.Caution, SymbolRegular.Warning24); return; }
-        PortalAuth.SetPassword(a);
+        if (user.Length < 3) { Shell.Toast("Username too short", "Use at least 3 characters.", ControlAppearance.Caution, SymbolRegular.Warning24); return; }
+        if (a.Length == 0 && !PortalAuth.HasPassword) { Shell.Toast("Set a password too", "Use at least 8 characters.", ControlAppearance.Caution, SymbolRegular.Warning24); return; }
+        if (a.Length > 0)
+        {
+            if (a.Length < 8) { Shell.Toast("Password too short", "Use at least 8 characters.", ControlAppearance.Caution, SymbolRegular.Warning24); return; }
+            if (a != b) { Shell.Toast("Passwords don't match", "Type the same password twice.", ControlAppearance.Caution, SymbolRegular.Warning24); return; }
+            PortalAuth.SetPassword(a);
+        }
+        PortalAuth.SetUsername(user);   // also signs every device out
         Pw1.Password = Pw2.Password = "";
-        Shell.Toast("Password set", "Every device will need to sign in with the new password.", ControlAppearance.Success, SymbolRegular.Key24);
+        Shell.Toast("Sign-in saved", "Every device will need to sign in again.", ControlAppearance.Success, SymbolRegular.Key24);
+        RefreshPortal();
+    }
+
+    // Two-step sign-in: show a QR code, and only turn it on once a code from the app has been typed back.
+    private byte[]? _pendingTotp;
+
+    private void TotpStart_Click(object sender, RoutedEventArgs e)
+    {
+        if (!PortalAuth.HasUsername) { Shell.Toast("Save a username first", "The authenticator entry is named after it.", ControlAppearance.Caution, SymbolRegular.Warning24); return; }
+        _pendingTotp = Totp.NewSecret();
+        var uri = Totp.Uri(_pendingTotp, _c.PortalUsername);
+        using var gen = new QRCoder.QRCodeGenerator();
+        var png = new QRCoder.PngByteQRCode(gen.CreateQrCode(uri, QRCoder.QRCodeGenerator.ECCLevel.M)).GetGraphic(8);
+        var img = new System.Windows.Media.Imaging.BitmapImage();
+        img.BeginInit();
+        img.CacheOption = System.Windows.Media.Imaging.BitmapCacheOption.OnLoad;
+        img.StreamSource = new MemoryStream(png);
+        img.EndInit();
+        TotpQr.Source = img;
+        var key = Totp.Base32(_pendingTotp);
+        TotpKey.Text = "Key: " + string.Join(" ", Enumerable.Range(0, (key.Length + 3) / 4).Select(i => key.Substring(i * 4, Math.Min(4, key.Length - i * 4))));
+        TotpCode.Text = "";
+        TotpSetup.Visibility = Visibility.Visible;
+        RefreshPortal();
+    }
+
+    private void TotpConfirm_Click(object sender, RoutedEventArgs e)
+    {
+        if (_pendingTotp is null) return;
+        if (!PortalAuth.EnableTotp(_pendingTotp, TotpCode.Text))
+        {
+            Shell.Toast("That code didn't match", "Check the 6-digit code in your app (it changes every 30 seconds) and try again.", ControlAppearance.Caution, SymbolRegular.Warning24);
+            return;
+        }
+        _pendingTotp = null;
+        TotpSetup.Visibility = Visibility.Collapsed;
+        Shell.Toast("Two-step sign-in on", "Every device will need to sign in again, with a code.", ControlAppearance.Success, SymbolRegular.ShieldKeyhole24);
+        RefreshPortal();
+    }
+
+    private void TotpCancel_Click(object sender, RoutedEventArgs e)
+    {
+        _pendingTotp = null;
+        TotpSetup.Visibility = Visibility.Collapsed;
+        RefreshPortal();
+    }
+
+    private async void TotpOff_Click(object sender, RoutedEventArgs e)
+    {
+        if (!await Shell.ConfirmAsync("Turn off two-step sign-in?", "Sign-in will ask for the username and password only.", "Turn off")) return;
+        PortalAuth.DisableTotp();
         RefreshPortal();
     }
 
@@ -429,10 +528,10 @@ public partial class SettingsView : UserControl
     {
         if (PortalOn.IsChecked == true)
         {
-            if (!PortalAuth.HasPassword)
+            if (!PortalAuth.HasCredentials)
             {
                 PortalOn.IsChecked = false;
-                Shell.Toast("Set a password first", "The portal needs a password before it can start.", ControlAppearance.Caution, SymbolRegular.Key24);
+                Shell.Toast("Set a username and password first", "The portal needs both before it can start.", ControlAppearance.Caution, SymbolRegular.Key24);
                 return;
             }
             try
@@ -440,6 +539,8 @@ public partial class SettingsView : UserControl
                 await WebPortal.StartAsync();
                 _c.PortalEnabled = true;
                 Shell.Log("Web portal on: " + string.Join(", ", WebPortal.Urls));
+                var fw = await PortalFirewall.CheckAsync(_c.PortalPort, _c.PortalAllowInternet, _c.PortalFriendlyAddress);
+                if (!fw.Healthy) Shell.Log("Web portal: " + fw.Summary);
             }
             catch (Exception ex)
             {
@@ -472,14 +573,65 @@ public partial class SettingsView : UserControl
     {
         if (AllowInternet.IsChecked == true &&
             !await Shell.ConfirmAsync("Allow internet connections?",
-                "Anyone on the internet who finds the port could try your password. Only turn this on if you've forwarded the port on your router on purpose. " +
-                "A VPN like Tailscale is the safer way to reach maison from outside.", "Allow"))
+                "Anyone on the internet who finds the port could try to sign in. Only turn this on if you've forwarded the port on your router on purpose, " +
+                "and turn on two-step sign-in first. A VPN like Tailscale is the safer way to reach maison from outside. " +
+                "You'll also need to press \"Fix Windows Firewall\" afterwards so Windows lets those connections in.", "Allow"))
         {
             AllowInternet.IsChecked = false;
             return;
         }
         _c.PortalAllowInternet = AllowInternet.IsChecked == true;
         _c.Save();
+        _ = RefreshFirewallAsync();
+    }
+
+    private async Task RestartPortalAsync()
+    {
+        if (!WebPortal.IsRunning) return;
+        await WebPortal.StopAsync();
+        try { await WebPortal.StartAsync(); }
+        catch (Exception ex) { Shell.Toast("Portal could not restart", ex.Message, ControlAppearance.Danger, SymbolRegular.ErrorCircle24); }
+    }
+
+    private async void Friendly_Click(object sender, RoutedEventArgs e)
+    {
+        _c.PortalFriendlyAddress = Friendly.IsChecked == true;
+        _c.Save();
+        await RestartPortalAsync();
+        RefreshPortal();
+    }
+
+    private async void CertChoose_Click(object sender, RoutedEventArgs e)
+    {
+        var dlg = new Microsoft.Win32.OpenFileDialog { Title = "Choose a certificate with its private key", Filter = "Certificate (*.pfx;*.p12)|*.pfx;*.p12" };
+        if (dlg.ShowDialog() != true) return;
+        var (oldPath, oldPw) = (_c.PortalCertPfxPath, _c.PortalCertPfxPassword);
+        _c.PortalCertPfxPath = dlg.FileName;
+        _c.PortalCertPfxPassword = string.IsNullOrEmpty(CertPw.Password) ? "" : Totp.ProtectText(CertPw.Password);
+        try
+        {
+            using (PortalCert.GetOrCreate()) { }   // does it open?
+        }
+        catch (Exception ex)
+        {
+            (_c.PortalCertPfxPath, _c.PortalCertPfxPassword) = (oldPath, oldPw);
+            Shell.Toast("Certificate not used", ex.Message, ControlAppearance.Caution, SymbolRegular.Warning24);
+            return;
+        }
+        _c.Save();
+        CertPw.Password = "";
+        await RestartPortalAsync();
+        Shell.Toast("Certificate in use", "Phones will trust it if it matches the address they open.", ControlAppearance.Success, SymbolRegular.ShieldCheckmark24);
+        RefreshPortal();
+    }
+
+    private async void CertReset_Click(object sender, RoutedEventArgs e)
+    {
+        _c.PortalCertPfxPath = "";
+        _c.PortalCertPfxPassword = "";
+        _c.Save();
+        await RestartPortalAsync();
+        RefreshPortal();
     }
 
     private void CopyUrl_Click(object sender, RoutedEventArgs e)

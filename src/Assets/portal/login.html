@@ -6,16 +6,22 @@
 <meta name="theme-color" content="#16151d">
 <title>maison · sign in</title>
 <link rel="icon" href="/brand.png">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/pwa/apple-touch-icon.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="maison">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <style>
   * { box-sizing: border-box; }
   body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: radial-gradient(120% 90% at 20% 0%, #2a2240 0%, #16151d 60%);
          color: #ecebf3; font: 15px/1.45 "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, sans-serif; }
   .card { width: min(380px, 92vw); background: #201e2b; border: 1px solid #2f2c42; border-radius: 18px; padding: 28px 24px; box-shadow: 0 20px 60px #0007; }
-  .brand { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; }
-  .brand img { width: 46px; height: 46px; }
-  .wm { font: 600 30px/1 "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif; letter-spacing: -0.01em; }
+  /* The logo is a picture (fonts baked in), so it looks the same on every phone, not just where Segoe UI is installed. */
+  .brand { text-align: center; margin: 2px 0 20px; }
+  .brand img { display: block; width: 230px; max-width: 80%; height: auto; margin: 0 auto; }
   .g { font-weight: 700; background: linear-gradient(100deg, #e8825f 0%, #c76ad8 50%, #7c5cff 100%); -webkit-background-clip: text; background-clip: text; color: transparent; }
-  .tag { color: #9d99b3; font-size: 12.5px; margin-top: 3px; }
+  .tag { color: #9d99b3; font-size: 13px; margin-top: 8px; }
   label { display: block; color: #b8b4cc; font-size: 13px; margin: 14px 0 6px; }
   input { width: 100%; padding: 12px 14px; border-radius: 10px; border: 1px solid #3a3655; background: #15141c; color: #fff; font-size: 16px; }
   input:focus { outline: 2px solid #7c5cff; border-color: transparent; }
@@ -29,11 +35,17 @@
 <body>
 <form class="card" id="f">
   <div class="brand">
-    <img src="/brand.png" alt="">
-    <div><div class="wm">m<span class="g">ai</span>son</div><div class="tag">the <b class="g">Qwen</b>-tissential AI home</div></div>
+    <img src="/pwa/lockup.png" width="600" height="180" alt="maison">
+    <div class="tag">the <b class="g">Qwen</b>-tissential AI home</div>
   </div>
+  <label for="un">Username</label>
+  <input id="un" type="text" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" maxlength="100" required autofocus>
   <label for="pw">Password</label>
-  <input id="pw" type="password" autocomplete="current-password" required autofocus>
+  <input id="pw" type="password" autocomplete="current-password" required>
+  <div id="codebox" <!--CODE-->>
+    <label for="code">6-digit code from your authenticator app</label>
+    <input id="code" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="10" pattern="[0-9 ]*">
+  </div>
   <label for="dev">Name this device <span style="color:#6f6b85">(optional)</span></label>
   <input id="dev" type="text" maxlength="60" placeholder="e.g. My phone">
   <button id="go" type="submit">Sign in</button>
@@ -47,13 +59,15 @@
     go.disabled = true; err.textContent = '';
     try {
       const r = await fetch('/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password: document.getElementById('pw').value, device: document.getElementById('dev').value }) });
+        body: JSON.stringify({ username: document.getElementById('un').value, password: document.getElementById('pw').value,
+                               code: document.getElementById('code').value, device: document.getElementById('dev').value }) });
       const j = await r.json().catch(() => ({}));
       if (r.ok && j.ok) { location.href = '/'; return; }
       err.textContent = j.error || 'Sign-in failed.';
     } catch { err.textContent = 'Could not reach maison.'; }
     go.disabled = false;
   });
+  if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
 </script>
 </body>
 </html>

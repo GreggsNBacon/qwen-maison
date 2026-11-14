@@ -6,3 +6,5 @@
 - Gradient: `#E8825F` → `#C76AD8` → `#7C5CFF`.
 
 `maison-icon.svg` is the source. `make-assets.ps1` regenerates the app icon (`maison.ico`, all sizes) and the PNG logos from it. The `logo-*.html` files are the design explorations.
+
+`make-portal-assets.ps1` draws the phone portal's images (`src/Assets/portal/*.png`: app icons, maskable icon, Apple touch icon and the sign-in lockup) from `render-portal.html`.
