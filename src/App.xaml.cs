@@ -15,6 +15,15 @@ public partial class App : Application
     /// </summary>
     protected override async void OnStartup(StartupEventArgs e)
     {
+        if (e.Args.Contains(Services.ReaderMcp.Arg))
+        {
+            // Qwen Code starts this as its web-page reader (an MCP server on stdin/stdout); no window.
+            ShutdownMode = ShutdownMode.OnExplicitShutdown;
+            base.OnStartup(e);
+            try { await Services.ReaderMcp.RunAsync(); } catch (Exception ex) { Console.Error.WriteLine(ex.Message); }
+            Shutdown(0);
+            return;
+        }
         if (e.Args.Contains("--pool-host"))
         {
             ShutdownMode = ShutdownMode.OnExplicitShutdown;

@@ -32,19 +32,46 @@
       </Grid.ColumnDefinitions>
       <ui:Card VerticalAlignment="Stretch" VerticalContentAlignment="Top">
         <StackPanel>
-          <TextBlock Text="Installed in Qwen Code" FontSize="15" FontWeight="SemiBold" Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
-          <TextBox x:Name="Installed" IsReadOnly="True" FontFamily="Cascadia Mono, Consolas" FontSize="12" Height="120" Margin="0,8,0,8"
-                   TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" />
           <Grid>
             <Grid.ColumnDefinitions>
               <ColumnDefinition Width="*" />
               <ColumnDefinition Width="Auto" />
-              <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
-            <ui:TextBox x:Name="ExtName" PlaceholderText="Extension name" ToolTip="Name as shown in the list above" />
-            <ui:Button Grid.Column="1" Content="Update" Margin="8,0,0,0" Click="Update_Click" ToolTip="Update this extension (leave the name empty to update all)" />
-            <ui:Button Grid.Column="2" Content="Uninstall" Margin="8,0,0,0" Click="Uninstall_Click" ToolTip="Remove this extension from Qwen Code" />
+            <TextBlock x:Name="InstalledTitle" Text="Installed in Qwen Code" FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center" Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+            <ui:Button Grid.Column="1" Content="Update all" Click="UpdateAll_Click" ToolTip="Update every installed extension (runs in a terminal tab)" />
           </Grid>
+          <TextBlock x:Name="InstalledNote" TextWrapping="Wrap" FontSize="12" Margin="0,4,0,0" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+          <ScrollViewer MaxHeight="280" VerticalScrollBarVisibility="Auto" Margin="0,8,0,0">
+            <ItemsControl x:Name="Installed">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                  <Border Padding="0,0,0,8" Margin="0,0,0,8" BorderThickness="0,0,0,1" BorderBrush="{DynamicResource DividerStrokeColorDefaultBrush}">
+                    <Grid>
+                      <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                      </Grid.ColumnDefinitions>
+                      <StackPanel>
+                        <StackPanel Orientation="Horizontal">
+                          <TextBlock Text="{Binding Title}" FontWeight="SemiBold" Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+                          <TextBlock Text="{Binding Badge}" FontSize="11" Margin="8,2,0,0" Foreground="{Binding BadgeBrush}" />
+                        </StackPanel>
+                        <TextBlock Text="{Binding Detail}" FontSize="12" TextWrapping="Wrap" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                        <TextBlock Text="{Binding Contents}" ToolTip="{Binding ContentsFull}" FontSize="11.5" TextWrapping="Wrap" Margin="0,2,0,0" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                        <TextBlock Text="{Binding Source}" FontSize="11" Foreground="{DynamicResource TextFillColorTertiaryBrush}" />
+                      </StackPanel>
+                      <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Top" Margin="8,0,0,0">
+                        <ui:Button Content="Update" Tag="{Binding Name}" Click="Update_Click" Visibility="{Binding UpdateVisibility}" Appearance="Primary" ToolTip="Update this extension (runs in a terminal tab)" />
+                        <ui:Button Content="Uninstall" Tag="{Binding Name}" Click="Uninstall_Click" Margin="6,0,0,0" ToolTip="Remove this extension from Qwen Code" />
+                      </StackPanel>
+                    </Grid>
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </ScrollViewer>
+          <TextBlock Text="Built into maison" FontSize="13" FontWeight="SemiBold" Margin="0,4,0,0" Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+          <TextBlock x:Name="WebTools" TextWrapping="Wrap" FontSize="12" Margin="0,2,0,0" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
         </StackPanel>
       </ui:Card>
       <ui:Card Grid.Column="2" VerticalAlignment="Stretch" VerticalContentAlignment="Top">

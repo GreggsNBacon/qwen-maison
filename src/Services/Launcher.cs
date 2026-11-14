@@ -103,23 +103,25 @@ public static class Launcher
     /// </summary>
     public static string? WriteQwenSettings(Plan p)
     {
-        if (!p.O.TellContextWindow || p.Ctx <= 0) return null;
-        var timeoutMs = Math.Max(30, p.O.QwenTimeoutSeconds) * 1000;
-        object Gen() => new Dictionary<string, object>
+        var tell = p.O.TellContextWindow && p.Ctx > 0;
+        var mcp = QwenMcpServers(p.O);
+        if (!tell && mcp.Count == 0) return null;
+        var settings = new Dictionary<string, object> { ["$version"] = 4 };
+        if (tell)
         {
-            ["contextWindowSize"] = p.Ctx,
-            ["timeout"] = timeoutMs,
-            ["streamIdleTimeoutMs"] = Math.Max(timeoutMs, 240000),
-            ["samplingParams"] = new Dictionary<string, object> { ["max_tokens"] = p.OutputTokens },
-        };
-        var ids = new List<string> { p.Main };
-        ids.AddRange(p.Models.Where(m => m != p.Main));
-        var settings = new Dictionary<string, object>
-        {
-            ["$version"] = 4,
-            ["model"] = new Dictionary<string, object> { ["generationConfig"] = Gen() },
-            ["context"] = new Dictionary<string, object> { ["autoCompactThreshold"] = Math.Clamp(p.O.QwenCompactThreshold, 0.3, 1.0) },
-            ["modelProviders"] = new Dictionary<string, object>
+            var timeoutMs = Math.Max(30, p.O.QwenTimeoutSeconds) * 1000;
+            object Gen() => new Dictionary<string, object>
+            {
+                ["contextWindowSize"] = p.Ctx,
+                ["timeout"] = timeoutMs,
+                ["streamIdleTimeoutMs"] = Math.Max(timeoutMs, 240000),
+                ["samplingParams"] = new Dictionary<string, object> { ["max_tokens"] = p.OutputTokens },
+            };
+            var ids = new List<string> { p.Main };
+            ids.AddRange(p.Models.Where(m => m != p.Main));
+            settings["model"] = new Dictionary<string, object> { ["generationConfig"] = Gen() };
+            settings["context"] = new Dictionary<string, object> { ["autoCompactThreshold"] = Math.Clamp(p.O.QwenCompactThreshold, 0.3, 1.0) };
+            settings["modelProviders"] = new Dictionary<string, object>
             {
                 ["openai"] = ids.Select(id => new Dictionary<string, object>
                 {
@@ -129,8 +131,9 @@ public static class Launcher
                     ["envKey"] = "OPENAI_API_KEY",
                     ["generationConfig"] = Gen(),
                 }).ToList(),
-            },
-        };
+            };
+        }
+        if (mcp.Count > 0) settings["mcpServers"] = mcp;
         var json = System.Text.Json.JsonSerializer.Serialize(settings, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
         var dir = Path.Combine(AppConfig.Folder, "qwen");
         Directory.CreateDirectory(dir);
@@ -139,6 +142,40 @@ public static class Launcher
         if (!File.Exists(file)) File.WriteAllText(file, json);
         return file;
     }
+
+    /// <summary>True when a session needs maison's settings file (context window told, or a built-in web tool on).</summary>
+    public static bool NeedsQwenSettings(LaunchOptions o) => o.TellContextWindow || QwenMcpServers(o).Count > 0;
+
+    /// <summary>
+    /// The web tools maison gives Qwen Code for the session: "maison-browser" (Playwright MCP driving the system Edge,
+    /// headless, with a throwaway profile so it never touches the user's own browser) and "maison-reader" (maison.exe
+    /// --mcp-reader). The browser needs Node (npx) and Edge; if either is missing it is left out and the reader still works.
+    /// </summary>
+    public static Dictionary<string, object> QwenMcpServers(LaunchOptions o)
+    {
+        var servers = new Dictionary<string, object>();
+        if (o.QwenBrowser && SystemProbe.FindOnPath("npx") is not null && HasEdge())
+            servers["maison-browser"] = new Dictionary<string, object>
+            {
+                ["command"] = "cmd",
+                ["args"] = new[] { "/c", "npx", "-y", "@playwright/mcp@latest", "--browser", "msedge", "--headless", "--isolated" },
+                ["timeout"] = 120000,
+                ["description"] = "Headless browser: open pages that need JavaScript, click, type, read the result. Separate from the user's own browser.",
+            };
+        if (o.QwenReader && Environment.ProcessPath is { Length: > 0 } exe)
+            servers["maison-reader"] = new Dictionary<string, object>
+            {
+                ["command"] = exe,
+                ["args"] = new[] { ReaderMcp.Arg },
+                ["trust"] = true,   // read-only: fetches text
+                ["description"] = "Reads a web page or online file as plain text, in parts.",
+            };
+        return servers;
+    }
+
+    private static bool HasEdge() =>
+        new[] { Environment.SpecialFolder.ProgramFilesX86, Environment.SpecialFolder.ProgramFiles }
+            .Any(f => File.Exists(Path.Combine(Environment.GetFolderPath(f), "Microsoft", "Edge", "Application", "msedge.exe")));
 
     public static string QwenCommand(Plan p) =>
         Join($"qwen --auth-type openai --openai-base-url {Q(p.Url + "/v1")} --openai-api-key ollama -m {Q(p.Main)}",
@@ -184,7 +221,7 @@ public static class Launcher
         sb.AppendLine(ClaudeCommand(p));
         sb.AppendLine();
         sb.AppendLine("# Qwen Code -> Ollama (OpenAI-compatible endpoint)");
-        foreach (var (k, v) in QwenEnv(p, p.O.TellContextWindow ? "<maison writes this settings file at launch>" : null)) sb.AppendLine($"$env:{k} = {Q(v)}");
+        foreach (var (k, v) in QwenEnv(p, NeedsQwenSettings(p.O) ? "<maison writes this settings file at launch>" : null)) sb.AppendLine($"$env:{k} = {Q(v)}");
         sb.AppendLine(QwenCommand(p));
         sb.AppendLine();
         sb.AppendLine("# Plain chat");

@@ -1,3 +1,4 @@
+using System.IO;
 using System.Net.Http;
 using System.Text;
 using System.Text.Json;
@@ -60,4 +61,157 @@ public static class QwenExtensions
 
     /// <summary>The install source string Qwen Code understands for a marketplace plugin.</summary>
     public static string InstallSource(MarketPlugin p) => $"{p.Marketplace}:{p.Name}";
+
+    // ------------------------------------------------------------------ what is installed
+
+    /// <summary>One installed extension, as read from <c>qwen extensions list</c>.</summary>
+    public sealed class ExtensionInfo
+    {
+        public string Name { get; set; } = "";
+        public string Version { get; set; } = "";
+        public bool Enabled { get; set; } = true;
+        public string Description { get; set; } = "";
+        public string Source { get; set; } = "";
+        public string Type { get; set; } = "";
+        public string ReleaseTag { get; set; } = "";
+        public List<string> Skills { get; } = [];
+        public List<string> Commands { get; } = [];
+        public List<string> Mcp { get; } = [];
+        public List<string> Agents { get; } = [];
+        /// <summary>null = couldn't tell; "" = up to date; otherwise the newer version.</summary>
+        public string? NewerVersion { get; set; }
+    }
+
+    private static readonly System.Text.RegularExpressions.Regex Ansi = new(@"\x1B\[[0-9;?]*[A-Za-z]");
+
+    private static readonly string[] ListKeys =
+        ["Description", "Path", "Source", "Origin", "Release tag", "Enabled (User)", "Enabled (Workspace)", "Context files", "Commands", "Skills", "MCP servers", "Agents"];
+
+    /// <summary>
+    /// Parses the text <c>qwen extensions list</c> prints: a "✓ name (version)" line, then "Key: value" lines and lists
+    /// under Skills / Commands / MCP servers / Agents. Indentation is ignored (the captured lines arrive trimmed), so
+    /// only the known keys end a list.
+    /// </summary>
+    public static List<ExtensionInfo> ParseList(string output)
+    {
+        var list = new List<ExtensionInfo>();
+        ExtensionInfo? cur = null;
+        string? section = null;
+        foreach (var raw in Ansi.Replace(output, "").Split('\n'))
+        {
+            var line = raw.Trim();
+            if (line.Length == 0) continue;
+            var h = System.Text.RegularExpressions.Regex.Match(line, @"^\S\s+(\S+)\s+\(([^)]*)\)$");
+            if (h.Success)
+            {
+                cur = new ExtensionInfo { Name = h.Groups[1].Value, Version = h.Groups[2].Value };
+                list.Add(cur);
+                section = null;
+                continue;
+            }
+            if (cur is null) continue;
+            var key = ListKeys.FirstOrDefault(k => line.StartsWith(k + ":", StringComparison.Ordinal));
+            if (key is null)
+            {
+                switch (section)
+                {
+                    case "Skills": cur.Skills.Add(line); break;
+                    case "Commands": cur.Commands.Add(line); break;
+                    case "MCP servers": cur.Mcp.Add(line); break;
+                    case "Agents": cur.Agents.Add(line); break;
+                }
+                continue;
+            }
+            var val = line[(key.Length + 1)..].Trim();
+            section = val.Length == 0 ? key : null;
+            switch (key)
+            {
+                case "Description": cur.Description = val; break;
+                case "Release tag": cur.ReleaseTag = val; break;
+                case "Enabled (User)": cur.Enabled = !val.Equals("false", StringComparison.OrdinalIgnoreCase); break;
+                case "Source":
+                    var m = System.Text.RegularExpressions.Regex.Match(val, @"^(.*?)\s*\(Type:\s*([^)]*)\)\s*$");
+                    cur.Source = m.Success ? m.Groups[1].Value : val;
+                    cur.Type = m.Success ? m.Groups[2].Value : "";
+                    break;
+            }
+        }
+        return list;
+    }
+
+    public static async Task<List<ExtensionInfo>> InstalledAsync()
+    {
+        var (_, text) = await ListInstalledAsync();
+        return ParseList(text);
+    }
+
+    private static string? GitHubRepo(string source)
+    {
+        var m = System.Text.RegularExpressions.Regex.Match(source, @"github\.com/([\w.-]+/[\w.-]+?)(?:\.git)?/?$");
+        return m.Success ? m.Groups[1].Value : null;
+    }
+
+    private static bool IsNewer(string latest, string installed)
+    {
+        static bool Parse(string s, out Version v) => Version.TryParse(s.Trim().TrimStart('v', 'V'), out v!);
+        if (Parse(latest, out var a) && Parse(installed, out var b)) return a > b;
+        return !string.Equals(latest.Trim().TrimStart('v'), installed.Trim().TrimStart('v'), StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Best-effort check for a newer version: the latest GitHub release for release-type extensions, or the version a
+    /// Claude-format marketplace lists for the plugin. Leaves <see cref="ExtensionInfo.NewerVersion"/> null when it can't tell.
+    /// </summary>
+    public static async Task CheckUpdateAsync(ExtensionInfo e)
+    {
+        try
+        {
+            var repo = GitHubRepo(e.Source);
+            if (repo is null) return;
+            if (e.Type.Contains("release", StringComparison.OrdinalIgnoreCase))
+            {
+                using var doc = JsonDocument.Parse(await Http.GetStringAsync($"https://api.github.com/repos/{repo}/releases/latest"));
+                var tag = doc.RootElement.TryGetProperty("tag_name", out var t) ? t.GetString() ?? "" : "";
+                if (tag.Length == 0) return;
+                e.NewerVersion = IsNewer(tag, e.ReleaseTag.Length > 0 ? e.ReleaseTag : e.Version) ? tag : "";
+                return;
+            }
+            using var mk = JsonDocument.Parse(await Http.GetStringAsync($"https://raw.githubusercontent.com/{repo}/HEAD/.claude-plugin/marketplace.json"));
+            if (!mk.RootElement.TryGetProperty("plugins", out var plugins) || plugins.ValueKind != JsonValueKind.Array) return;
+            foreach (var p in plugins.EnumerateArray())
+            {
+                if (!p.TryGetProperty("name", out var n) || n.GetString() != e.Name) continue;
+                if (p.TryGetProperty("version", out var v) && v.ValueKind == JsonValueKind.String && v.GetString() is { Length: > 0 } ver)
+                    e.NewerVersion = IsNewer(ver, e.Version) ? ver : "";
+                return;
+            }
+        }
+        catch { /* offline, rate limited or not a marketplace: leave unknown */ }
+    }
+
+    // ------------------------------------------------------------------ marketplace sources Qwen Code has saved
+
+    private static string SourcesFile => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".qwen", "extensions", "marketplaces.json");
+
+    /// <summary>The marketplaces already added to Qwen Code (it keeps them in ~/.qwen/extensions/marketplaces.json), so maison shows them again next time.</summary>
+    public static List<MarketplaceInfo> SavedSources()
+    {
+        var result = new List<MarketplaceInfo>();
+        try
+        {
+            if (!File.Exists(SourcesFile)) return result;
+            using var doc = JsonDocument.Parse(File.ReadAllText(SourcesFile));
+            if (doc.RootElement.ValueKind != JsonValueKind.Array) return result;
+            foreach (var s in doc.RootElement.EnumerateArray())
+            {
+                var src = s.TryGetProperty("source", out var v) ? v.GetString() ?? "" : "";
+                var repo = GitHubRepo(src.Contains("github.com") ? src : "github.com/" + src.Trim('/'));
+                if (repo is null) continue;
+                var name = s.TryGetProperty("name", out var n) ? n.GetString() ?? repo : repo;
+                result.Add(new MarketplaceInfo(repo, name == repo ? repo : $"{name} ({repo})", "Added to Qwen Code.", "claude"));
+            }
+        }
+        catch { /* unreadable file: show only the defaults */ }
+        return result;
+    }
 }

@@ -114,6 +114,10 @@
               <StackPanel Margin="4,12,4,4">
                 <ui:ToggleSwitch x:Name="LQwenContinue" Content="Continue the last conversation in this folder (--continue)" Click="Launch_Changed"
                                  ToolTip="Pick up where the previous Qwen Code session in the working folder left off" />
+                <ui:ToggleSwitch x:Name="LQwenBrowser" Content="Give Qwen Code its own web browser" Margin="0,12,0,0" Click="Launch_Changed"
+                                 ToolTip="A hidden Edge window that Qwen Code drives itself (open pages, click, type, read the result), with a throwaway profile, so it never touches your own browser. Needs Node.js. The first use downloads a small helper." />
+                <ui:ToggleSwitch x:Name="LQwenReader" Content="Give Qwen Code maison's page reader" Margin="0,12,0,0" Click="Launch_Changed"
+                                 ToolTip="Fetches a web page or online file as plain text, in parts. Quick and needs nothing installed, but can't run JavaScript. Used when a page doesn't need the browser." />
                 <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
                   <TextBlock Text="Compact at" VerticalAlignment="Center" Margin="0,0,10,0" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
                   <ui:NumberBox x:Name="LQwenPct" Minimum="30" Maximum="100" SmallChange="5" Width="140" ValueChanged="Launch_Changed" SpinButtonPlacementMode="Inline"

@@ -142,6 +142,10 @@ public sealed class LaunchOptions
     /// <summary>Per-request timeout. Local models on long prompts can take minutes (Qwen Code's default is 2 min).</summary>
     public int QwenTimeoutSeconds { get; set; } = 600;
     public bool QwenContinue { get; set; }
+    /// <summary>Give Qwen Code its own headless browser (Playwright MCP on the system Edge, throwaway profile) so it never uses yours.</summary>
+    public bool QwenBrowser { get; set; } = true;
+    /// <summary>Give Qwen Code maison's built-in page reader (fast, no JavaScript, needs no Node).</summary>
+    public bool QwenReader { get; set; } = true;
     public string QwenExtraArgs { get; set; } = "";
     public string QwenExtraEnv { get; set; } = "";
 

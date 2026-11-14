@@ -82,6 +82,12 @@ There are no unit tests; the self-test is the test suite.
   replies at a quarter of it, so they compact in time. The real window is the chosen variant's size, else the loaded
   model's (`/api/ps`), else Ollama's default from its log.
 - Settings → Start commands exposes every flag and variable, with a live preview of the exact command.
+- Web tools for Qwen Code: the same per-session settings file carries `mcpServers` (`Launcher.QwenMcpServers`), so the
+  user's own settings stay untouched. `maison-browser` is Playwright MCP (`npx @playwright/mcp`, `--browser msedge --headless
+  --isolated`: system Edge, throwaway profile, no browser download); it is left out when Node or Edge is missing.
+  `maison-reader` is `maison.exe --mcp-reader` (`ReaderMcp`, newline-delimited JSON-RPC, one `read_url` tool that returns
+  clean text in pages), marked `trust` because it only reads. The settings file is now written whenever either is on, even
+  if "tell the agent the context window" is off. Verify with `qwen mcp list` and `QWEN_CODE_SYSTEM_SETTINGS_PATH`.
 
 **AI pool** (`src/Services/Pool`). Ports: 11435 (pool service, HTTPS), 11436 (discovery, UDP), 11437 (relay, 127.0.0.1).
 - *AI PC* (`PoolHost`, on while `ShareAi`): Kestrel over HTTPS with the portal's self-signed certificate, home-network
@@ -156,7 +162,8 @@ an accent shade when the accent changes.
 | `src/Views/PoolView.xaml(.cs)` | The Pool page (the AI pool) |
 | `src/Views/SettingsWindow.cs` | Settings from the simple view: borrows the one `SettingsView` from the main window (WebView2 would cover it in-window) and hands it back on close or on switching to Advanced (`MainWindow.ShowSettings`) |
 | `src/Services/WebPortal.cs`, `PortalSecurity.cs` | Phone portal (Kestrel HTTPS + WebSockets), auth, cert |
-| `src/Services/QwenExtensions.cs`, `ModelStorage.cs` | Extension marketplaces; moving the model store |
+| `src/Services/QwenExtensions.cs`, `ModelStorage.cs` | Extension marketplaces, parsing `qwen extensions list`, update checks; moving the model store |
+| `src/Services/ReaderMcp.cs` | The built-in page reader: `maison.exe --mcp-reader`, an MCP server on stdin/stdout |
 | `src/Controls/TerminalViewer.cs` | A WebView2 view onto a shared session (tabs and pop-outs) |
 | `src/Controls/ArcGauge.cs` | Animated arc gauge with the AI's share |
 | `src/Views/` | Simple view, Models, Setup, Terminals, System, Extensions and Settings pages; toast window |

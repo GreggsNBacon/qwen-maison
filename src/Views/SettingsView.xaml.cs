@@ -210,6 +210,8 @@ public partial class SettingsView : UserControl
         LClaudeArgs.Text = o.ClaudeExtraArgs;
         LClaudeEnv.Text = o.ClaudeExtraEnv;
         LQwenContinue.IsChecked = o.QwenContinue;
+        LQwenBrowser.IsChecked = o.QwenBrowser;
+        LQwenReader.IsChecked = o.QwenReader;
         LQwenPct.Value = Math.Round(o.QwenCompactThreshold * 100);
         LQwenTimeout.Value = o.QwenTimeoutSeconds;
         LQwenArgs.Text = o.QwenExtraArgs;
@@ -234,6 +236,8 @@ public partial class SettingsView : UserControl
         o.ClaudeExtraArgs = LClaudeArgs.Text.Trim();
         o.ClaudeExtraEnv = LClaudeEnv.Text;
         o.QwenContinue = LQwenContinue.IsChecked == true;
+        o.QwenBrowser = LQwenBrowser.IsChecked == true;
+        o.QwenReader = LQwenReader.IsChecked == true;
         o.QwenCompactThreshold = Math.Clamp((LQwenPct.Value ?? 85) / 100.0, 0.3, 1.0);
         o.QwenTimeoutSeconds = (int)(LQwenTimeout.Value ?? 600);
         o.QwenExtraArgs = LQwenArgs.Text.Trim();
