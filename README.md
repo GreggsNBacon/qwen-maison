@@ -91,7 +91,7 @@ all of maison's settings in their own window, so you don't need the advanced vie
 
 **Advanced view:**
 - **Dashboard**: health checks with one-click fixes (Start, Restart, Repair Ollama), live gauges, and launch buttons for
-  Claude Code, Qwen Code and plain Chat. Choose the model, how much it can keep in mind (context window), the project
+  Claude Code, Qwen Code and plain Chat. Choose the model, how much it can keep in mind (context window; the default, **Model maximum**, uses the most the model supports, with 32K to 256K if you want less), the project
   folder, where it opens (a tab, Windows Terminal or PowerShell) and what the agent may do without asking.
 - **Terminals**: all sessions in tabs. Paste with Ctrl+V; copy by selecting and right-clicking. A dot on a tab means that
   agent has finished and is waiting.
@@ -111,18 +111,26 @@ Every button has a tooltip explaining what it does.
 ## Phone access
 1. In **Settings → Web portal**, set a username and password, turn the portal on, and press **Fix Windows Firewall** if maison
    shows the warning (one admin prompt; it opens just the portal's port, for your home network only).
-2. On your phone (same Wi-Fi), open **https://maison.local** (no port needed) or one of the other addresses shown, e.g.
-   `https://192.168.1.20:<port>`. Your browser will warn
+2. On your phone (same Wi-Fi as the PC), **scan the QR code** in Settings with the camera and tap the link. Or type the
+   address shown, e.g. `https://192.168.1.20:<port>`. Your browser will warn
    that the certificate isn't trusted, because maison made it itself. Check that the fingerprint matches the one in
    Settings, then continue.
+   Typed the address without `https://`? maison redirects plain `http://` to the secure address instead of dropping it.
+   Settings also shows when a device last reached maison, which tells "never arrived" (wrong Wi-Fi, guest network, VPN)
+   apart from "arrived but the browser refused the certificate".
 3. Sign in once; that phone stays signed in until you sign it out in Settings.
 
 **Two-step sign-in (recommended).** In **Settings → Web portal → Two-step sign-in**, press **Set up**, scan the code with an
 authenticator app (Google Authenticator, Microsoft Authenticator, Aegis…) and type back the 6-digit code it shows. From then on
 signing in also asks for the current code. Turn it on before you ever open the portal to the internet.
 
-**Typing just `maison`?** `maison.local` works on its own. A bare `maison/` is only understood if your router's DNS (or a
-Pi-hole) has an entry that points the name `maison` at this PC; maison can't set that up for you.
+**Outside your home.** Turn on *Allow connections from outside my network* and forward the portal's port on your router to this
+PC. The QR code and address list then show your public address (maison looks it up with api.ipify.org, only while that switch is
+on). Turn on two-step sign-in first.
+
+**Typing just `maison/`.** With *Also answer without a port number* on, maison also uses the standard web ports, so no `:port` is
+needed. For the short name, **Settings → Web portal → Name this PC "maison"** renames the PC (after a restart); most routers then
+share that name with your phones, so `maison/` works. maison can't change your router's name list itself.
 
 **Put maison on your home screen.** On Android (Chrome) use ⋮ → *Install app*; on iPhone (Safari) use Share → *Add to Home
 Screen*. You get the maison icon and a full-screen window with no browser bar. Phones only treat it as a real app when

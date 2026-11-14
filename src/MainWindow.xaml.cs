@@ -68,7 +68,15 @@ public partial class MainWindow : FluentWindow, IShell
         foreach (var k in Launcher.ContextSizes.Keys) Context.Items.Add(k);
         MainModel.Text = _config.MainModel;
         FastModel.Text = _config.FastModel;
-        Context.SelectedItem = Launcher.ContextSizes.ContainsKey(_config.Context) ? _config.Context : "64K";
+        // maison used to default to a fixed 64K window, which capped Qwen Code far below what the model can do. Move that old
+        // default to the model's own maximum once; a 64K chosen after this stays.
+        if (!_config.ContextMaxMigrated)
+        {
+            if (_config.Context == "64K") _config.Context = Launcher.ModelMaxName;
+            _config.ContextMaxMigrated = true;
+            _config.Save();
+        }
+        Context.SelectedItem = Launcher.ContextSizes.ContainsKey(_config.Context) ? _config.Context : Launcher.ModelMaxName;
         WorkDir.Text = Directory.Exists(_config.WorkDir) ? _config.WorkDir : Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         foreach (var t in Launcher.Targets)
             if (t != Launcher.TargetTerminal || SystemProbe.HasWindowsTerminal) OpenIn.Items.Add(t);
@@ -319,14 +327,49 @@ public partial class MainWindow : FluentWindow, IShell
     /// The chosen context window (0 = Ollama's default). In the AI pool every PC must give the same window, and their
     /// defaults differ with their GPUs, so "Ollama default" means a fixed 32K there.
     /// </summary>
-    private int ContextSize => Context.SelectedItem is string s && Launcher.ContextSizes.TryGetValue(s, out var n) ? (n == 0 && OllamaClient.IsRemote ? 32768 : n) : 0;
+    private int ContextSize => ContextFor(BaseMain);
+
+    private readonly Dictionary<string, int> _modelMax = [];
+    private readonly HashSet<string> _modelMaxAsked = [];
+    private bool ContextIsModelMax => Context.SelectedItem is string s && Launcher.ContextSizes.TryGetValue(s, out var n) && n == Launcher.ModelMax;
+
+    /// <summary>
+    /// The window to use for one model: the fixed size picked, or (for "Model maximum") what that model was trained for.
+    /// The maximum is read from Ollama in the background the first time; until it arrives this is 0 (= Ollama's default).
+    /// </summary>
+    private int ContextFor(string baseModel)
+    {
+        if (Context.SelectedItem is not string s || !Launcher.ContextSizes.TryGetValue(s, out var n)) return 0;
+        if (n == Launcher.ModelMax)
+        {
+            if (_modelMax.TryGetValue(baseModel, out var m)) return m;
+            if (baseModel.Length > 0 && _modelMaxAsked.Add(baseModel)) _ = LearnModelMaxAsync(baseModel);
+            return OllamaClient.IsRemote ? 32768 : 0;
+        }
+        return n == 0 && OllamaClient.IsRemote ? 32768 : n;
+    }
+
+    private async Task LearnModelMaxAsync(string baseModel)
+    {
+        var n = await OllamaClient.ModelMaxContextAsync(baseModel);
+        if (n > 0) _modelMax[baseModel] = n; else _modelMaxAsked.Remove(baseModel);   // try again next time
+        UpdateCommands();
+    }
+
+    /// <summary>Before a real launch: make sure the model's maximum is known (waits for Ollama).</summary>
+    private async Task EnsureContextKnownAsync(string baseModel)
+    {
+        if (!ContextIsModelMax || baseModel.Length == 0 || _modelMax.ContainsKey(baseModel)) return;
+        var n = await OllamaClient.ModelMaxContextAsync(baseModel);
+        if (n > 0) _modelMax[baseModel] = n;
+    }
     private string PermMode => (Perms.SelectedItem as PermChoice)?.Key ?? "ask";
 
     private void SaveConfig()
     {
         _config.MainModel = MainModel.Text.Trim();
         _config.FastModel = FastModel.Text.Trim();
-        _config.Context = Context.SelectedItem as string ?? "64K";
+        _config.Context = Context.SelectedItem as string ?? Launcher.ModelMaxName;
         _config.WorkDir = WorkDir.Text.Trim();
         _config.OpenIn = Target;
         _config.Permissions = PermMode;
@@ -358,11 +401,14 @@ public partial class MainWindow : FluentWindow, IShell
     {
         if (_initializing) return;
         var baseMain = BaseMain.Length > 0 ? BaseMain : "<model>";
+        var fastBase = BaseFast.Length > 0 ? BaseFast : baseMain;
         var main = Launcher.EffectiveModel(baseMain, ContextSize);
-        var fast = Launcher.EffectiveModel(BaseFast.Length > 0 ? BaseFast : baseMain, ContextSize);
+        var fast = Launcher.EffectiveModel(fastBase, ContextFor(fastBase));
         var plan = PlanFor(main, fast, RealContext);
         Commands.Text = Launcher.CommandsText(plan, baseMain);
-        ContextHint.Text = (ContextSize == 0
+        ContextHint.Text = (ContextIsModelMax && ContextSize > 0
+                ? $"Model maximum: this model's full {ContextSize / 1024}K window, nothing capped. It uses more graphics memory; if it gets slow, pick a smaller size. "
+                : ContextSize == 0
                 ? OllamaClient.IsRemote && !_loaded.Any(m => m.Name == BaseMain || m.Name == BaseMain + ":latest")
                     ? "The exact window is read from the AI PC when you launch (about 32K is typical). "
                     : $"Ollama is giving this model {RealContext / 1024}K. "
@@ -374,8 +420,9 @@ public partial class MainWindow : FluentWindow, IShell
     public string StartCommandPreview(string kind)
     {
         var baseMain = BaseMain.Length > 0 ? BaseMain : "<model>";
+        var fastBase = BaseFast.Length > 0 ? BaseFast : baseMain;
         var p = PlanFor(Launcher.EffectiveModel(baseMain, ContextSize),
-                        Launcher.EffectiveModel(BaseFast.Length > 0 ? BaseFast : baseMain, ContextSize), RealContext);
+                        Launcher.EffectiveModel(fastBase, ContextFor(fastBase)), RealContext);
         var sb = new System.Text.StringBuilder();
         void Env(IDictionary<string, string> env) { foreach (var (k, v) in env) sb.AppendLine($"$env:{k} = {Launcher.Q(v)}"); }
         sb.AppendLine($"# {p.Main} · context {p.Ctx:N0} tokens · replies up to {p.OutputTokens:N0} · permissions: {Launcher.Mode(PermMode).Label}");
@@ -413,7 +460,8 @@ public partial class MainWindow : FluentWindow, IShell
     /// <summary>Returns the model to launch, creating the context variant when needed.</summary>
     private async Task<string> ResolveAsync(string baseModel)
     {
-        var ctx = ContextSize;
+        await EnsureContextKnownAsync(baseModel);
+        var ctx = ContextFor(baseModel);
         var eff = Launcher.EffectiveModel(baseModel, ctx);
         if (eff == baseModel) return baseModel;
         try
@@ -487,7 +535,7 @@ public partial class MainWindow : FluentWindow, IShell
             }
 
             items.Add(running
-                ? new() { Level = Health.Ok, Title = $"Server responding · v{version}", Detail = OllamaClient.BaseUrl }
+                ? new() { Level = Health.Ok, Title = $"Server responding · v{version}", Detail = OllamaClient.IsRemote ? $"AI on {PoolWhere()}" : OllamaClient.BaseUrl }
                 : OllamaClient.IsRemote
                     ? new() { Level = Health.Bad, Title = "No AI PC in your pool is reachable", Detail = "Check your AI PCs are on with maison running, and that both are on the same network. The Pool page shows each one's status." }
                     : new() { Level = Health.Bad, Title = "Server not responding", Detail = SystemProbe.OllamaInstalled ? "Click Start." : "Install Ollama from the Setup page." });
@@ -556,6 +604,20 @@ public partial class MainWindow : FluentWindow, IShell
         finally { _refreshing = false; }
     }
 
+    /// <summary>
+    /// With the pool on, requests go to a relay on this PC (127.0.0.1), which is not where the AI runs. Name the AI PCs
+    /// that are actually answering instead (all of them with <paramref name="all"/>, e.g. when none can be reached).
+    /// </summary>
+    private static string PoolWhere(bool all = false)
+    {
+        var members = Services.Pool.AiPool.Members.Where(m => m.Member.Enabled).ToList();
+        var shown = (all ? members : members.Where(m => m.Online)).Select(m => m.Member.Name).ToList();
+        if (shown.Count == 0) return all ? "your AI PCs" : "your AI pool";
+        return shown.Count <= 2 ? string.Join(" and ", shown) : $"{shown[0]} and {shown.Count - 1} more";
+    }
+
+    private static int PoolPcCount() => Services.Pool.AiPool.Members.Count(m => m.Member.Enabled && m.Online);
+
     private void UpdateMetrics(bool running, string? version)
     {
         var red = (Color)ColorConverter.ConvertFromString("#E5534B");
@@ -565,11 +627,11 @@ public partial class MainWindow : FluentWindow, IShell
         var c = ok ? green : red;
         ServerDot.Fill = new SolidColorBrush(c);
         ServerPill.Background = new SolidColorBrush(Color.FromArgb(0x33, c.R, c.G, c.B));
-        ServerPillText.Text = remote ? (running ? $"AI on {new Uri(OllamaClient.BaseUrl).Host}" : $"Can't reach {new Uri(OllamaClient.BaseUrl).Host}")
+        ServerPillText.Text = remote ? (running ? $"AI on {PoolWhere()}" : $"Can't reach {PoolWhere(all: true)}")
             : !SystemProbe.OllamaInstalled ? "Ollama not installed" : !running ? "Ollama offline" : SystemProbe.RuntimeOk ? "Ollama ready" : "Ollama broken";
 
         MServer.Text = running ? "Running" : "Offline";
-        MServerSub.Text = running ? $"v{version} · {new Uri(OllamaClient.BaseUrl).Authority}"
+        MServerSub.Text = running ? (remote ? $"v{version} · pool of {PoolPcCount()}" : $"v{version} · {new Uri(OllamaClient.BaseUrl).Authority}")
             : remote ? "check the AI PC" : SystemProbe.OllamaInstalled ? "click Start" : "install from Setup";
         // Start / Restart / Repair act on this PC's Ollama; with the AI on another PC they belong over there.
         foreach (var b in new[] { BtnStart, BtnRestart, BtnRepair })

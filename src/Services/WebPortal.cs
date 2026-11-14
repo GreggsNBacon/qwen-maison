@@ -7,6 +7,7 @@ using System.Text.Json;
 using System.Threading.Channels;
 using System.Windows;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Connections;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
@@ -31,12 +32,72 @@ public static class WebPortal
     public static bool FriendlyActive { get; private set; }
     /// <summary>Why the short address couldn't be set up (ports 80/443 busy), or empty.</summary>
     public static string FriendlyProblem { get; private set; } = "";
-    public const string FriendlyHost = "maison.local";
 
-    public static IReadOnlyList<string> Urls =>
-        (FriendlyActive ? [$"https://{FriendlyHost}"] : new List<string>())
-            .Concat(PortalNet.LanAddresses().Select(ip => $"https://{ip}:{Port}"))
-            .Append($"https://localhost:{Port}").ToList();
+    /// <summary>The portal's addresses on this PC's home network, best first (never 169.254.x.x).</summary>
+    public static IReadOnlyList<string> LanUrls =>
+        (PortalNet.PreferredAddress() is { } best ? [$"https://{best}:{Port}"] : new List<string>())
+            .Concat(PortalNet.LanAddresses().Where(ip => !PortalNet.IsLinkLocal(ip)).Select(ip => $"https://{ip}:{Port}"))
+            .Distinct().ToList();
+
+    public static IReadOnlyList<string> Urls => LanUrls.Append($"https://localhost:{Port}").ToList();
+
+    /// <summary>"maison/" only works if this PC is actually called maison (the router then hands the name out to phones).</summary>
+    public static bool PcIsNamedMaison => string.Equals(Environment.MachineName, "maison", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>The one address to put in the QR code: the PC's address on the home network, with the scheme and port included
+    /// so a phone can't guess "http" or drop the port, and it needs no name lookup.</summary>
+    public static string? PhoneUrl => PortalNet.PreferredAddress() is { } ip ? $"https://{ip}:{Port}" : null;
+
+    /// <summary>
+    /// A phone that types "192.168.1.5:29163" without https:// sends plain http to this TLS port, and the browser just reports
+    /// "can't be reached". Look at the first byte: a TLS hello (0x16) carries on as normal; anything else gets a redirect to https.
+    /// </summary>
+    private static ConnectionDelegate PlainHttpRedirect(ConnectionDelegate next) => async ctx =>
+    {
+        var input = ctx.Transport.Input;
+        var r = await input.ReadAsync();
+        if (r.Buffer.IsEmpty || r.Buffer.FirstSpan[0] == 0x16)
+        {
+            input.AdvanceTo(r.Buffer.Start, r.Buffer.Start);   // look, don't take
+            PortalDiag.Connection((ctx.RemoteEndPoint as IPEndPoint)?.Address, plainHttp: false);
+            await next(ctx);
+            return;
+        }
+
+        PortalDiag.Connection((ctx.RemoteEndPoint as IPEndPoint)?.Address, plainHttp: true);
+        string head = "";
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        try
+        {
+            while (true)
+            {
+                var buf = r.Buffer;
+                head = Encoding.ASCII.GetString(System.Buffers.BuffersExtensions.ToArray(buf.Slice(0, Math.Min(buf.Length, 8192))));
+                if (head.Contains("\r\n\r\n") || buf.Length >= 8192 || r.IsCompleted) break;
+                input.AdvanceTo(buf.Start, buf.End);
+                r = await input.ReadAsync(cts.Token);
+            }
+        }
+        catch { /* slow or broken client: answer with what we have */ }
+
+        string? location = null;
+        var lines = head.Split("\r\n");
+        var parts = lines[0].Split(' ');
+        string path = parts.Length >= 2 && parts[1].StartsWith('/') && parts[1].All(ch => ch > 32 && ch < 127) ? parts[1] : "/";
+        var hostLine = lines.FirstOrDefault(l => l.StartsWith("Host:", StringComparison.OrdinalIgnoreCase));
+        if (hostLine is not null)
+        {
+            var host = hostLine[5..].Trim();
+            var hostOnly = host.StartsWith('[') ? host[..(host.IndexOf(']') + 1)] : host.Split(':')[0];
+            if (host.Length > 0 && host.Length < 100 && Uri.CheckHostName(hostOnly.Trim('[', ']')) != UriHostNameType.Unknown)
+                location = $"https://{host}{path}";
+        }
+        var reply = location is null
+            ? "HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+            : $"HTTP/1.1 307 Temporary Redirect\r\nLocation: {location}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+        await ctx.Transport.Output.WriteAsync(Encoding.ASCII.GetBytes(reply));
+        await ctx.Transport.Output.FlushAsync();
+    };
 
     public static async Task StartAsync()
     {
@@ -58,12 +119,11 @@ public static class WebPortal
                 // Something else already uses port 80 or 443: carry on with the portal's own port only.
                 try { await app.DisposeAsync(); } catch { }
                 friendly = false;
-                FriendlyProblem = "Port 80 or 443 is already used by another program, so the short address maison.local is off.";
+                FriendlyProblem = "Port 80 or 443 is already used by another program, so the short address (no port number) is off.";
             }
         }
         FriendlyActive = friendly;
         _app = app;
-        if (friendly) MdnsResponder.Start(FriendlyHost);
     }
 
     private static WebApplication Build(bool friendly)
@@ -74,10 +134,10 @@ public static class WebPortal
         {
             k.AddServerHeader = false;
             k.Limits.MaxRequestBodySize = 64 * 1024;
-            k.ListenAnyIP(Port, l => l.UseHttps(_cert));
+            k.ListenAnyIP(Port, l => { l.Use(PlainHttpRedirect); l.UseHttps(_cert); });
             if (friendly)
             {
-                k.ListenAnyIP(443, l => l.UseHttps(_cert));   // https://maison.local with no port
+                k.ListenAnyIP(443, l => { l.Use(PlainHttpRedirect); l.UseHttps(_cert); });   // so no port number is needed
                 k.ListenAnyIP(80);                            // plain http only ever redirects to https
             }
         });
@@ -96,6 +156,7 @@ public static class WebPortal
                 return;
             }
             var remote = ctx.Connection.RemoteIpAddress;
+            PortalDiag.Page(remote, ctx.Request.Path.Value ?? "/");
             if (!AppConfig.Current.PortalAllowInternet && !PortalNet.IsPrivate(remote))
             {
                 ctx.Response.StatusCode = 403;
@@ -217,7 +278,6 @@ public static class WebPortal
         var a = _app;
         _app = null;
         FriendlyActive = false;
-        MdnsResponder.Stop();
         try
         {
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));

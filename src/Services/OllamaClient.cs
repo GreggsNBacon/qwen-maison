@@ -134,6 +134,23 @@ public static class OllamaClient
         return null;
     }
 
+    /// <summary>The largest context window <paramref name="model"/> was trained for (its model_info "*.context_length"), or 0 if unknown.</summary>
+    public static async Task<int> ModelMaxContextAsync(string model)
+    {
+        try
+        {
+            using var cts = After(30);
+            using var resp = await Http.PostAsJsonAsync("/api/show", new { model }, cts.Token);
+            if (!resp.IsSuccessStatusCode) return 0;
+            var doc = await resp.Content.ReadFromJsonAsync<JsonElement>(cancellationToken: cts.Token);
+            if (doc.TryGetProperty("model_info", out var info))
+                foreach (var prop in info.EnumerateObject())
+                    if (prop.Name.EndsWith(".context_length", StringComparison.Ordinal) && prop.Value.TryGetInt32(out var n) && n > 0) return n;
+        }
+        catch { /* server busy or model missing */ }
+        return 0;
+    }
+
     /// <summary>Ollama's default num_ctx (it logs "default_num_ctx=32768" at start, sized to the GPU).</summary>
     public static int ServerDefaultContext()
     {
