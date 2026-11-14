@@ -306,12 +306,15 @@
               <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
             <StackPanel>
-              <TextBlock Text="Password (8+ characters)" Style="{StaticResource SectionLabel}" />
-              <ui:PasswordBox x:Name="Pw1" PlaceholderText="New password" ToolTip="The one password the portal asks for. Stored only as a salted hash." />
+              <TextBlock Text="Username" Style="{StaticResource SectionLabel}" />
+              <ui:TextBox x:Name="PortalUser" PlaceholderText="Pick a username" MaxLength="40"
+                          ToolTip="Asked for on the sign-in page, together with the password. Not case sensitive. Changing it signs out every remembered device." />
+              <TextBlock Text="Password (8+ characters)" Style="{StaticResource SectionLabel}" Margin="0,10,0,0" />
+              <ui:PasswordBox x:Name="Pw1" PlaceholderText="New password" ToolTip="The portal password. Stored only as a salted hash." />
               <ui:PasswordBox x:Name="Pw2" PlaceholderText="Repeat it" Margin="0,8,0,0" />
               <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
-                <ui:Button Content="Set password" Appearance="Primary" Icon="{ui:SymbolIcon Key24}" Click="SetPassword_Click"
-                           ToolTip="Save the password. Changing it signs out every remembered device." />
+                <ui:Button Content="Save sign-in" Appearance="Primary" Icon="{ui:SymbolIcon Key24}" Click="SetPassword_Click"
+                           ToolTip="Save the username and password. Leave the password boxes empty to change only the username. Signs out every remembered device." />
                 <TextBlock x:Name="PwState" VerticalAlignment="Center" Margin="12,0,0,0" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
               </StackPanel>
             </StackPanel>
@@ -327,6 +330,29 @@
             </StackPanel>
           </Grid>
 
+          <!-- Two-step sign-in (authenticator app) -->
+          <StackPanel Margin="0,0,0,14">
+            <TextBlock Text="Two-step sign-in" Style="{StaticResource SectionLabel}" />
+            <StackPanel Orientation="Horizontal">
+              <TextBlock x:Name="TotpState" VerticalAlignment="Center" FontSize="12.5" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+              <ui:Button x:Name="TotpStart" Content="Set up" Margin="12,0,0,0" Icon="{ui:SymbolIcon ShieldKeyhole24}" Click="TotpStart_Click"
+                         ToolTip="Ask for a 6-digit code from an authenticator app (Google Authenticator, Microsoft Authenticator, Aegis…) as well as the password." />
+              <ui:Button x:Name="TotpOff" Content="Turn off" Margin="12,0,0,0" Click="TotpOff_Click" Visibility="Collapsed" />
+            </StackPanel>
+            <StackPanel x:Name="TotpSetup" Visibility="Collapsed" Margin="0,10,0,0">
+              <TextBlock TextWrapping="Wrap" FontSize="12.5" Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                         Text="1. In your authenticator app, add an account by scanning this code (or type the key by hand). 2. Type the 6-digit code it shows and press Confirm." />
+              <Image x:Name="TotpQr" Width="170" Height="170" Margin="0,8,0,0" HorizontalAlignment="Left" RenderOptions.BitmapScalingMode="NearestNeighbor" />
+              <TextBox x:Name="TotpKey" IsReadOnly="True" BorderThickness="0" Background="Transparent" FontFamily="Cascadia Mono, Consolas" FontSize="13" Margin="0,6,0,0"
+                       TextWrapping="Wrap" Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+              <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                <ui:TextBox x:Name="TotpCode" PlaceholderText="6-digit code" Width="150" MaxLength="10" />
+                <ui:Button Content="Confirm" Appearance="Primary" Margin="8,0,0,0" Click="TotpConfirm_Click" />
+                <ui:Button Content="Cancel" Margin="8,0,0,0" Click="TotpCancel_Click" />
+              </StackPanel>
+            </StackPanel>
+          </StackPanel>
+
           <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
             <ui:ToggleSwitch x:Name="PortalOn" Content="Web portal on" Click="PortalOn_Click"
                              ToolTip="Start or stop the portal. Windows may ask once whether maison can use the network: allow Private networks." />
@@ -334,6 +360,12 @@
           </StackPanel>
 
           <StackPanel x:Name="PortalInfo" Margin="0,12,0,0">
+            <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+              <TextBlock x:Name="FirewallState" VerticalAlignment="Center" FontSize="12.5" TextWrapping="Wrap" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+              <ui:Button x:Name="FixFirewall" Content="Fix Windows Firewall" Margin="12,0,0,0" Appearance="Primary" Icon="{ui:SymbolIcon ShieldCheckmark24}"
+                         Click="FixFirewall_Click" Visibility="Collapsed"
+                         ToolTip="Adds a Windows Firewall rule for the portal's port (one admin prompt). Without it Windows can silently block your phone." />
+            </StackPanel>
             <TextBlock Text="Open on your phone (same Wi-Fi)" Style="{StaticResource SectionLabel}" />
             <ItemsControl x:Name="UrlList">
               <ItemsControl.ItemTemplate>

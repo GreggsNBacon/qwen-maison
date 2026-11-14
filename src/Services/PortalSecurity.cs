@@ -16,6 +16,63 @@ public static class PortalAuth
     private static readonly object Gate = new();
 
     public static bool HasPassword => AppConfig.Current.PortalPasswordHash.Length > 0;
+    public static bool HasUsername => AppConfig.Current.PortalUsername.Length > 0;
+    /// <summary>The portal only starts once both a username and a password exist.</summary>
+    public static bool HasCredentials => HasUsername && HasPassword;
+    public static bool TotpEnabled => AppConfig.Current.PortalTotpSecret.Length > 0;
+
+    public static string NormaliseUsername(string? u) => (u ?? "").Trim().ToLowerInvariant();
+
+    public static void SetUsername(string username)
+    {
+        var c = AppConfig.Current;
+        c.PortalUsername = NormaliseUsername(username);
+        c.PortalDevices.Clear();
+        c.Save();
+    }
+
+    /// <summary>
+    /// Checks everything the login form sent. Always does the slow password hash and never says which part was wrong,
+    /// so a stranger can't learn whether a username exists or whether two-step is on.
+    /// </summary>
+    public static bool Login(string? username, string? password, string? code)
+    {
+        var c = AppConfig.Current;
+        var userBytes = System.Text.Encoding.UTF8.GetBytes(NormaliseUsername(username));
+        var wantBytes = System.Text.Encoding.UTF8.GetBytes(c.PortalUsername);
+        bool userOk = c.PortalUsername.Length > 0 && CryptographicOperations.FixedTimeEquals(userBytes, wantBytes);
+        bool pwOk = VerifyPassword(password ?? "");
+        if (!userOk || !pwOk) return false;
+        if (!TotpEnabled) return true;
+        lock (Gate)
+        {
+            var secret = Totp.Unprotect(c.PortalTotpSecret);
+            if (secret is null || !Totp.Verify(secret, code, c.PortalTotpLastStep, out var step)) return false;
+            c.PortalTotpLastStep = step;   // a code works once
+            c.Save();
+            return true;
+        }
+    }
+
+    /// <summary>Turns two-step sign-in on once the user has proved their authenticator shows the right code.</summary>
+    public static bool EnableTotp(byte[] secret, string? code)
+    {
+        if (!Totp.Verify(secret, code, 0, out var step)) return false;
+        var c = AppConfig.Current;
+        c.PortalTotpSecret = Totp.Protect(secret);
+        c.PortalTotpLastStep = step;
+        c.PortalDevices.Clear();   // devices signed in without a code have to sign in again
+        c.Save();
+        return true;
+    }
+
+    public static void DisableTotp()
+    {
+        var c = AppConfig.Current;
+        c.PortalTotpSecret = "";
+        c.PortalTotpLastStep = 0;
+        c.Save();
+    }
 
     public static string HashPassword(string password)
     {
@@ -110,6 +167,139 @@ public static class PortalAuth
 
     private static string Base64Url(byte[] b) => Convert.ToBase64String(b).TrimEnd('=').Replace('+', '-').Replace('/', '_');
     private static string Trim(string s, int n) => s.Length > n ? s[..n] : s;
+}
+
+/// <summary>Time-based one-time codes (RFC 6238: HMAC-SHA1, 30 seconds, 6 digits) for Google Authenticator, Microsoft Authenticator, Aegis, etc.</summary>
+public static class Totp
+{
+    public static byte[] NewSecret() => RandomNumberGenerator.GetBytes(20);
+
+    public static string Base32(byte[] data)
+    {
+        const string alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+        var sb = new System.Text.StringBuilder();
+        int buffer = 0, bits = 0;
+        foreach (var b in data)
+        {
+            buffer = (buffer << 8) | b;
+            bits += 8;
+            while (bits >= 5) { sb.Append(alphabet[(buffer >> (bits - 5)) & 31]); bits -= 5; }
+        }
+        if (bits > 0) sb.Append(alphabet[(buffer << (5 - bits)) & 31]);
+        return sb.ToString();
+    }
+
+    public static string Uri(byte[] secret, string account) =>
+        $"otpauth://totp/maison:{System.Uri.EscapeDataString(account)}?secret={Base32(secret)}&issuer=maison&algorithm=SHA1&digits=6&period=30";
+
+    public static string Code(byte[] secret, long step)
+    {
+        var msg = BitConverter.GetBytes(step);
+        if (BitConverter.IsLittleEndian) Array.Reverse(msg);
+        var h = HMACSHA1.HashData(secret, msg);
+        int o = h[^1] & 0x0F;
+        int bin = ((h[o] & 0x7F) << 24) | (h[o + 1] << 16) | (h[o + 2] << 8) | h[o + 3];
+        return (bin % 1_000_000).ToString("D6");
+    }
+
+    public static long NowStep(DateTimeOffset? now = null) => (now ?? DateTimeOffset.UtcNow).ToUnixTimeSeconds() / 30;
+
+    /// <summary>Accepts this window and one either side (phone clocks drift) but never a window at or before <paramref name="lastStep"/>.</summary>
+    public static bool Verify(byte[] secret, string? code, long lastStep, out long matchedStep)
+    {
+        matchedStep = 0;
+        var digits = new string((code ?? "").Where(char.IsDigit).ToArray());   // phones show "123 456"
+        if (digits.Length != 6) return false;
+        var given = System.Text.Encoding.ASCII.GetBytes(digits);
+        bool found = false;
+        long now = NowStep();
+        for (long s = now - 1; s <= now + 1; s++)
+        {
+            bool same = CryptographicOperations.FixedTimeEquals(System.Text.Encoding.ASCII.GetBytes(Code(secret, s)), given);
+            if (same && s > lastStep && !found) { found = true; matchedStep = s; }
+        }
+        return found;
+    }
+
+    public static string Protect(byte[] secret) =>
+        Convert.ToBase64String(ProtectedData.Protect(secret, "maison-portal-totp"u8.ToArray(), DataProtectionScope.CurrentUser));
+
+    public static byte[]? Unprotect(string stored)
+    {
+        try { return ProtectedData.Unprotect(Convert.FromBase64String(stored), "maison-portal-totp"u8.ToArray(), DataProtectionScope.CurrentUser); }
+        catch { return null; }
+    }
+}
+
+/// <summary>
+/// Windows Firewall for the portal. Windows' own "allow maison?" prompt makes a rule per exe file and often only for
+/// Public networks, so a portal that worked once stops when the network is Private, the exe moves, or it updates.
+/// maison's own rule is by port, for the right networks, and is kept in step with the portal settings.
+/// </summary>
+public static class PortalFirewall
+{
+    public const string RuleName = "maison web portal";
+
+    public sealed record Status(bool RuleOk, List<string> PublicNetworks, string Summary)
+    {
+        public bool Healthy => RuleOk && PublicNetworks.Count == 0;
+    }
+
+    /// <summary>Reads (without admin) whether a rule lets phones reach <paramref name="port"/> on the networks this PC is on.</summary>
+    public static async Task<Status> CheckAsync(int port, bool allowInternet)
+    {
+        const string script = """
+            $out = @()
+            foreach ($x in @(Get-NetFirewallRule -DisplayName 'maison web portal' -ErrorAction SilentlyContinue | Where-Object { $_.Enabled -eq 'True' -and $_.Action -eq 'Allow' })) {
+              $p = ($x | Get-NetFirewallPortFilter).LocalPort -join ','
+              $a = ($x | Get-NetFirewallAddressFilter).RemoteAddress -join ','
+              $out += "RULE|$p|$($x.Profile)|$a"
+            }
+            foreach ($n in @(Get-NetConnectionProfile)) { $out += "NET|$($n.Name)|$($n.NetworkCategory)" }
+            $out
+            """;
+        var text = await AiSharing.RunPowerShellAsync(script);
+        bool ruleOk = false;
+        var pub = new List<string>();
+        var categories = new List<string>();
+        foreach (var raw in text.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var f = raw.Trim().Split('|');
+            if (f is ["RULE", var p, var prof, var addr])
+            {
+                bool profileOk = prof.Contains("Any", StringComparison.OrdinalIgnoreCase) || prof.Contains("Private", StringComparison.OrdinalIgnoreCase)
+                                 || prof.Contains("Domain", StringComparison.OrdinalIgnoreCase);
+                bool addrOk = !allowInternet || addr.Contains("Any", StringComparison.OrdinalIgnoreCase);
+                if (p == port.ToString() && profileOk && addrOk) ruleOk = true;
+            }
+            else if (f is ["NET", var name, var cat])
+            {
+                categories.Add(cat);
+                if (cat.Equals("Public", StringComparison.OrdinalIgnoreCase)) pub.Add(name);
+            }
+        }
+        string summary = !ruleOk ? $"Windows Firewall has no rule for port {port}, so phones are blocked."
+            : pub.Count > 0 && !allowInternet ? $"Your network ({pub[0]}) is set to Public in Windows, which blocks phones."
+            : "Windows Firewall lets your phone through.";
+        return new Status(ruleOk, allowInternet ? [] : pub, summary);
+    }
+
+    /// <summary>One admin prompt: (re)creates the rule for this port. Returns null on success, else why not.</summary>
+    public static async Task<string?> EnsureAsync(int port, bool allowInternet, bool makePrivate)
+    {
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("$ErrorActionPreference = 'Stop'");
+        sb.AppendLine($"Get-NetFirewallRule -DisplayName '{RuleName}' -ErrorAction SilentlyContinue | Remove-NetFirewallRule");
+        var scope = allowInternet ? "-Profile Any -RemoteAddress Any" : "-Profile Private,Domain -RemoteAddress LocalSubnet,100.64.0.0/10";
+        sb.AppendLine($"New-NetFirewallRule -DisplayName '{RuleName}' -Direction Inbound -Action Allow -Protocol TCP -LocalPort {port} {scope} " +
+                      "-Description 'Lets your phone reach the maison web portal. Managed in maison Settings.' | Out-Null");
+        if (makePrivate)
+            sb.AppendLine("Get-NetConnectionProfile | Where-Object NetworkCategory -eq 'Public' | ForEach-Object { Set-NetConnectionProfile -InterfaceIndex $_.InterfaceIndex -NetworkCategory Private }");
+        return await AiSharing.RunElevatedPowerShellAsync(sb.ToString());
+    }
+
+    public static async Task<string?> RemoveAsync() =>
+        await AiSharing.RunElevatedPowerShellAsync($"Get-NetFirewallRule -DisplayName '{RuleName}' -ErrorAction SilentlyContinue | Remove-NetFirewallRule");
 }
 
 public static class PortalNet

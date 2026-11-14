@@ -32,8 +32,14 @@
     <img src="/brand.png" alt="">
     <div><div class="wm">m<span class="g">ai</span>son</div><div class="tag">the <b class="g">Qwen</b>-tissential AI home</div></div>
   </div>
+  <label for="un">Username</label>
+  <input id="un" type="text" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" maxlength="100" required autofocus>
   <label for="pw">Password</label>
-  <input id="pw" type="password" autocomplete="current-password" required autofocus>
+  <input id="pw" type="password" autocomplete="current-password" required>
+  <div id="codebox" <!--CODE-->>
+    <label for="code">6-digit code from your authenticator app</label>
+    <input id="code" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="10" pattern="[0-9 ]*">
+  </div>
   <label for="dev">Name this device <span style="color:#6f6b85">(optional)</span></label>
   <input id="dev" type="text" maxlength="60" placeholder="e.g. My phone">
   <button id="go" type="submit">Sign in</button>
@@ -47,7 +53,8 @@
     go.disabled = true; err.textContent = '';
     try {
       const r = await fetch('/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password: document.getElementById('pw').value, device: document.getElementById('dev').value }) });
+        body: JSON.stringify({ username: document.getElementById('un').value, password: document.getElementById('pw').value,
+                               code: document.getElementById('code').value, device: document.getElementById('dev').value }) });
       const j = await r.json().catch(() => ({}));
       if (r.ok && j.ok) { location.href = '/'; return; }
       err.textContent = j.error || 'Sign-in failed.';

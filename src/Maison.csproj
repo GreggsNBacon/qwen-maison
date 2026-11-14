@@ -34,6 +34,7 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4314.35" />
+    <PackageReference Include="QRCoder" Version="1.6.0" />
     <PackageReference Include="WPF-UI" Version="4.3.0" />
   </ItemGroup>
 
@@ -56,7 +57,7 @@
     </PropertyGroup>
     <Delete Files="$(_VersionedExe)" Condition="Exists('$(_PublishedExe)')" />
     <Move SourceFiles="$(_PublishedExe)" DestinationFiles="$(_VersionedExe)" Condition="Exists('$(_PublishedExe)')" />
-    <Message Importance="high" Text="maison -> $(_VersionedExe)" />
+    <Message Importance="high" Text="maison -&gt; $(_VersionedExe)" />
   </Target>
 
 </Project>

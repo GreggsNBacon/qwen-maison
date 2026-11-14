@@ -235,7 +235,12 @@ public sealed class AppConfig
     public bool PortalEnabled { get; set; }
     public int PortalPort { get; set; } = Random.Shared.Next(20000, 60000);
     public bool PortalAllowInternet { get; set; }
+    public string PortalUsername { get; set; } = "";
     public string PortalPasswordHash { get; set; } = "";
+    /// <summary>Authenticator-app secret, encrypted for this Windows user (DPAPI). Empty = two-step sign-in is off.</summary>
+    public string PortalTotpSecret { get; set; } = "";
+    /// <summary>Last accepted 30-second code window, so a code can't be used twice.</summary>
+    public long PortalTotpLastStep { get; set; }
     public string PortalCertThumbprint { get; set; } = "";
     public List<PortalDevice> PortalDevices { get; set; } = [];
 

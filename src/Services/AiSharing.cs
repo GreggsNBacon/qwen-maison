@@ -122,7 +122,7 @@ public static class AiSharing
         catch { return false; }
     }
 
-    private static async Task<string> RunPowerShellAsync(string script)
+    internal static async Task<string> RunPowerShellAsync(string script)
     {
         try
         {
@@ -139,7 +139,7 @@ public static class AiSharing
     }
 
     /// <summary>Runs a PowerShell script as admin (one UAC prompt). Returns null on success, else why it failed.</summary>
-    private static async Task<string?> RunElevatedPowerShellAsync(string script)
+    internal static async Task<string?> RunElevatedPowerShellAsync(string script)
     {
         var errFile = Path.Combine(Path.GetTempPath(), $"maison-share-{Guid.NewGuid():N}.txt");
         var wrapped = $"try {{\n{script}\n}} catch {{ $_.Exception.Message | Out-File -Encoding utf8 '{errFile}'; exit 1 }}";

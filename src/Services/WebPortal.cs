@@ -35,7 +35,7 @@ public static class WebPortal
     {
         if (_app is not null) return;
         var cfg = AppConfig.Current;
-        if (!PortalAuth.HasPassword) throw new InvalidOperationException("Set a portal password first.");
+        if (!PortalAuth.HasCredentials) throw new InvalidOperationException("Set a portal username and password first.");
         _cert = PortalCert.GetOrCreate();
         Port = cfg.PortalPort;
 
@@ -70,7 +70,9 @@ public static class WebPortal
             await next();
         });
 
-        app.MapGet("/login", () => Results.Content(Page("login.html"), "text/html; charset=utf-8"));
+        // The 6-digit code box only appears when two-step sign-in is on.
+        app.MapGet("/login", () => Results.Content(
+            Page("login.html").Replace("<!--CODE-->", PortalAuth.TotpEnabled ? "" : "hidden"), "text/html; charset=utf-8"));
         app.MapGet("/brand.png", () => Results.Bytes(BrandPng(), "image/png"));
 
         app.MapPost("/api/login", async (HttpContext ctx) =>
@@ -84,11 +86,12 @@ public static class WebPortal
             LoginRequest? req;
             try { req = await JsonSerializer.DeserializeAsync<LoginRequest>(ctx.Request.Body, JsonOpts); }
             catch { return Results.BadRequest(); }
-            if (req is null || string.IsNullOrEmpty(req.Password) || !PortalAuth.VerifyPassword(req.Password))
+            if (req is null || string.IsNullOrEmpty(req.Password) || req.Password.Length > 256 || (req.Username ?? "").Length > 100
+                || !PortalAuth.Login(req.Username, req.Password, req.Code))
             {
                 PortalAuth.Failed(ip);
                 await Task.Delay(700);
-                return Results.Json(new { ok = false, error = "Wrong password." }, statusCode: 401);
+                return Results.Json(new { ok = false, error = PortalAuth.TotpEnabled ? "Wrong username, password or code." : "Wrong username or password." }, statusCode: 401);
             }
             PortalAuth.Succeeded(ip);
             var name = string.IsNullOrWhiteSpace(req.Device) ? DeviceName(ctx) : new string(req.Device.Trim().Where(ch => !char.IsControl(ch)).Take(40).ToArray());
@@ -172,7 +175,7 @@ public static class WebPortal
 
     // ------------------------------------------------------------------ helpers
 
-    private sealed record LoginRequest(string? Password, string? Device);
+    private sealed record LoginRequest(string? Username, string? Password, string? Code, string? Device);
 
     private static readonly JsonSerializerOptions JsonOpts = new(JsonSerializerDefaults.Web);
 

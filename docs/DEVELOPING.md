@@ -62,7 +62,7 @@ settings aren't touched.
   entry whose exe was deleted. Set `MAISON_RUN_NAME` (e.g. `maison-selftest`) so it uses a test entry, not the real one.
   `--minimized` (what the start-up entry passes) reports the window state as `WINDOW:`.
 - `--jitter` records every frame Qwen Code sends while it streams a long answer (`jitter-frames.txt`).
-- `--portal` runs the web portal over real HTTPS and checks login, cookies, lockout, origin checks, state, launching and
+- `--portal` runs the web portal over real HTTPS and checks login (username, password, two-step codes), cookies, lockout, origin checks, state, launching and
   the mirrored terminal WebSocket.
 
 There are no unit tests; the self-test is the test suite.
@@ -133,6 +133,9 @@ an accent shade when the accent changes.
 
 **Phone portal security.**
 - HTTPS only, with a self-signed certificate kept in the Windows certificate store.
+- Sign-in is username + password (+ optional TOTP code). Usernames are case-insensitive; the password hash always runs and the error never says which part was wrong.
+- Two-step: RFC 6238 TOTP (SHA-1, 30 s, 6 digits, ±1 window) in `Totp`; the secret is stored DPAPI-encrypted (`PortalTotpSecret`), a code can't be reused (`PortalTotpLastStep`), and it's only switched on after the user types back a valid code. Enabling it or changing the username/password signs every device out.
+- Windows Firewall: `PortalFirewall` keeps a port-based rule (`maison web portal`: Private+Domain, LocalSubnet + 100.64/10; any address only when internet access is on). Windows' automatic per-exe rules are often Public-only, which silently blocks phones on a Private network. Settings checks the rule and the network category and offers a one-click admin fix.
 - Password stored only as a salted PBKDF2-SHA256 hash (600,000 rounds); changing it signs every device out.
 - Remembered devices: a random 256-bit token in an `HttpOnly; Secure; SameSite=Strict` cookie; only its SHA-256 is stored.
 - 5 wrong passwords lock that address out for 15 minutes, with a global cap of 30 failures an hour.

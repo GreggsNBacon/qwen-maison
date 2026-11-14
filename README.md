@@ -31,7 +31,7 @@ maison sets up [Ollama](https://ollama.com) and a Qwen model sized for your grap
 - **An AI pool for the whole house.** Run models on the PCs with the best graphics cards and use them from your laptop or
   other PCs. maison finds them on its own, sends work to whichever is free, and lets you manage their models from one page.
 - **Use it from your phone.** Check on a long task, or type to the agent, from your phone's browser on your home Wi-Fi.
-  It's password-protected and encrypted.
+  It needs a username and password (and, if you like, a code from an authenticator app), and it's encrypted.
 - **Simple or advanced.** New users get a calm view with one button and one terminal. Flip **Advanced** for the full
   controls: model and context choice, permissions, start-command options, extensions, colours and more.
 
@@ -109,15 +109,24 @@ all of maison's settings in their own window, so you don't need the advanced vie
 Every button has a tooltip explaining what it does.
 
 ## Phone access
-1. In **Settings → Web portal**, set a password and turn the portal on.
+1. In **Settings → Web portal**, set a username and password, turn the portal on, and press **Fix Windows Firewall** if maison
+   shows the warning (one admin prompt; it opens just the portal's port, for your home network only).
 2. On your phone (same Wi-Fi), open one of the addresses shown, e.g. `https://192.168.1.20:<port>`. Your browser will warn
    that the certificate isn't trusted, because maison made it itself. Check that the fingerprint matches the one in
    Settings, then continue.
 3. Sign in once; that phone stays signed in until you sign it out in Settings.
 
+**Two-step sign-in (recommended).** In **Settings → Web portal → Two-step sign-in**, press **Set up**, scan the code with an
+authenticator app (Google Authenticator, Microsoft Authenticator, Aegis…) and type back the 6-digit code it shows. From then on
+signing in also asks for the current code. Turn it on before you ever open the portal to the internet.
+
+**Phone can't connect?** Windows' own "allow maison?" prompt often allows only *Public* networks and only that one exe file, so
+phone access can stop working when your network is Private or maison moves or updates. **Fix Windows Firewall** replaces that
+with a rule for the portal's port that covers your home network (and Tailscale), whichever copy of maison is running.
+
 You see the same live sessions as on the PC (type on either), plus stats and a key bar with Esc, Tab, Ctrl+C and arrows.
 
-Is it safe? Connections are encrypted, the password is stored only as a strong hash, repeated wrong guesses are locked
+Is it safe? Connections are encrypted, the password is stored only as a strong hash, the login never says which of username, password or code was wrong, repeated wrong guesses are locked
 out, and by default only devices on your home network (or a VPN like Tailscale) can connect at all.
 
 ## The AI pool: use your other PCs' AI
